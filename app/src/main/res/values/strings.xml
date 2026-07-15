@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Alerta Global</string>
+    <string name="tab_alerts">Alertas</string>
+    <string name="tab_weather">Clima</string>
+    <string name="tab_map">Mapa</string>
+    <string name="tab_recommendations">Recomendaciones</string>
+    <string name="loading">Cargando...</string>
+    <string name="error_loading">Error al cargar datos</string>
+    <string name="no_alerts">No hay alertas activas</string>
+    <string name="notification_channel_alerts">Alertas de Desastres</string>
+    <string name="notification_channel_weather">Alertas Meteorológicas</string>
+</resources>

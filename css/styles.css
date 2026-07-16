@@ -53,3 +53,41 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:
 .toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(80px);background:#333;color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;transition:all 0.3s;z-index:200;pointer-events:none}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:500px){body{max-width:420px;margin:0 auto;box-shadow:0 0 30px rgba(0,0,0,0.1)}}
+
+/* Location bar */
+.location-bar{display:flex;gap:6px;padding:8px 10px;background:#fff;border-bottom:1px solid #eee;flex-wrap:wrap}
+.location-btn{background:#f0f0f0;border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background 0.2s}
+.location-btn:active{background:#ddd}
+
+/* Saved locations */
+.saved-locations{display:flex;gap:6px;padding:4px 10px;flex-wrap:wrap}
+.saved-loc{display:flex;align-items:center;gap:2px}
+.saved-loc-btn{background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.saved-loc-btn:active{background:#C8E6C9}
+.saved-loc-remove{background:none;border:none;color:#999;font-size:14px;cursor:pointer;padding:2px 4px}
+
+/* Popups */
+.popup-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+.popup{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:380px;position:relative;max-height:80vh;overflow-y:auto}
+.popup h3{font-size:18px;margin-bottom:16px}
+.popup-close{position:absolute;top:12px;right:12px;background:none;border:none;font-size:20px;cursor:pointer;color:#999;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.popup-close:active{background:#f0f0f0}
+
+/* Search */
+.search-box{display:flex;gap:8px;margin-bottom:12px}
+.search-box input{flex:1;padding:10px 14px;border:2px solid #e0e0e0;border-radius:10px;font-size:15px;outline:none;transition:border 0.2s}
+.search-box input:focus{border-color:var(--primary)}
+.search-box button{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:16px;cursor:pointer}
+.search-results{max-height:300px;overflow-y:auto}
+.search-result{display:block;width:100%;text-align:left;padding:12px;border:none;background:none;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:14px;transition:background 0.15s}
+.search-result:active{background:#f5f5f5}
+.search-result strong{color:var(--text)}
+.search-result small{color:#999}
+
+/* Language grid */
+.lang-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lang-btn{padding:12px;border:2px solid #e0e0e0;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;transition:all 0.2s;text-align:center}
+.lang-btn:active{border-color:var(--primary);background:#f3e5f5}
+
+/* Toolbar actions */
+.toolbar-actions{display:flex;gap:6px}

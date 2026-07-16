@@ -72,15 +72,20 @@ function setupTabs() {
 
 // ========== GEOLOCATION ==========
 function initLocation() {
+    // Load global alerts IMMEDIATELY — don't wait for geolocation
+    loadAlerts();
+
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
         loadWeather(saved.lat, saved.lon);
-        loadAlerts();
         renderSavedLocations();
+        updateStarButtons();
         return;
     }
+
+    // Detect location in background with short timeout
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(function(pos) {
             LocationManager.reverseGeocode(pos.coords.latitude, pos.coords.longitude).then(function(geo) {
@@ -88,18 +93,15 @@ function initLocation() {
                 LocationManager.setCurrent(currentLocation);
                 updateLocationDisplay(currentLocation.name);
                 loadWeather(currentLocation.lat, currentLocation.lon);
+                // Reload alerts filtered by location
                 loadAlerts();
                 renderSavedLocations();
+                updateStarButtons();
             });
         }, function() {
-            updateLocationDisplay(t('allow_location'));
-            loadAlerts();
-            renderSavedLocations();
-        }, { enableHighAccuracy: true, timeout: 10000 });
-    } else {
-        updateLocationDisplay(t('allow_location'));
-        loadAlerts();
-        renderSavedLocations();
+            // Geolocation denied — already have global alerts loaded
+            updateLocationDisplay('Global');
+        }, { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 });
     }
 }
 function updateLocationDisplay(name) {
@@ -177,16 +179,37 @@ function setupLocationButtons() {
 function setupSearch() {
     document.getElementById('closeSearch').addEventListener('click', closePopups);
     document.getElementById('searchBtn').addEventListener('click', doSearch);
+
     var input = document.getElementById('searchInput');
+
+    // Autocomplete while typing
     input.addEventListener('input', function() {
         clearTimeout(searchTimer);
-        if (this.value.trim().length < 2) { document.getElementById('searchResults').innerHTML=''; return; }
+        var q = this.value.trim();
+        if (q.length < 2) {
+            document.getElementById('searchResults').innerHTML = '';
+            return;
+        }
         searchTimer = setTimeout(doSearch, 350);
     });
-    input.addEventListener('keydown', function(e) { if (e.key==='Enter') { clearTimeout(searchTimer); doSearch(); } });
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(); }
+        if (e.key === 'Escape') { closePopups(); }
+    });
+}
+
+function closePopups() {
+    document.getElementById('searchPopup').style.display = 'none';
+    document.getElementById('langPopup').style.display = 'none';
+    document.getElementById('favoritesPopup').style.display = 'none';
+    document.getElementById('sharePopup').style.display = 'none';
 }
 function openSearch() {
-    document.getElementById('searchPopup').style.display='flex';
+    var popup = document.getElementById('searchPopup');
+    popup.style.display='flex';
+    // Click outside to close
+    popup.onclick = function(e) { if (e.target === popup) closePopups(); };
     document.getElementById('searchInput').value='';
     document.getElementById('searchResults').innerHTML='';
     setTimeout(function() { document.getElementById('searchInput').focus(); }, 150);
@@ -207,7 +230,11 @@ function closePopups() { document.getElementById('searchPopup').style.display='n
 
 // ========== LANGUAGE ==========
 function setupLanguageSelector() {
-    document.getElementById('btnLang').addEventListener('click', function() { document.getElementById('langPopup').style.display='flex'; });
+    document.getElementById('btnLang').addEventListener('click', function() {
+        var lp = document.getElementById('langPopup');
+        lp.style.display='flex';
+        lp.onclick = function(e) { if (e.target === lp) closePopups(); };
+    });
     document.getElementById('closeLang').addEventListener('click', closePopups);
     document.querySelectorAll('.lang-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -634,7 +661,9 @@ function openFavorites() {
         }).join('');
     }
 
-    document.getElementById('favoritesPopup').style.display = 'flex';
+    var fp = document.getElementById('favoritesPopup');
+    fp.style.display = 'flex';
+    fp.onclick = function(e) { if (e.target === fp) closePopups(); };
 }
 
 function removeFavorite(name) {
@@ -651,7 +680,9 @@ function openShare(text) {
     document.getElementById('shareContent').textContent = text;
     var nativeBtn = document.getElementById('shareNative');
     nativeBtn.style.display = navigator.share ? 'flex' : 'none';
-    document.getElementById('sharePopup').style.display = 'flex';
+    var sp = document.getElementById('sharePopup');
+    sp.style.display = 'flex';
+    sp.onclick = function(e) { if (e.target === sp) closePopups(); };
     setupShareButtons(text);
 }
 

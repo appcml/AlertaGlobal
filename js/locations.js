@@ -57,4 +57,4 @@ var LocationManager = {
                 return { city: lat.toFixed(2) + ', ' + lon.toFixed(2), state: '', country: '' };
             });
     }
-};
+};v

@@ -86,49 +86,62 @@ function setupTabs() {
 
 // ========== GEOLOCATION ==========
 function initLocation() {
-    // 1. Load global alerts IMMEDIATELY — no waiting for anything
-    loadAlerts();
-
-    // 2. Check saved location (instant, from localStorage)
+    // 1. Saved location → instant from localStorage, no network needed
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
+        loadAlerts();       // filtered by saved location
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
-        return; // done — no geolocation needed
+        return;
     }
 
-    // 3. Try geolocation in background AFTER alerts are already showing
-    // Use maximumAge to get cached position instantly if available
+    // 2. No saved location → get GPS coords first (fast, no network)
+    //    then load data immediately with coords, get city name in background
     if (navigator.geolocation) {
-        // First try: get cached position immediately (maximumAge = any age)
         navigator.geolocation.getCurrentPosition(
             function(pos) {
                 var lat = pos.coords.latitude, lon = pos.coords.longitude;
-                // Use coords immediately without waiting for reverse geocode
-                currentLocation = { lat: lat, lon: lon, name: 'Tu ubicación', country: '' };
+
+                // Use coords right away — no waiting for city name
+                currentLocation = { lat: lat, lon: lon, name: '...', country: '' };
+                updateLocationDisplay('Detectando ciudad...');
+
+                // Load all data immediately with real coordinates
+                loadAlerts();
                 loadWeather(lat, lon);
-                loadAlerts(); // reload filtered by location
-                // Get city name in background (non-blocking)
+                renderSavedLocations();
+
+                // City name in background (Nominatim call — can be slow)
                 LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                    currentLocation.name = geo.city || 'Tu ubicación';
+                    currentLocation.name = geo.city || (lat.toFixed(2)+', '+lon.toFixed(2));
                     currentLocation.country = geo.country || '';
                     LocationManager.setCurrent(currentLocation);
                     updateLocationDisplay(currentLocation.name);
-                    renderSavedLocations();
                     updateStarButtons();
                 }).catch(function() {
-                    updateLocationDisplay('Tu ubicación');
+                    currentLocation.name = lat.toFixed(2)+', '+lon.toFixed(2);
+                    LocationManager.setCurrent(currentLocation);
+                    updateLocationDisplay(currentLocation.name);
                 });
             },
-            function() {
-                // Geolocation denied or failed — already showing global alerts, that's fine
+            function(err) {
+                // GPS denied or failed → load global alerts
                 updateLocationDisplay('Global');
+                loadAlerts();
             },
-            { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
+            {
+                enableHighAccuracy: false,  // faster — no GPS chip, uses WiFi/cell
+                timeout: 5000,
+                maximumAge: 300000          // accept 5min cached position = instant
+            }
         );
+    } else {
+        // No geolocation support
+        updateLocationDisplay('Global');
+        loadAlerts();
     }
 }
 

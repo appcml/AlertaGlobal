@@ -255,6 +255,48 @@ function detectIcon(text) {
     return icons[type] || '⚠️';
 }
 
+
+// 🇨🇱 CSN Chile — sismos locales desde M1.5 (más sensible que USGS)
+function fetchCSN() {
+    // CSN provides RSS feed with latest earthquakes
+    return fetchCors('https://www.sismologia.cl/rss/ultimos_sismos.xml', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 50) return [];
+            var items = parseRSS(xml);
+            return items.slice(0, 20).map(function(item) {
+                // CSN format: "2026-07-17 10:45:04 | 90 km al E de Socaire | Prof: 198 km | Mag: 3.8"
+                var title = item.title || '';
+                var mag = 0;
+                var magMatch = title.match(/[Mm]ag[nitud]*[:\s]+([0-9.]+)/);
+                if (!magMatch) magMatch = title.match(/([0-9.]+)\s*ML/);
+                if (magMatch) mag = parseFloat(magMatch[1]);
+                
+                var risk = mag >= 6 ? calcRisk(mag) : { label: mag >= 4 ? '🟡 MEDIO' : '🟢 BAJO', color: mag >= 4 ? '#F57F17' : '#2E7D32' };
+                
+                return makeAlert(
+                    'CSN · Chile',
+                    'SISMO',
+                    '🌍',
+                    title,
+                    item.description || '',
+                    mag >= 6 ? '#B71C1C' : mag >= 4 ? '#E65100' : '#1565C0',
+                    item.link || 'https://www.sismologia.cl',
+                    item.pubDate,
+                    mag >= 6 ? 90 : mag >= 4 ? 70 : 40
+                );
+            }).filter(function(a) { return a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
+function calcRisk(mag) {
+    if (mag >= 8) return { label: '⚫ EXTREMO', color: '#212121' };
+    if (mag >= 7) return { label: '🔴 CRÍTICO', color: '#B71C1C' };
+    if (mag >= 5) return { label: '🟠 ALTO', color: '#E64A19' };
+    if (mag >= 4) return { label: '🟡 MEDIO', color: '#F57F17' };
+    return { label: '🟢 BAJO', color: '#2E7D32' };
+}
+
 // =============================================
 // MASTER FETCH — todas las fuentes en paralelo
 // =============================================
@@ -263,7 +305,8 @@ function loadExternalSources(callback) {
     Promise.all([
         fetchEurope(),   // GDACS ONU — más confiable
         fetchUSA(),      // NHC huracanes
-        fetchTsunami()   // alertas tsunami
+        fetchTsunami(),  // alertas tsunami
+        fetchCSN()       // CSN Chile — sismos locales M1.5+
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

@@ -2,7 +2,7 @@
 // js/app.js — Alerta Global v6 STABLE
 // ============================================
 var CONFIG = {
-    USGS_URL: 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=20&minmagnitude=4.5&orderby=time',
+    USGS_URL: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson',
     WEATHER_API_KEY: '6fe6e0dcca264864dbd631bf620aad64',
     WEATHER_URL: 'https://api.openweathermap.org/data/2.5/weather',
     FORECAST_URL: 'https://api.openweathermap.org/data/2.5/forecast'
@@ -339,8 +339,7 @@ function loadAlerts() {
     var error = document.getElementById('alertsError');
     loading.style.display='flex'; list.innerHTML=''; error.style.display='none';
 
-    var url = CONFIG.USGS_URL;
-    if (currentLocation.lat && currentLocation.lon) url += '&latitude='+currentLocation.lat+'&longitude='+currentLocation.lon+'&maxradiuskm=3000';
+    var url = CONFIG.USGS_URL; // GeoJSON feed - global, filter client-side
 
     var ctrl = typeof AbortController!=='undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
@@ -551,6 +550,20 @@ function refreshSmartTips() {
 // ========== MAP ==========
 function initMap() {
     var lat=currentLocation.lat||-37.8, lon=currentLocation.lon||-73.4;
+    // Load Leaflet lazily only when map tab is opened
+    if (typeof L === 'undefined') {
+        var css = document.createElement('link');
+        css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(css);
+        var script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.onload = function() { buildMap(lat, lon); };
+        document.head.appendChild(script);
+        return;
+    }
+    buildMap(lat, lon);
+}
+function buildMap(lat, lon) {
     leafletMap=L.map('map').setView([lat,lon],7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(leafletMap);
     if(currentLocation.lat) { userMarker=L.marker([currentLocation.lat,currentLocation.lon],{icon:createUserIcon()}).addTo(leafletMap).bindPopup('<b>📍 '+currentLocation.name+'</b>').openPopup(); }
@@ -563,4 +576,4 @@ function initMap() {
     }).catch(function(){});
     mapInitialized=true;
     setTimeout(function(){leafletMap.invalidateSize();},300);
-}v
+}

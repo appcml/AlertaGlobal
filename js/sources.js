@@ -1,187 +1,157 @@
 // ============================================
-// js/sources.js — Fuentes de datos oficiales
+// js/sources.js — Fuentes oficiales v2
 // ============================================
 
-var SOURCES = {
-
-    // ===== SISMOS =====
-    USGS: {
-        name: 'USGS',
-        url: 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=50&minmagnitude=3.5&orderby=time',
-        flag: '🇺🇸'
-    },
-    EMSC: {
-        name: 'EMSC',
-        // EMSC feed CORS-compatible via proxy público
-        url: 'https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit=20&minmag=4.0&orderby=time',
-        flag: '🇪🇺'
-    },
-
-    // ===== HURACANES / CLIMA EXTREMO =====
-    NHC_ATLANTIC: {
-        name: 'NHC Atlántico',
-        url: 'https://www.nhc.noaa.gov/nhc_at.xml',
-        flag: '🌀'
-    },
-    NHC_PACIFIC: {
-        name: 'NHC Pacífico',
-        url: 'https://www.nhc.noaa.gov/nhc_ep.xml',
-        flag: '🌀'
-    },
-    GDACS: {
-        name: 'GDACS ONU',
-        url: 'https://www.gdacs.org/xml/rss.xml',
-        flag: '🇺🇳'
-    },
-
-    // ===== VOLCANES =====
-    SMITHSONIAN: {
-        name: 'Smithsonian GVP',
-        url: 'https://volcano.si.edu/news/WeeklyVolcanoActivity.cfm',
-        flag: '🌋'
-    },
-
-    // ===== TSUNAMI =====
-    PTWC: {
-        name: 'PTWC NOAA',
-        url: 'https://www.tsunami.gov/events/PAAQ/2022/feed.atom',
-        flag: '🌊'
-    },
-
-    // ===== ESPACIO =====
-    NASA_NEO: {
-        name: 'NASA CNEOS',
-        url: 'https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=today&sort=dist&limit=5',
-        flag: '☄️'
-    }
-};
-
-// Proxy CORS para feeds RSS externos (necesario para leer XML desde browser)
 var CORS_PROXY = 'https://api.allorigins.win/get?url=';
 
-// Fetch con CORS proxy
 function fetchCors(url) {
     return fetch(CORS_PROXY + encodeURIComponent(url))
         .then(function(r) { return r.json(); })
-        .then(function(d) { return d.contents; });
+        .then(function(d) { return d.contents || ''; });
 }
 
-// Parse RSS/XML a array de items
 function parseRSS(xmlText) {
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(xmlText, 'text/xml');
-    var items = doc.querySelectorAll('item, entry');
-    var results = [];
-    items.forEach(function(item) {
-        var title = item.querySelector('title') ? item.querySelector('title').textContent : '';
-        var desc = item.querySelector('description, summary, content') ? (item.querySelector('description, summary, content').textContent || '') : '';
-        var link = item.querySelector('link') ? (item.querySelector('link').getAttribute('href') || item.querySelector('link').textContent) : '';
-        var pubDate = item.querySelector('pubDate, updated, published') ? item.querySelector('pubDate, updated, published').textContent : '';
-        results.push({ title: title.trim(), description: desc.trim(), link: link.trim(), pubDate: pubDate.trim() });
-    });
-    return results;
+    try {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(xmlText, 'text/xml');
+        var items = doc.querySelectorAll('item, entry');
+        var results = [];
+        items.forEach(function(item) {
+            var title = (item.querySelector('title') || {}).textContent || '';
+            var desc  = (item.querySelector('description, summary') || {}).textContent || '';
+            var link  = item.querySelector('link') ? (item.querySelector('link').getAttribute('href') || item.querySelector('link').textContent) : '';
+            var pub   = (item.querySelector('pubDate, updated, published') || {}).textContent || '';
+            results.push({
+                title: title.trim(),
+                description: desc.replace(/<[^>]+>/g, '').trim().substring(0, 250),
+                link: link.trim(),
+                pubDate: pub.trim()
+            });
+        });
+        return results;
+    } catch(e) { return []; }
 }
 
-// ===== FETCHERS POR FUENTE =====
+// ===== NHC — Huracanes en tiempo real (feeds oficiales) =====
+function fetchNHC() {
+    var feeds = [
+        // Feeds principales por cuenca (en español cuando disponible)
+        { url: 'https://www.nhc.noaa.gov/index-at-sp.xml', basin: 'Atlántico' },
+        { url: 'https://www.nhc.noaa.gov/index-ep-sp.xml', basin: 'Pacífico E.' },
+        { url: 'https://www.nhc.noaa.gov/index-cp.xml',    basin: 'Pacífico C.' },
+        // Storm wallets Atlántico (1-5)
+        { url: 'https://www.nhc.noaa.gov/nhc_at1.xml', basin: 'Atlántico' },
+        { url: 'https://www.nhc.noaa.gov/nhc_at2.xml', basin: 'Atlántico' },
+        { url: 'https://www.nhc.noaa.gov/nhc_at3.xml', basin: 'Atlántico' },
+        // Storm wallets Pacífico E. (1-5)
+        { url: 'https://www.nhc.noaa.gov/nhc_ep1.xml', basin: 'Pacífico E.' },
+        { url: 'https://www.nhc.noaa.gov/nhc_ep2.xml', basin: 'Pacífico E.' },
+        { url: 'https://www.nhc.noaa.gov/nhc_ep3.xml', basin: 'Pacífico E.' },
+        // Outlooks en español
+        { url: 'https://www.nhc.noaa.gov/xml/TWOSAT.xml', basin: 'Atlántico' },
+        { url: 'https://www.nhc.noaa.gov/xml/TWOSEP.xml', basin: 'Pacífico E.' }
+    ];
 
-// GDACS — inundaciones, ciclones, terremotos, sequías (ONU)
+    var promises = feeds.map(function(f) {
+        return fetchCors(f.url)
+            .then(function(xml) {
+                if (!xml || xml.length < 50) return [];
+                return parseRSS(xml).map(function(item) {
+                    if (!item.title || item.title.length < 3) return null;
+                    var isMajor = /hurricane|huracán|categoria|category [3-5]/i.test(item.title + item.description);
+                    var isTS    = /tropical storm|tormenta tropical|ts /i.test(item.title);
+                    var isTD    = /tropical depression|depresión/i.test(item.title);
+                    var type = isMajor ? 'HURACÁN' : isTS ? 'TORMENTA TROPICAL' : isTD ? 'DEPRESIÓN TROPICAL' : 'AVISO NHC';
+                    var color = isMajor ? '#B71C1C' : isTS ? '#7B1FA2' : '#1565C0';
+                    return {
+                        source: 'NHC · NOAA · ' + f.basin,
+                        type: type,
+                        icon: '🌀',
+                        title: item.title,
+                        description: item.description,
+                        color: color,
+                        link: item.link || 'https://www.nhc.noaa.gov',
+                        time: item.pubDate ? new Date(item.pubDate).getTime() : Date.now(),
+                        priority: isMajor ? 95 : isTS ? 85 : 60
+                    };
+                }).filter(Boolean);
+            })
+            .catch(function() { return []; });
+    });
+
+    return Promise.all(promises).then(function(results) {
+        var all = [];
+        results.forEach(function(arr) { all = all.concat(arr); });
+        // Deduplicate by title
+        var seen = {};
+        return all.filter(function(a) {
+            var key = a.title.substring(0, 40);
+            if (seen[key]) return false;
+            seen[key] = true;
+            return true;
+        }).slice(0, 8);
+    });
+}
+
+// ===== GDACS — ONU: inundaciones, ciclones, sequías, volcanes =====
 function fetchGDACS() {
-    return fetchCors(SOURCES.GDACS.url)
+    return fetchCors('https://www.gdacs.org/xml/rss.xml')
         .then(function(xml) {
-            var items = parseRSS(xml);
-            return items.slice(0, 15).map(function(item) {
-                var title = item.title;
-                var desc = item.description.replace(/<[^>]+>/g, '').substring(0, 200);
-                // Detect type from title
-                var type = 'DESASTRE';
-                var icon = '⚠️';
-                var color = '#FF9800';
-                if (/cyclone|hurricane|typhoon|tormenta|tropical/i.test(title)) { type = 'CICLÓN TROPICAL'; icon = '🌀'; color = '#7B1FA2'; }
-                else if (/earthquake|terremoto|sismo/i.test(title)) { type = 'SISMO'; icon = '🌍'; color = '#B71C1C'; }
-                else if (/flood|inundac/i.test(title)) { type = 'INUNDACIÓN'; icon = '🌊'; color = '#1565C0'; }
-                else if (/drought|sequía/i.test(title)) { type = 'SEQUÍA'; icon = '🏜️'; color = '#795548'; }
-                else if (/volcano|volcan/i.test(title)) { type = 'VOLCÁN'; icon = '🌋'; color = '#E65100'; }
-                else if (/wildfire|incendio|fire/i.test(title)) { type = 'INCENDIO'; icon = '🔥'; color = '#D84315'; }
+            if (!xml) return [];
+            return parseRSS(xml).slice(0, 15).map(function(item) {
+                if (!item.title || item.title.length < 3) return null;
+                var t = item.title, d = item.description;
+                var type = 'DESASTRE', icon = '⚠️', color = '#FF9800', priority = 50;
+                if (/cyclone|hurricane|typhoon|trop/i.test(t+d))  { type='CICLÓN TROPICAL'; icon='🌀'; color='#7B1FA2'; priority=90; }
+                else if (/earthquake|terremoto|sismo/i.test(t+d)) { type='SISMO'; icon='🌍'; color='#B71C1C'; priority=80; }
+                else if (/flood|inundac/i.test(t+d))              { type='INUNDACIÓN'; icon='🌊'; color='#1565C0'; priority=75; }
+                else if (/volcano|volcan/i.test(t+d))             { type='VOLCÁN'; icon='🌋'; color='#E65100'; priority=85; }
+                else if (/wildfire|incendio|fire/i.test(t+d))     { type='INCENDIO'; icon='🔥'; color='#D84315'; priority=80; }
+                else if (/drought|sequía/i.test(t+d))             { type='SEQUÍA'; icon='🏜️'; color='#795548'; priority=40; }
+                else if (/tsunami/i.test(t+d))                    { type='TSUNAMI'; icon='🌊'; color='#880E4F'; priority=98; }
                 return {
                     source: 'GDACS · ONU',
-                    type: type,
-                    icon: icon,
-                    title: title,
-                    description: desc,
-                    color: color,
-                    link: item.link,
+                    type: type, icon: icon,
+                    title: t,
+                    description: d,
+                    color: color, priority: priority,
+                    link: item.link || 'https://www.gdacs.org',
                     time: item.pubDate ? new Date(item.pubDate).getTime() : Date.now()
                 };
-            }).filter(function(i) { return i.title.length > 3; });
+            }).filter(Boolean);
         })
         .catch(function() { return []; });
 }
 
-// NHC — Huracanes y ciclones tropicales
-function fetchNHC() {
-    return Promise.all([
-        fetchCors(SOURCES.NHC_ATLANTIC.url).catch(function() { return ''; }),
-        fetchCors(SOURCES.NHC_PACIFIC.url).catch(function() { return ''; })
-    ]).then(function(results) {
-        var alerts = [];
-        results.forEach(function(xml, idx) {
-            if (!xml) return;
-            var basin = idx === 0 ? 'Atlántico' : 'Pacífico E.';
-            var items = parseRSS(xml);
-            items.slice(0, 5).forEach(function(item) {
-                if (!item.title || item.title.length < 3) return;
-                var isMajor = /hurricane|huracán/i.test(item.title);
-                alerts.push({
-                    source: 'NHC · NOAA · ' + basin,
-                    type: isMajor ? 'HURACÁN' : 'TORMENTA TROPICAL',
-                    icon: '🌀',
-                    title: item.title,
-                    description: item.description.replace(/<[^>]+>/g, '').substring(0, 200),
-                    color: isMajor ? '#B71C1C' : '#7B1FA2',
-                    link: item.link,
-                    time: item.pubDate ? new Date(item.pubDate).getTime() : Date.now()
-                });
-            });
-        });
-        return alerts;
-    }).catch(function() { return []; });
-}
-
-// NASA NEO — Objetos cercanos a la Tierra
+// ===== NASA CNEOS — Asteroides cercanos =====
 function fetchNASANeo() {
-    return fetch(SOURCES.NASA_NEO.url)
+    return fetch('https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=today&sort=dist&limit=5')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (!data || !data.data) return [];
-            var fields = data.fields;
-            var desIdx = fields.indexOf('des');
-            var distIdx = fields.indexOf('dist');
-            var dateIdx = fields.indexOf('cd');
-            var vIdx = fields.indexOf('v_rel');
+            if (!data || !data.data || !data.fields) return [];
+            var fi = data.fields;
+            var di = fi.indexOf('des'), distI = fi.indexOf('dist'), dateI = fi.indexOf('cd'), vI = fi.indexOf('v_rel');
             return data.data.slice(0, 3).map(function(obj) {
-                var dist = parseFloat(obj[distIdx]);
-                var distKm = Math.round(dist * 149597870.7);
-                var name = obj[desIdx];
-                var date = obj[dateIdx];
-                var vel = parseFloat(obj[vIdx]).toFixed(1);
+                var distKm = Math.round(parseFloat(obj[distI]) * 149597870.7);
                 return {
                     source: 'NASA CNEOS',
                     type: 'OBJETO CERCANO',
                     icon: '☄️',
-                    title: 'Asteroide ' + name + ' — ' + distKm.toLocaleString() + ' km',
-                    description: 'Aproximación el ' + date + ' a ' + distKm.toLocaleString() + ' km de la Tierra. Velocidad relativa: ' + vel + ' km/s.',
+                    title: 'Asteroide ' + obj[di] + ' — ' + distKm.toLocaleString() + ' km',
+                    description: 'Aproximación: ' + obj[dateI] + ' · Distancia: ' + distKm.toLocaleString() + ' km · Velocidad: ' + parseFloat(obj[vI]).toFixed(1) + ' km/s',
                     color: '#37474F',
                     link: 'https://cneos.jpl.nasa.gov/ca/',
-                    time: Date.now()
+                    time: Date.now(),
+                    priority: 20
                 };
             });
         })
         .catch(function() { return []; });
 }
 
-// EMSC — Sismos europeos (complementa USGS)
+// ===== EMSC — Sismos europeos =====
 function fetchEMSC() {
-    return fetch(SOURCES.EMSC.url)
+    return fetch('https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit=20&minmag=4.0&orderby=time')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data || !data.features) return [];
@@ -190,13 +160,29 @@ function fetchEMSC() {
                     id: 'emsc_' + f.id,
                     source: 'EMSC',
                     mag: f.properties.mag,
-                    place: f.properties.flynn_region || f.properties.place || '?',
+                    place: f.properties.flynn_region || '?',
                     time: f.properties.time ? new Date(f.properties.time).getTime() : Date.now(),
-                    depth: f.geometry.coordinates[2],
+                    depth: (f.geometry.coordinates[2] || 0).toFixed(1),
                     lat: f.geometry.coordinates[1],
                     lon: f.geometry.coordinates[0]
                 };
             });
         })
         .catch(function() { return []; });
-}v
+}
+
+// ===== MASTER FETCH — llama todo en paralelo =====
+function loadExternalSources(callback) {
+    Promise.all([
+        fetchGDACS(),
+        fetchNHC(),
+        fetchNASANeo()
+    ]).then(function(results) {
+        var all = [];
+        results.forEach(function(arr) { all = all.concat(arr); });
+        all.sort(function(a, b) { return (b.priority || 0) - (a.priority || 0); });
+        if (callback) callback(all);
+    }).catch(function() {
+        if (callback) callback([]);
+    });
+}

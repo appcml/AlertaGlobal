@@ -30,11 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initLocation();
     setInterval(loadAlerts, CONFIG.ALERTS_INTERVAL);
     setInterval(function() { if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon); }, CONFIG.WEATHER_INTERVAL);
-    // Delay external sources 4s so main alerts load first
-    setTimeout(function() {
-        loadExternalSourcesData();
-        setInterval(loadExternalSourcesData, 300000);
-    }, 4000);
+    // External sources started inside startLoading()
 });
 
 // ========== CLOSE ALL POPUPS ==========
@@ -86,63 +82,67 @@ function setupTabs() {
 
 // ========== GEOLOCATION ==========
 function initLocation() {
-    // 1. Saved location → instant from localStorage, no network needed
+    // PASO 1: ubicación guardada → instantáneo desde localStorage
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
-        loadAlerts();       // filtered by saved location
-        loadWeather(saved.lat, saved.lon);
-        renderSavedLocations();
-        updateStarButtons();
+        startLoading(saved.lat, saved.lon);
         return;
     }
 
-    // 2. No saved location → get GPS coords first (fast, no network)
-    //    then load data immediately with coords, get city name in background
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            function(pos) {
-                var lat = pos.coords.latitude, lon = pos.coords.longitude;
+    // PASO 2: pedir GPS al navegador
+    // enableHighAccuracy:false = usa WiFi/red móvil → resultado en <1 segundo
+    // maximumAge:600000 = acepta posición cacheada de hasta 10 min → instantáneo
+    updateLocationDisplay('📍 Detectando...');
 
-                // Use coords right away — no waiting for city name
-                currentLocation = { lat: lat, lon: lon, name: '...', country: '' };
-                updateLocationDisplay('Detectando ciudad...');
-
-                // Load all data immediately with real coordinates
-                loadAlerts();
-                loadWeather(lat, lon);
-                renderSavedLocations();
-
-                // City name in background (Nominatim call — can be slow)
-                LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                    currentLocation.name = geo.city || (lat.toFixed(2)+', '+lon.toFixed(2));
-                    currentLocation.country = geo.country || '';
-                    LocationManager.setCurrent(currentLocation);
-                    updateLocationDisplay(currentLocation.name);
-                    updateStarButtons();
-                }).catch(function() {
-                    currentLocation.name = lat.toFixed(2)+', '+lon.toFixed(2);
-                    LocationManager.setCurrent(currentLocation);
-                    updateLocationDisplay(currentLocation.name);
-                });
-            },
-            function(err) {
-                // GPS denied or failed → load global alerts
-                updateLocationDisplay('Global');
-                loadAlerts();
-            },
-            {
-                enableHighAccuracy: false,  // faster — no GPS chip, uses WiFi/cell
-                timeout: 5000,
-                maximumAge: 300000          // accept 5min cached position = instant
-            }
-        );
-    } else {
-        // No geolocation support
+    if (!navigator.geolocation) {
         updateLocationDisplay('Global');
-        loadAlerts();
+        startLoading(null, null);
+        return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            // GPS obtenido → cargar datos DE INMEDIATO con coordenadas
+            var lat = pos.coords.latitude, lon = pos.coords.longitude;
+            currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
+            updateLocationDisplay('📍 ' + lat.toFixed(2) + ', ' + lon.toFixed(2));
+            startLoading(lat, lon);
+
+            // Nombre de ciudad en segundo plano (no bloquea nada)
+            LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                currentLocation.name = geo.city || currentLocation.name;
+                currentLocation.country = geo.country || '';
+                LocationManager.setCurrent(currentLocation);
+                updateLocationDisplay(currentLocation.name);
+                updateStarButtons();
+            }).catch(function(){});
+        },
+        function() {
+            // GPS denegado → cargar alertas globales igual
+            updateLocationDisplay('Global');
+            startLoading(null, null);
+        },
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 600000 }
+    );
+}
+
+// startLoading: lanza todas las cargas con las coordenadas disponibles
+function startLoading(lat, lon) {
+    if (lat && lon) {
+        loadAlerts();           // filtra sismos por ubicación
+        loadWeather(lat, lon);  // clima de tu zona
+    } else {
+        loadAlerts();           // alertas globales
+    }
+    renderSavedLocations();
+    updateStarButtons();
+    // Fuentes externas después de 3s para no competir con USGS y OpenWeather
+    setTimeout(function() {
+        loadExternalSourcesData();
+        setInterval(loadExternalSourcesData, 300000);
+    }, 3000);
 }
 
 function updateLocationDisplay(name) {

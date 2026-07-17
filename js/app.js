@@ -614,32 +614,31 @@ function loadAlerts() {
 
             list.innerHTML = '';
             if (!lastEarthquakes.length) {
-                list.innerHTML = '<div class="loading"><p style="color:var(--text-secondary)">No hay alertas recientes en tu zona</p></div>';
+                // Fallback: load global M4.5+ feed
+                list.innerHTML = '<div class="loading"><div class="spinner"></div><p style="color:var(--text-secondary)">Buscando sismos globales...</p></div>';
+                fetch(CONFIG.USGS_GLOBAL)
+                    .then(function(r){return r.json();})
+                    .then(function(gd){
+                        lastEarthquakes = (gd.features||[]).slice(0,30);
+                        dataReady.earthquakes = true;
+                        list.innerHTML = '';
+                        var note = document.createElement('div');
+                        note.style.cssText = 'padding:8px 12px;font-size:12px;color:var(--accent);text-align:center;';
+                        note.textContent = '📡 Sin sismos locales — Mostrando sismos globales M4.5+';
+                        list.appendChild(note);
+                        renderEarthquakeCards(list, lastEarthquakes);
+                        if (lastWeatherData) addWeatherAlertCards(list);
+                        if (externalAlerts.length) renderExternalAlerts();
+                    }).catch(function(){
+                        list.innerHTML = '<div class="loading"><p style="color:var(--text-secondary)">No hay alertas recientes</p></div>';
+                    });
+                return; // exit early, the fetch callback handles rendering
             } else {
-                // Show count header
                 var hdr = document.createElement('div');
                 hdr.style.cssText = 'padding:8px 12px;font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;';
                 hdr.innerHTML = '<span>📡 '+lastEarthquakes.length+' sismos (24h)</span><span>🕐 '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+'</span>';
                 list.appendChild(hdr);
-
-                lastEarthquakes.forEach(function(f) {
-                    var mag=f.properties.mag, place=f.properties.place||'?', time=f.properties.time;
-                    var c=f.geometry.coordinates, depth=c[2].toFixed(1);
-                    var risk=calcRisk(mag);
-                    var dist=currentLocation.lat?calcDistance(currentLocation.lat,currentLocation.lon,c[1],c[0]):null;
-                    var tsunami=(mag>=7&&parseFloat(depth)<70)?'<div class="tsunami-warning">🌊 Posible riesgo de tsunami</div>':'';
-                    var isRecent=(now2-time)<3600000;
-                    var card=document.createElement('div');
-                    card.className='alert-card'+(mag>=7?' critical':mag>=5?' high':' medium')+(isRecent?' pulse':'');
-                    card.innerHTML='<div class="alert-header"><span class="alert-type">🌍 SISMO</span><span class="alert-severity" style="color:'+risk.color+'">'+risk.label+'</span></div>'
-                        +'<div class="alert-title">'+place+'</div>'
-                        +'<div class="alert-details"><span>💥 M<strong>'+mag.toFixed(1)+'</strong></span><span>⬇️ '+depth+' km</span>'+(dist?'<span class="alert-dist">📏 '+dist+' km</span>':'')+'</div>'
-                        +tsunami
-                        +'<div class="alert-footer"><span>🕐 '+formatTime(time)+'</span><span>📡 USGS</span></div>';
-                    var sb=document.createElement('button'); sb.className='alert-share-btn'; sb.textContent='📤 Compartir';
-                    (function(m,pl,d,di,ti){ sb.onclick=function(){ openShare(buildShareText('earthquake',{mag:m,place:pl,depth:d,dist:di,time:formatTime(ti)})); }; })(mag,place,depth,dist,time);
-                    card.appendChild(sb); list.appendChild(card);
-                });
+                renderEarthquakeCards(list, lastEarthquakes);
             }
             if (lastWeatherData) addWeatherAlertCards(list);
             if (externalAlerts.length) renderExternalAlerts();
@@ -652,6 +651,28 @@ function loadAlerts() {
             error.style.display='block';
             error.textContent = e.name==='AbortError' ? '⚠️ Sin respuesta. Verifica conexión.' : '⚠️ '+e.message;
         });
+}
+
+function renderEarthquakeCards(list, quakes) {
+    var now2 = Date.now();
+    quakes.forEach(function(f) {
+        var mag=f.properties.mag, place=f.properties.place||'?', time=f.properties.time;
+        var c=f.geometry.coordinates, depth=c[2].toFixed(1);
+        var risk=calcRisk(mag);
+        var dist=currentLocation.lat?calcDistance(currentLocation.lat,currentLocation.lon,c[1],c[0]):null;
+        var tsunami=(mag>=7&&parseFloat(depth)<70)?'<div class="tsunami-warning">🌊 Posible riesgo de tsunami</div>':'';
+        var isRecent=(now2-time)<3600000;
+        var card=document.createElement('div');
+        card.className='alert-card'+(mag>=7?' critical':mag>=5?' high':' medium')+(isRecent?' pulse':'');
+        card.innerHTML='<div class="alert-header"><span class="alert-type">🌍 SISMO</span><span class="alert-severity" style="color:'+risk.color+'">'+risk.label+'</span></div>'
+            +'<div class="alert-title">'+place+'</div>'
+            +'<div class="alert-details"><span>💥 M<strong>'+mag.toFixed(1)+'</strong></span><span>⬇️ '+depth+' km</span>'+(dist?'<span class="alert-dist">📏 '+dist+' km</span>':'')+'</div>'
+            +tsunami
+            +'<div class="alert-footer"><span>🕐 '+formatTime(time)+'</span><span>📡 USGS</span></div>';
+        var sb=document.createElement('button'); sb.className='alert-share-btn'; sb.textContent='📤 Compartir';
+        (function(m,pl,d,di,ti){ sb.onclick=function(){ openShare(buildShareText('earthquake',{mag:m,place:pl,depth:d,dist:di,time:formatTime(ti)})); }; })(mag,place,depth,dist,time);
+        card.appendChild(sb); list.appendChild(card);
+    });
 }
 
 function addWeatherAlertCards(list) {

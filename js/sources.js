@@ -99,13 +99,18 @@ function fetchUSGSChile() {
                 var time = f.properties.time;
                 var color = mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' : mag >= 4 ? '#FFC107' : '#0A84FF';
                 var priority = mag >= 7 ? 99 : mag >= 6 ? 90 : mag >= 5 ? 80 : mag >= 4 ? 70 : 50;
-                return makeAlert(
+                var alert = makeAlert(
                     'USGS · Chile', 'SISMO', '🌍',
                     'M' + mag.toFixed(1) + ' — ' + place,
                     'Prof: ' + depth.toFixed(0) + ' km · ' + new Date(time).toLocaleString('es-CL', {hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}),
                     color, 'https://earthquake.usgs.gov/earthquakes/eventpage/' + f.id,
                     new Date(time).toISOString(), priority
                 );
+                // attach coordinates + id for better dedup/filtering later
+                alert.lat = f.geometry.coordinates[1];
+                alert.lon = f.geometry.coordinates[0];
+                alert.source_id = f.id;
+                return alert;
             });
         })
         .catch(function(e) { console.log('USGS Chile fetch error:', e.message); return []; });

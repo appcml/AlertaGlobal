@@ -38,7 +38,7 @@ function fetchCors(url, timeout) {
                         return j.contents || j.body || text;
                     } catch(e) { return text; }
                 }
-                // codetabs returns raw
+                // codetabs / corsproxy may return raw text or the proxied payload
                 return text;
             })
             .catch(function(e) {
@@ -113,7 +113,7 @@ function fetchUSGSChile() {
                 return alert;
             });
         })
-        .catch(function(e) { console.log('USGS Chile fetch error:', e.message); return []; });
+        .catch(function(e) { console.log('USGS Chile fetch error:', e && e.message); return []; });
 }
 
 // USGS Global M4.5+ (también sin CORS, API directa)
@@ -126,12 +126,16 @@ function fetchUSGSGlobal() {
                 var mag = f.properties.mag, place = f.properties.place || '';
                 var depth = f.geometry.coordinates[2], time = f.properties.time;
                 var color = mag >= 7 ? '#FF3B30' : mag >= 5 ? '#FF9500' : '#FFC107';
-                return makeAlert('USGS · Global', 'SISMO', '🌍',
+                var a = makeAlert('USGS · Global', 'SISMO', '🌍',
                     'M' + mag.toFixed(1) + ' — ' + place,
                     'Prof: ' + depth.toFixed(0) + ' km',
                     color, '', new Date(time).toISOString(),
                     mag >= 7 ? 95 : mag >= 5 ? 75 : 55
                 );
+                a.lat = f.geometry.coordinates[1];
+                a.lon = f.geometry.coordinates[0];
+                a.source_id = f.id;
+                return a;
             });
         })
         .catch(function() { return []; });
@@ -150,14 +154,18 @@ function fetchCSN() {
                 if (!magMatch) magMatch = title.match(/([0-9.]+)\s*ML/i);
                 if (!magMatch) magMatch = title.match(/(\d+\.\d+)/);
                 if (magMatch) mag = parseFloat(magMatch[1]);
-                return makeAlert('CSN · Chile', 'SISMO', '🌍', title, item.description || '',
+                var a = makeAlert('CSN · Chile', 'SISMO', '🌍', title, item.description || '',
                     mag >= 6 ? '#FF3B30' : mag >= 4 ? '#FF9500' : '#0A84FF',
                     item.link || 'https://www.sismologia.cl', item.pubDate,
                     mag >= 6 ? 90 : mag >= 4 ? 70 : 40
                 );
+                // Try to parse coords from description if present (heuristic)
+                var coordMatch = (item.description||'').match(/(-?\d+\.\d+)[^\d-]+(-?\d+\.\d+)/);
+                if (coordMatch) { a.lat = parseFloat(coordMatch[1]); a.lon = parseFloat(coordMatch[2]); }
+                return a;
             }).filter(function(a) { return a.title.length > 3; });
         })
-        .catch(function(e) { console.log('CSN error:', e); return []; });
+        .catch(function(e) { console.log('CSN error:', e && e.message); return []; });
 }
 
 // 🇺🇸 NHC Huracanes
@@ -191,7 +199,11 @@ function fetchGDACS() {
             else if(/flood/i.test(t+d))      { color='#0A84FF'; priority=75; }
             else if(/wildfire|fire/i.test(t+d)) { color='#D84315'; priority=80; }
             if (!t || t.length<3) return null;
-            return makeAlert('GDACS · ONU', type, icon, t, d, color, item.link, item.pubDate, priority);
+            var a = makeAlert('GDACS · ONU', type, icon, t, d, color, item.link, item.pubDate, priority);
+            // try to extract coords from description if present (heuristic)
+            var m = (item.description||'').match(/(-?\d+\.\d+)[^\d-]+(-?\d+\.\d+)/);
+            if (m) { a.lat = parseFloat(m[1]); a.lon = parseFloat(m[2]); }
+            return a;
         }).filter(Boolean);
     }).catch(function() { return []; });
 }
@@ -252,7 +264,20 @@ function detectType(text) {
     return 'ALERTA';
 }
 function detectIcon(text) {
-    var icons = {'TSUNAMI':'🌊','TORNADO':'🌪️','CICLÓN':'🌀','TORMENTA':'🌀','SISMO':'🌍','VOLCÁN':'🌋','INCENDIO':'🔥','INUNDACIÓN':'🌊','NEVADA':'❄️','TORMENTA SOLAR':'🌞','ASTEROIDE':'☄️','ALERTA':'⚠️'};
+    var icons = {
+        'TSUNAMI':'🌊',
+        'TORNADO':'🌪️',
+        'CICLÓN':'🌀',
+        'TORMENTA':'🌀',
+        'SISMO':'🌍',
+        'VOLCÁN':'🌋',
+        'INCENDIO':'🔥',
+        'INUNDACIÓN':'🌊',
+        'NEVADA':'❄️',
+        'TORMENTA SOLAR':'🌞',
+        'ASTEROIDE':'☄️',
+        'ALERTA':'⚠️'
+    };
     return icons[detectType(text)] || '⚠️';
 }
 
@@ -271,20 +296,33 @@ function loadExternalSources(callback) {
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });
-        // Deduplicar
+
+        // Deduplicar con fingerprint: rounded coords + time window + normalized title
         var seen = {};
         all = all.filter(function(a) {
-            var key = a.title.substring(0,35).toLowerCase().replace(/\s+/g,'');
-            if (seen[key]) return false;
-            seen[key] = true;
-            return true;
+            var lat = a.lat, lon = a.lon, t = a.time || Date.now();
+            var titleKey = (a.title || '').toString().substring(0,60).toLowerCase().replace(/\s+/g,'');
+            var coordKey = (lat && lon) ? (Math.round(lat*1000)+'_'+Math.round(lon*1000)) : '';
+            // time window of 10 minutes (600000 ms)
+            var timeKey = '' + Math.floor((t || Date.now()) / 600000);
+            var key = coordKey ? (coordKey + '|' + timeKey) : titleKey;
+            // fallback combine with title
+            if (!seen[key]) {
+                // if coordKey exists, also mark nearby title-based keys to avoid similar duplicates
+                seen[key] = true;
+                if (coordKey) seen[titleKey] = true;
+                return true;
+            }
+            return false;
         });
+
         all.sort(function(a, b) {
             if (b.priority !== a.priority) return b.priority - a.priority;
             return (b.time||0) - (a.time||0);
         });
         if (callback) callback(all);
-    }).catch(function() {
+    }).catch(function(err) {
+        console.log('loadExternalSources error', err && err.message);
         if (callback) callback([]);
     });
 }

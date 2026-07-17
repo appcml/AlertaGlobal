@@ -181,42 +181,40 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    // Caso 1: ubicación guardada → instantáneo, sin GPS
     var saved = LocationManager.getCurrent();
-    if (saved && saved.lat && saved.name && saved.name.length > 2) {
+
+    // Mostrar ubicación guardada visualmente mientras GPS carga
+    if (saved && saved.lat && saved.name) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
-        loadAlerts();
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
-        // Silently verify GPS matches saved — update if moved
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(function(pos) {
-                var dist = calcDistance(saved.lat, saved.lon, pos.coords.latitude, pos.coords.longitude);
-                if (dist > 50) { // moved more than 50km
-                    LocationManager.setCurrent(null);
-                    initLocation(); // re-detect
-                }
-            }, function(){}, { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 });
-        }
-        return;
     }
 
-    // Caso 2: sin ubicación → cargar alertas globales YA, GPS en paralelo
-    loadAlerts(); // alertas globales inmediatas
+    // SIEMPRE pedir GPS fresco — es la fuente de verdad
+    // maximumAge:120000 = acepta posición de hasta 2 min (rápido en celular)
     updateLocationDisplay('Detectando...');
     if (!navigator.geolocation) {
-        updateLocationDisplay('🌍 Global');
+        if (saved && saved.lat) {
+            updateLocationDisplay(saved.name);
+            loadAlerts();
+        } else {
+            updateLocationDisplay('🌍 Global');
+            loadAlerts();
+        }
         return;
     }
 
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
+            // Usar coordenadas reales del GPS
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            loadAlerts(); // recargar filtrado por zona          // ahora sí filtra por zona del usuario
+            // Cargar alertas filtradas por ubicación REAL
+            loadAlerts();
+            if (!saved || !saved.lat) loadWeather(lat, lon);          // ahora sí filtra por zona del usuario
             loadWeather(lat, lon);
             // Nombre ciudad en background
             // Get city name in background — NO loadAlerts here
@@ -554,8 +552,17 @@ function loadAlerts() {
     var error = document.getElementById('alertsError');
     loading.style.display='flex'; list.innerHTML=''; error.style.display='none';
 
-    // Fast static feed — filter client-side
-    var url = CONFIG.USGS_URL;
+    // Use location-filtered endpoint when we have real GPS coords
+    var url;
+    if (currentLocation.lat && currentLocation.lon) {
+        url = 'https://earthquake.usgs.gov/fdsnws/event/1/query'
+            + '?format=geojson&limit=50&minmagnitude=2.5&orderby=time'
+            + '&latitude=' + currentLocation.lat
+            + '&longitude=' + currentLocation.lon
+            + '&maxradiuskm=2000';
+    } else {
+        url = CONFIG.USGS_URL; // global fallback
+    }
 
     var ctrl = typeof AbortController!=='undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;

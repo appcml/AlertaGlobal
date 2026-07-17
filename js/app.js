@@ -183,13 +183,23 @@ document.addEventListener('DOMContentLoaded', function() {
 function initLocation() {
     // Caso 1: ubicación guardada → instantáneo, sin GPS
     var saved = LocationManager.getCurrent();
-    if (saved && saved.lat) {
+    if (saved && saved.lat && saved.name && saved.name.length > 2) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
         loadAlerts();
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
+        // Silently verify GPS matches saved — update if moved
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(pos) {
+                var dist = calcDistance(saved.lat, saved.lon, pos.coords.latitude, pos.coords.longitude);
+                if (dist > 50) { // moved more than 50km
+                    LocationManager.setCurrent(null);
+                    initLocation(); // re-detect
+                }
+            }, function(){}, { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 });
+        }
         return;
     }
 
@@ -364,12 +374,27 @@ function setupTabs() {
 // ========== LOCATION BUTTONS ==========
 function setupLocationButtons() {
     function geoLocate(cb) {
-        if (!navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(function(pos) {
-            LocationManager.reverseGeocode(pos.coords.latitude, pos.coords.longitude).then(function(geo) {
-                cb({ lat:pos.coords.latitude, lon:pos.coords.longitude, name:geo.city, country:geo.country });
-            });
-        }, function() { showToast('No se pudo obtener ubicación'); });
+        if (!navigator.geolocation) { showToast('Geolocalización no disponible'); return; }
+        showToast('📍 Detectando ubicación...');
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                var lat = pos.coords.latitude, lon = pos.coords.longitude;
+                // Use coords immediately
+                cb({ lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' });
+                // Get city name in background
+                LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                    if (geo.city) {
+                        currentLocation.name = geo.city;
+                        currentLocation.country = geo.country || '';
+                        LocationManager.setCurrent(currentLocation);
+                        updateLocationDisplay(currentLocation.name);
+                        updateStarButtons();
+                    }
+                }).catch(function(){});
+            },
+            function() { showToast('⚠️ No se pudo obtener ubicación. Verifica permisos.'); },
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
     }
     document.getElementById('btnMyLocation').addEventListener('click', function() { geoLocate(selectLocation); });
     document.getElementById('btnSearchLocation').addEventListener('click', openSearch);
@@ -560,14 +585,6 @@ function loadAlerts() {
                     }
                 } else seenAlertIds[f.id] = true;
             });
-
-            // Filter by distance client-side (faster than API filtering)
-            if (currentLocation.lat && currentLocation.lon) {
-                lastEarthquakes = lastEarthquakes.filter(function(f) {
-                    var c = f.geometry.coordinates;
-                    return calcDistance(currentLocation.lat, currentLocation.lon, c[1], c[0]) <= 3000;
-                });
-            }
 
             if (!lastEarthquakes.length) {
                 list.innerHTML='<div class="loading"><p>No hay alertas recientes</p></div>';

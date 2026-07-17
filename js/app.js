@@ -37,10 +37,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    // PASO 1: cargar alertas globales INMEDIATAMENTE — sin esperar nada
+    // Cargar alertas globales AL INSTANTE — sin esperar GPS ni permisos
     loadAlerts();
 
-    // PASO 2: ubicación guardada → instantáneo desde localStorage
+    // Ubicación guardada → instantáneo desde localStorage
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
@@ -51,36 +51,75 @@ function initLocation() {
         return;
     }
 
-    // PASO 3: pedir GPS en paralelo — no bloquea la carga de alertas
-    updateLocationDisplay('Detectando...');
+    // Sin ubicación guardada → mostrar Global y pedir GPS silenciosamente
+    updateLocationDisplay('🌍 Global');
+
     if (!navigator.geolocation) {
-        updateLocationDisplay('Global');
         return;
     }
 
+    // Pedir posición con maximumAge alto = entrega caché instantáneo si existe
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            currentLocation = { lat: lat, lon: lon, name: lat.toFixed(1)+', '+lon.toFixed(1), country: '' };
+            currentLocation = { lat: lat, lon: lon, name: '📍 '+lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            // Recargar alertas ahora filtradas por ubicación
+            // Con ubicación real → recargar filtrado por zona + clima
             loadAlerts();
             loadWeather(lat, lon);
-            renderSavedLocations();
-            // Nombre de ciudad en background — no bloquea nada
+            // Nombre de ciudad en background
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
                 currentLocation.name = geo.city || currentLocation.name;
                 currentLocation.country = geo.country || '';
                 LocationManager.setCurrent(currentLocation);
                 updateLocationDisplay(currentLocation.name);
+                renderSavedLocations();
                 updateStarButtons();
             }).catch(function() {});
         },
-        function() {
-            updateLocationDisplay('Global');
-            // Ya tenemos alertas globales cargadas — no hacer nada más
+        function(err) {
+            // Permiso denegado o error — la app igual funciona con alertas globales
+            updateLocationDisplay('🌍 Global');
+            showLocationBanner();
         },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 600000 }
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 600000 }
+    );
+}
+
+// Banner suave invitando a permitir ubicación (no bloquea nada)
+function showLocationBanner() {
+    var existing = document.getElementById('locBanner');
+    if (existing) return;
+    var b = document.createElement('div');
+    b.id = 'locBanner';
+    b.style.cssText = 'background:#f3e5f5;border-left:4px solid #6200EE;padding:10px 14px;margin:8px 10px;border-radius:10px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;';
+    b.innerHTML = '<span>📍 Permite tu ubicación para ver alertas de tu zona</span>'
+        + '<button onclick="requestLocation()" style="background:#6200EE;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Activar</button>';
+    var alertList = document.getElementById('alertList');
+    if (alertList) alertList.insertBefore(b, alertList.firstChild);
+}
+
+function requestLocation() {
+    var banner = document.getElementById('locBanner');
+    if (banner) banner.remove();
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            var lat = pos.coords.latitude, lon = pos.coords.longitude;
+            currentLocation = { lat: lat, lon: lon, name: '📍 '+lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
+            updateLocationDisplay(currentLocation.name);
+            loadAlerts();
+            loadWeather(lat, lon);
+            LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                currentLocation.name = geo.city || currentLocation.name;
+                currentLocation.country = geo.country || '';
+                LocationManager.setCurrent(currentLocation);
+                updateLocationDisplay(currentLocation.name);
+                renderSavedLocations();
+                updateStarButtons();
+            }).catch(function() {});
+        },
+        function() { showToast('Permiso de ubicación denegado'); },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
     );
 }
 

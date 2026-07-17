@@ -3,15 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#6200EE">
+    <meta name="theme-color" content="#000000">
     <meta name="description" content="Alertas de desastres naturales y clima en tiempo real">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Alerta Global</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+
+    <!-- STATUS INDICATOR -->
+    <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot safe"></span>
+        <span class="status-text" id="statusText">Entorno Seguro</span>
+    </div>
 
     <!-- TOOLBAR -->
     <header class="toolbar">
@@ -23,16 +31,22 @@
         </div>
     </header>
 
-    <!-- TABS -->
+    <!-- TABS — 5 tabs: Mapa, Alertas, Reportar, Kit SOS, Ajustes/Tips -->
     <nav class="tabs">
+        <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
         <button class="tab active" data-tab="alertas">🚨 <span data-i18n="tab_alerts">Alertas</span></button>
         <button class="tab" data-tab="clima">🌤️ <span data-i18n="tab_weather">Clima</span></button>
-        <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
+        <button class="tab" data-tab="sos">🦺 <span>Kit SOS</span></button>
         <button class="tab" data-tab="tips">💡 Tips</button>
     </nav>
 
     <!-- CONTENT -->
     <main class="content">
+
+        <!-- MAPA -->
+        <section class="tab-panel" id="panel-mapa">
+            <div id="map" style="height:calc(100vh - 160px);min-height:400px;"></div>
+        </section>
 
         <!-- ALERTAS -->
         <section class="tab-panel active" id="panel-alertas">
@@ -69,9 +83,47 @@
             <div class="error-msg" id="weatherError" style="display:none"></div>
         </section>
 
-        <!-- MAPA -->
-        <section class="tab-panel" id="panel-mapa">
-            <div id="map" style="height:calc(100vh - 160px);min-height:400px;"></div>
+        <!-- KIT SOS -->
+        <section class="tab-panel" id="panel-sos">
+            <div class="sos-header">
+                <div class="sos-connection-banner" id="sosBanner">
+                    <span class="sos-conn-icon">📶</span>
+                    <span id="sosConnText">Modo Online — Datos en tiempo real</span>
+                </div>
+            </div>
+            <div class="sos-grid">
+                <button class="sos-tool" id="sosFlashlight" onclick="toggleFlashSOS()">
+                    <span class="sos-tool-icon">🔦</span>
+                    <span class="sos-tool-label">Linterna SOS</span>
+                    <span class="sos-tool-desc">Código Morse SOS</span>
+                </button>
+                <button class="sos-tool" id="sosWhistle" onclick="playWhistle()">
+                    <span class="sos-tool-icon">🔊</span>
+                    <span class="sos-tool-label">Silbato Rescate</span>
+                    <span class="sos-tool-desc">Alta frecuencia</span>
+                </button>
+                <button class="sos-tool" id="sosPanic" onclick="sendPanicSMS()">
+                    <span class="sos-tool-icon">🆘</span>
+                    <span class="sos-tool-label">Botón Pánico</span>
+                    <span class="sos-tool-desc">Enviar GPS por SMS</span>
+                </button>
+                <button class="sos-tool" id="sosFirstAid" onclick="showFirstAid()">
+                    <span class="sos-tool-icon">🩹</span>
+                    <span class="sos-tool-label">Primeros Auxilios</span>
+                    <span class="sos-tool-desc">Guía rápida</span>
+                </button>
+                <button class="sos-tool" id="sosNumbers" onclick="showEmergencyNumbers()">
+                    <span class="sos-tool-icon">📞</span>
+                    <span class="sos-tool-label">Emergencias</span>
+                    <span class="sos-tool-desc">Números de ayuda</span>
+                </button>
+                <button class="sos-tool" id="sosChecklist" onclick="showChecklist()">
+                    <span class="sos-tool-icon">🎒</span>
+                    <span class="sos-tool-label">Mochila 72h</span>
+                    <span class="sos-tool-desc">Lista de preparación</span>
+                </button>
+            </div>
+            <div class="sos-detail-panel" id="sosDetailPanel" style="display:none"></div>
         </section>
 
         <!-- TIPS -->
@@ -102,7 +154,7 @@
         <div class="popup">
             <h3>⭐ Ubicaciones favoritas</h3>
             <div id="favoritesList"></div>
-            <p id="favoritesEmpty" style="text-align:center;color:#999;padding:20px;display:none">No tienes favoritos guardados.<br>Toca ☆ en cualquier ubicación para guardarla.</p>
+            <p id="favoritesEmpty" style="text-align:center;color:#666;padding:20px;display:none">No tienes favoritos guardados.<br>Toca ☆ en cualquier ubicación para guardarla.</p>
             <button class="popup-close" id="closeFavorites">✕</button>
         </div>
     </div>
@@ -111,26 +163,14 @@
     <div class="popup-overlay" id="sharePopup" style="display:none">
         <div class="popup">
             <h3>📤 Compartir alerta</h3>
-            <div id="shareContent" style="background:#f5f5f5;border-radius:10px;padding:14px;font-size:13px;margin-bottom:16px;line-height:1.5"></div>
+            <div id="shareContent" style="background:#1a1a1a;border-radius:10px;padding:14px;font-size:13px;margin-bottom:16px;line-height:1.5;color:#ccc"></div>
             <div class="share-grid">
-                <button class="share-btn whatsapp" id="shareWhatsapp">
-                    <span class="share-icon">💬</span> WhatsApp
-                </button>
-                <button class="share-btn twitter" id="shareTwitter">
-                    <span class="share-icon">🐦</span> Twitter/X
-                </button>
-                <button class="share-btn facebook" id="shareFacebook">
-                    <span class="share-icon">📘</span> Facebook
-                </button>
-                <button class="share-btn telegram" id="shareTelegram">
-                    <span class="share-icon">✈️</span> Telegram
-                </button>
-                <button class="share-btn copy" id="shareCopy">
-                    <span class="share-icon">📋</span> Copiar texto
-                </button>
-                <button class="share-btn native" id="shareNative" style="display:none">
-                    <span class="share-icon">📤</span> Compartir
-                </button>
+                <button class="share-btn whatsapp" id="shareWhatsapp"><span class="share-icon">💬</span> WhatsApp</button>
+                <button class="share-btn twitter" id="shareTwitter"><span class="share-icon">🐦</span> Twitter/X</button>
+                <button class="share-btn facebook" id="shareFacebook"><span class="share-icon">📘</span> Facebook</button>
+                <button class="share-btn telegram" id="shareTelegram"><span class="share-icon">✈️</span> Telegram</button>
+                <button class="share-btn copy" id="shareCopy"><span class="share-icon">📋</span> Copiar texto</button>
+                <button class="share-btn native" id="shareNative" style="display:none"><span class="share-icon">📤</span> Compartir</button>
             </div>
             <button class="popup-close" id="closeShare">✕</button>
         </div>
@@ -152,6 +192,19 @@
             </div>
             <button class="popup-close" id="closeLang">✕</button>
         </div>
+    </div>
+
+    <!-- POPUP: SOS DETAIL -->
+    <div class="popup-overlay" id="sosPopup" style="display:none">
+        <div class="popup sos-popup">
+            <div id="sosPopupContent"></div>
+            <button class="popup-close" id="closeSos">✕</button>
+        </div>
+    </div>
+
+    <!-- EMERGENCY FULLSCREEN ALERT -->
+    <div class="emergency-screen" id="emergencyScreen" style="display:none">
+        <div class="emergency-content" id="emergencyContent"></div>
     </div>
 
     <script src="js/i18n.js"></script>

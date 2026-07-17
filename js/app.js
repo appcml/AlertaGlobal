@@ -378,7 +378,17 @@ function loadAlerts() {
     var error = document.getElementById('alertsError');
     loading.style.display='flex'; list.innerHTML=''; error.style.display='none';
 
-    var url = CONFIG.USGS_URL; // GeoJSON feed - global, filter client-side
+    // Filtered by user location when available
+    var url;
+    if (currentLocation.lat && currentLocation.lon) {
+        // Within 2000km of user — relevant regional alerts
+        url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=30&minmagnitude=3.5&orderby=time'
+            + '&latitude=' + currentLocation.lat
+            + '&longitude=' + currentLocation.lon
+            + '&maxradiuskm=2000';
+    } else {
+        url = CONFIG.USGS_URL; // global feed fallback
+    }
 
     var ctrl = typeof AbortController!=='undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
@@ -402,7 +412,19 @@ function loadAlerts() {
             if (!lastEarthquakes.length) {
                 list.innerHTML='<div class="loading"><p>No hay alertas recientes</p></div>';
             } else {
-                lastEarthquakes.forEach(function(f) {
+                // Sort: nearest first if we have location, otherwise by time
+                var sorted = lastEarthquakes.slice();
+                if (currentLocation.lat && currentLocation.lon) {
+                    sorted.sort(function(a, b) {
+                        var da = calcDistance(currentLocation.lat, currentLocation.lon, a.geometry.coordinates[1], a.geometry.coordinates[0]);
+                        var db = calcDistance(currentLocation.lat, currentLocation.lon, b.geometry.coordinates[1], b.geometry.coordinates[0]);
+                        // Weight: closer + more recent = higher priority
+                        var scoreA = da - (a.properties.mag * 200);
+                        var scoreB = db - (b.properties.mag * 200);
+                        return scoreA - scoreB;
+                    });
+                }
+                sorted.forEach(function(f) {
                     var mag=f.properties.mag, place=f.properties.place||'?', time=f.properties.time;
                     var c=f.geometry.coordinates, depth=c[2].toFixed(1);
                     var risk=calcRisk(mag);

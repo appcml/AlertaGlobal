@@ -1,165 +1,74 @@
 // ============================================
-// js/app.js — Alerta Global v6 STABLE
+// js/app.js — Alerta Global v7 CLEAN
 // ============================================
 var CONFIG = {
-    USGS_URL: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson',
+    // USGS filtered by location when available
+    USGS_BASE: 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=50&minmagnitude=2.0',
+    USGS_GLOBAL: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson',
     WEATHER_API_KEY: '6fe6e0dcca264864dbd631bf620aad64',
     WEATHER_URL: 'https://api.openweathermap.org/data/2.5/weather',
-    FORECAST_URL: 'https://api.openweathermap.org/data/2.5/forecast'
+    FORECAST_URL: 'https://api.openweathermap.org/data/2.5/forecast',
+    ALERTS_INTERVAL: 120000,   // 2 min
+    WEATHER_INTERVAL: 600000   // 10 min
 };
 
 var currentLocation = { lat: null, lon: null, name: '', country: '' };
 var leafletMap = null, mapInitialized = false, userMarker = null;
 var lastWeatherData = null, lastForecastData = null, lastEarthquakes = [];
 var seenAlertIds = {}, notifPermission = false, searchTimer = null;
-var externalAlerts = [], dataReady = { weather: false, earthquakes: false };
+var externalAlerts = [], alertsLoading = false;
+var dataReady = { weather: false, earthquakes: false };
 
-
-// ============================================================
-// SISTEMA DE SONIDOS Y ALERTAS CRÍTICAS
-// ============================================================
-var AudioContext = window.AudioContext || window.webkitAudioContext;
+// ========== AUDIO ==========
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
 var audioCtx = null;
+function getAudio() { if (!audioCtx) try { audioCtx = new AudioCtx(); } catch(e) {} return audioCtx; }
 
-function getAudioCtx() {
-    if (!audioCtx) {
-        try { audioCtx = new AudioContext(); } catch(e) {}
-    }
-    return audioCtx;
-}
-
-// Sonido de notificación normal (beep corto)
-function playNotificationSound() {
-    var ctx = getAudioCtx(); if (!ctx) return;
+function playBeep(freq, dur, type) {
+    var ctx = getAudio(); if (!ctx) return;
     try {
-        var osc = ctx.createOscillator();
-        var gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'sine'; osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = type || 'sine'; o.frequency.value = freq || 880;
+        g.gain.setValueAtTime(0.4, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (dur || 0.4));
+        o.start(ctx.currentTime); o.stop(ctx.currentTime + (dur || 0.4));
     } catch(e) {}
 }
 
-// Sonido de alerta alta (beep doble)
-function playAlertSound() {
-    var ctx = getAudioCtx(); if (!ctx) return;
-    [0, 0.3].forEach(function(delay) {
-        try {
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.type = 'square'; osc.frequency.value = 660;
-            gain.gain.setValueAtTime(0.4, ctx.currentTime + delay);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + 0.25);
-            osc.start(ctx.currentTime + delay);
-            osc.stop(ctx.currentTime + delay + 0.25);
-        } catch(e) {}
-    });
-}
-
-// Sirena de emergencia crítica (M6.5+ o alerta oficial)
-// Similar a la señal de alerta nacional SENAPRED
-function playSirenSound() {
-    var ctx = getAudioCtx(); if (!ctx) return;
+function playSiren() {
+    var ctx = getAudio(); if (!ctx) return;
     try {
-        var duration = 8; // 8 segundos como alerta nacional
-        var osc = ctx.createOscillator();
-        var gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'sawtooth';
-        // Frecuencia que sube y baja — efecto sirena
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = 'sawtooth';
         for (var i = 0; i < 4; i++) {
-            osc.frequency.linearRampToValueAtTime(900, ctx.currentTime + (i * 2) + 1);
-            osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + (i * 2) + 2);
+            o.frequency.setValueAtTime(400, ctx.currentTime + i*2);
+            o.frequency.linearRampToValueAtTime(900, ctx.currentTime + i*2 + 1);
+            o.frequency.linearRampToValueAtTime(400, ctx.currentTime + i*2 + 2);
         }
-        gain.gain.setValueAtTime(0.6, ctx.currentTime);
-        gain.gain.setValueAtTime(0.6, ctx.currentTime + duration - 0.5);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + duration);
-        // Vibrar dispositivo si disponible
-        if (navigator.vibrate) {
-            navigator.vibrate([500,200,500,200,500,200,1000,200,1000,200,1000]);
-        }
+        g.gain.setValueAtTime(0.5, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 8);
+        o.start(ctx.currentTime); o.stop(ctx.currentTime + 8);
+        if (navigator.vibrate) navigator.vibrate([500,200,500,200,500,200,1000]);
     } catch(e) {}
 }
 
-// Escala de alertas sísmicas SENAPRED/ONEMI Chile
-// Alerta nacional se emite desde M6.5 superficial en costa
-function shouldTriggerNationalAlert(mag, depth, place) {
-    var isCoastal = /coast|costa|pacific|océano|ocean|shore|offshore|mar /i.test(place);
-    var isChile = /chile|atacama|coquimbo|valparaís|metropolitana|o'higgins|maule|biobío|araucanía|los ríos|los lagos|aysén|magallanes/i.test(place);
-    // Criterios SENAPRED para alerta sísmica nacional
-    if (mag >= 8.0) return 'ALERTA_ROJA';         // M8+ siempre alerta roja
-    if (mag >= 7.0 && isCoastal) return 'ALERTA_TSUNAMI'; // M7+ costa = riesgo tsunami
-    if (mag >= 6.5 && isChile) return 'ALERTA_NARANJA';   // M6.5+ en Chile
-    if (mag >= 5.5 && isChile) return 'ALERTA_AMARILLA';  // M5.5+ en Chile
+function checkAlertLevel(mag, depth, place) {
+    var coastal = /coast|ocean|pacific|atlantic|mar |sea /i.test(place);
+    if (mag >= 8.0) return 'ROJA';
+    if (mag >= 7.0 && coastal && depth < 70) return 'TSUNAMI';
+    if (mag >= 6.5) return 'NARANJA';
+    if (mag >= 5.5) return 'AMARILLA';
     return null;
-}
-
-function triggerEmergencyAlert(mag, place, depth, alertLevel) {
-    var messages = {
-        'ALERTA_ROJA': { title:'🚨 ALERTA ROJA — SISMO M'+mag.toFixed(1), color:'#B71C1C', sound:'siren' },
-        'ALERTA_TSUNAMI': { title:'🌊 RIESGO DE TSUNAMI — M'+mag.toFixed(1), color:'#880E4F', sound:'siren' },
-        'ALERTA_NARANJA': { title:'🟠 ALERTA NARANJA — SISMO M'+mag.toFixed(1), color:'#E65100', sound:'alert' },
-        'ALERTA_AMARILLA': { title:'🟡 ALERTA AMARILLA — SISMO M'+mag.toFixed(1), color:'#F57F17', sound:'notification' }
-    };
-    var msg = messages[alertLevel];
-    if (!msg) return;
-    // Reproducir sonido según nivel
-    if (msg.sound === 'siren') playSirenSound();
-    else if (msg.sound === 'alert') playAlertSound();
-    else playNotificationSound();
-    // Banner de emergencia
-    sendNotification(msg.title, place + ' · Prof: ' + depth + ' km', alertLevel === 'ALERTA_ROJA' ? 'critical' : 'high');
-    // Mostrar modal de emergencia para nivel rojo
-    if (alertLevel === 'ALERTA_ROJA' || alertLevel === 'ALERTA_TSUNAMI') {
-        showEmergencyModal(msg.title, place, mag, depth, alertLevel);
-    }
-}
-
-function closeEmergencyModal() {
-    var m = document.getElementById('em_modal');
-    if (m) m.remove();
-}
-
-function showEmergencyModal(title, place, mag, depth, level) {
-    var old = document.getElementById('em_modal');
-    if (old) old.remove();
-    var colors = { 'ALERTA_ROJA':'#B71C1C', 'ALERTA_TSUNAMI':'#880E4F' };
-    var modal = document.createElement('div');
-    modal.id = 'em_modal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-    modal.innerHTML = '<div style="background:'+(colors[level]||'#B71C1C')+';border-radius:16px;padding:24px;max-width:380px;width:100%;color:#fff;text-align:center;">'
-        + '<div style="font-size:48px;margin-bottom:12px">'+(level==='ALERTA_TSUNAMI'?'🌊':'🚨')+'</div>'
-        + '<div style="font-size:22px;font-weight:800;margin-bottom:8px">'+title+'</div>'
-        + '<div style="font-size:15px;opacity:0.9;margin-bottom:16px">'+place+'</div>'
-        + '<div style="display:flex;gap:12px;justify-content:center;margin-bottom:20px">'
-        +   '<span style="background:rgba(255,255,255,0.2);padding:8px 14px;border-radius:8px;font-weight:700">M '+mag.toFixed(1)+'</span>'
-        +   '<span style="background:rgba(255,255,255,0.2);padding:8px 14px;border-radius:8px">⬇️ '+depth+' km</span>'
-        + '</div>'
-        + (level==='ALERTA_TSUNAMI'
-            ? '<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:14px;text-align:left">🌊 EVACÚA INMEDIATAMENTE hacia zonas altas.<br>📍 Aléjate de la costa y ríos.<br>🚫 No regreses hasta autorización oficial.</div>'
-            : '<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:14px;text-align:left">⚠️ Mantén la calma.<br>🪟 Aléjate de ventanas.<br>🚪 No uses ascensores.<br>🔥 Revisa posibles fugas de gas.</div>')
-        + '<button onclick="closeEmergencyModal()" style="background:#fff;color:'+(colors[level]||'#B71C1C')+';border:none;border-radius:10px;padding:12px 24px;font-size:16px;font-weight:800;cursor:pointer;width:100%">ENTENDIDO</button>'
-        + '</div>';
-    document.body.appendChild(modal);
-    // Auto-cerrar en 30 segundos
-    setTimeout(function() { if (modal.parentNode) modal.remove(); }, 30000);
 }
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', function() {
     setLanguage(currentLang);
-
-    // Unlock AudioContext on first interaction (browser requirement)
-    document.addEventListener('click', function unlockAudio() {
-        var ctx = getAudioCtx();
-        if (ctx && ctx.state === 'suspended') ctx.resume();
-        document.removeEventListener('click', unlockAudio);
+    document.addEventListener('click', function unlock() {
+        var c = getAudio(); if (c && c.state === 'suspended') c.resume();
+        document.removeEventListener('click', unlock);
     }, { once: true });
     setupTabs();
     setupLocationButtons();
@@ -168,111 +77,109 @@ document.addEventListener('DOMContentLoaded', function() {
     setupFavorites();
     requestNotificationPermission();
     initLocation();
-    // Refresh alerts every 2 min, weather every 10 min
-    setInterval(function() { loadAlerts(); }, 120000);
-    setInterval(function() { if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon); }, 600000);
-    // External sources after 5s, then every 5 min
+    setInterval(function() { loadAlerts(); }, CONFIG.ALERTS_INTERVAL);
+    setInterval(function() { if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon); }, CONFIG.WEATHER_INTERVAL);
     setTimeout(function() {
         loadExternalSourcesData();
         setInterval(loadExternalSourcesData, 300000);
     }, 8000);
 });
 
+// ========== NOTIFICATIONS ==========
+function requestNotificationPermission() {
+    if ('Notification' in window) Notification.requestPermission().then(function(p) { notifPermission = p === 'granted'; });
+}
+function sendNotification(title, body, urgency) {
+    if (notifPermission) try { new Notification(title, { body: body, icon: 'img/icon.svg' }); } catch(e) {}
+    var colors = { critical: '#B71C1C', high: '#F44336', medium: '#FF9800', info: '#1976D2' };
+    var old = document.getElementById('alertBanner'); if (old) old.remove();
+    var b = document.createElement('div');
+    b.id = 'alertBanner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:'+(colors[urgency]||colors.info)+';color:#fff;padding:12px 16px;z-index:500;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:slideDown 0.3s ease;font-family:inherit;';
+    b.innerHTML = '<div style="flex:1"><div style="font-weight:700;font-size:14px">'+title+'</div><div style="font-size:12px;opacity:0.9;margin-top:2px">'+body+'</div></div><button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.25);border:none;color:#fff;font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>';
+    document.body.appendChild(b);
+    setTimeout(function() { if (b.parentNode) b.remove(); }, 10000);
+}
+
+// ========== EMERGENCY MODAL ==========
+function showEmergencyModal(title, place, mag, depth, level) {
+    var old = document.getElementById('em_modal'); if (old) old.remove();
+    var colors = { ROJA: '#B71C1C', TSUNAMI: '#880E4F', NARANJA: '#E65100', AMARILLA: '#F57F17' };
+    var modal = document.createElement('div');
+    modal.id = 'em_modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    var instrucciones = level === 'TSUNAMI'
+        ? '🌊 EVACÚA INMEDIATAMENTE hacia zonas altas.<br>📍 Aléjate de la costa y ríos.<br>🚫 No regreses hasta autorización.'
+        : '⚠️ Mantén la calma. Aléjate de ventanas.<br>🚪 No uses ascensores.<br>🔥 Revisa posibles fugas de gas.';
+    modal.innerHTML = '<div style="background:'+(colors[level]||colors.ROJA)+';border-radius:16px;padding:24px;max-width:380px;width:100%;color:#fff;text-align:center;">'
+        +'<div style="font-size:48px;margin-bottom:12px">'+(level==='TSUNAMI'?'🌊':'🚨')+'</div>'
+        +'<div style="font-size:22px;font-weight:800;margin-bottom:8px">'+title+'</div>'
+        +'<div style="font-size:15px;opacity:0.9;margin-bottom:16px">'+place+'</div>'
+        +'<div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px">'
+        +'<span style="background:rgba(255,255,255,0.2);padding:8px 14px;border-radius:8px;font-weight:700">M'+mag.toFixed(1)+'</span>'
+        +'<span style="background:rgba(255,255,255,0.2);padding:8px 14px;border-radius:8px">⬇️ '+depth+' km</span>'
+        +'</div>'
+        +'<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:14px;text-align:left;line-height:1.6">'+instrucciones+'</div>'
+        +'<button onclick="document.getElementById(\'em_modal\').remove()" style="background:#fff;color:'+(colors[level]||colors.ROJA)+';border:none;border-radius:10px;padding:12px 24px;font-size:16px;font-weight:800;cursor:pointer;width:100%">ENTENDIDO</button>'
+        +'</div>';
+    document.body.appendChild(modal);
+    setTimeout(function() { if (modal.parentNode) modal.remove(); }, 30000);
+}
+
+// ========== TABS ==========
+function setupTabs() {
+    document.querySelectorAll('.tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+            this.classList.add('active');
+            document.getElementById('panel-'+this.dataset.tab).classList.add('active');
+            if (this.dataset.tab === 'mapa' && !mapInitialized) initMap();
+            if (this.dataset.tab === 'tips') refreshSmartTips();
+        });
+    });
+}
+
 // ========== GEOLOCATION ==========
-// Order: GPS coords → load data → city name in background
 function initLocation() {
-    // SIEMPRE pedir GPS - es la fuente de verdad
-    // maximumAge:300000 = acepta posición cacheada de 5 min (instantánea en celular)
     updateLocationDisplay('Detectando...');
 
     if (!navigator.geolocation) {
-        // Sin geolocalización: usar guardado o global
-        var saved = LocationManager.getCurrent();
-        if (saved && saved.lat) {
-            currentLocation = saved;
-            updateLocationDisplay(saved.name);
-            loadAlerts();
-            loadWeather(saved.lat, saved.lon);
-        } else {
-            updateLocationDisplay('🌍 Global');
-            loadAlerts();
-        }
-        renderSavedLocations();
-        updateStarButtons();
+        updateLocationDisplay('Global');
+        loadAlerts();
         return;
     }
 
+    // maximumAge:300000 = usa posición cacheada de hasta 5 min → instantáneo
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            // Coordenadas reales del GPS → usar inmediatamente
+            // Usar coordenadas inmediatamente, sin esperar nombre de ciudad
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            loadAlerts();   // filtrado por zona real
+            loadAlerts();
             loadWeather(lat, lon);
             renderSavedLocations();
-            updateStarButtons();          // ahora sí filtra por zona del usuario
-            loadWeather(lat, lon);
-            // Nombre ciudad en background
-            // Get city name in background — NO loadAlerts here
+            updateStarButtons();
+            // Nombre ciudad en background — no bloquea nada
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                currentLocation.name = geo.city || currentLocation.name;
-                currentLocation.country = geo.country || '';
+                if (geo && geo.city && geo.city.length > 1) {
+                    currentLocation.name = geo.city;
+                    currentLocation.country = geo.country || '';
+                }
+                // Guardar ubicación real, no Santiago genérico
                 LocationManager.setCurrent(currentLocation);
                 updateLocationDisplay(currentLocation.name);
-                renderSavedLocations();
                 updateStarButtons();
-            }).catch(function() {
-                updateLocationDisplay(lat.toFixed(2)+', '+lon.toFixed(2));
-            });
+            }).catch(function() {});
         },
         function() {
-            // GPS denegado → cargar alertas globales
-            updateLocationDisplay('🌍 Global');
+            // GPS denegado — cargar alertas globales
+            updateLocationDisplay('Global');
             loadAlerts();
-            showLocationBanner();
+            renderSavedLocations();
         },
-        { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
-    );
-}
-
-// Banner suave invitando a permitir ubicación (no bloquea nada)
-function showLocationBanner() {
-    var existing = document.getElementById('locBanner');
-    if (existing) return;
-    var b = document.createElement('div');
-    b.id = 'locBanner';
-    b.style.cssText = 'background:#f3e5f5;border-left:4px solid #6200EE;padding:10px 14px;margin:8px 10px;border-radius:10px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;';
-    b.innerHTML = '<span>📍 Permite tu ubicación para ver alertas de tu zona</span>'
-        + '<button onclick="requestLocation()" style="background:#6200EE;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Activar</button>';
-    var alertList = document.getElementById('alertList');
-    if (alertList) alertList.insertBefore(b, alertList.firstChild);
-}
-
-function requestLocation() {
-    var banner = document.getElementById('locBanner');
-    if (banner) banner.remove();
-    navigator.geolocation.getCurrentPosition(
-        function(pos) {
-            var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            currentLocation = { lat: lat, lon: lon, name: '📍 '+lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
-            updateLocationDisplay(currentLocation.name);
-            loadAlerts();
-            loadWeather(lat, lon);
-            // Get city name in background — NO loadAlerts here
-            LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                currentLocation.name = geo.city || currentLocation.name;
-                currentLocation.country = geo.country || '';
-                LocationManager.setCurrent(currentLocation);
-                updateLocationDisplay(currentLocation.name);
-                renderSavedLocations();
-                updateStarButtons();
-            }).catch(function() {
-                updateLocationDisplay(lat.toFixed(2)+', '+lon.toFixed(2));
-            });
-        },
-        function() { showToast('Permiso de ubicación denegado'); },
-        { enableHighAccuracy: false, timeout: 4000, maximumAge: 120000 }
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
     );
 }
 
@@ -287,7 +194,7 @@ function selectLocation(loc) {
     currentLocation = loc;
     LocationManager.setCurrent(loc);
     updateLocationDisplay(loc.name);
-    dataReady = { weather: false, earthquakes: false };
+    alertsLoading = false;
     loadAlerts();
     loadWeather(loc.lat, loc.lon);
     if (leafletMap) {
@@ -301,14 +208,13 @@ function selectLocation(loc) {
 }
 
 function createUserIcon() {
-    return L.divIcon({ html:'<div style="background:#6200EE;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 10px rgba(98,0,238,0.7)"></div>', iconSize:[18,18], iconAnchor:[9,9] });
+    return L.divIcon({ html: '<div style="background:#6200EE;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 10px rgba(98,0,238,0.7)"></div>', iconSize: [18,18], iconAnchor: [9,9] });
 }
 
 // ========== UTILS ==========
 function closePopups() {
     ['searchPopup','langPopup','favoritesPopup','sharePopup'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+        var el = document.getElementById(id); if (el) el.style.display = 'none';
     });
 }
 function showToast(msg) {
@@ -320,94 +226,19 @@ function formatTime(ts) {
     var d = Date.now()-ts;
     if (d < 3600000) return 'Hace '+Math.floor(d/60000)+' min';
     if (d < 86400000) return 'Hace '+Math.floor(d/3600000)+'h';
-    return new Date(ts).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    return new Date(ts).toLocaleString('es-CL', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 function calcRisk(mag) {
-    if (mag>=8) return {label:'⚫ EXTREMO', color:'#212121'};
-    if (mag>=7) return {label:'🔴 CRÍTICO', color:'#B71C1C'};
-    if (mag>=5) return {label:'🟠 ALTO',    color:'#E64A19'};
-    if (mag>=4) return {label:'🟡 MEDIO',   color:'#F57F17'};
-    return          {label:'🟢 BAJO',    color:'#2E7D32'};
+    if (mag >= 8) return { label:'⚫ EXTREMO', color:'#212121' };
+    if (mag >= 7) return { label:'🔴 CRÍTICO', color:'#B71C1C' };
+    if (mag >= 5) return { label:'🟠 ALTO', color:'#E64A19' };
+    if (mag >= 4) return { label:'🟡 MEDIO', color:'#F57F17' };
+    return { label:'🟢 BAJO', color:'#2E7D32' };
 }
 function calcDistance(lat1, lon1, lat2, lon2) {
     var R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
     var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
     return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
-}
-
-// ========== NOTIFICATIONS ==========
-function requestNotificationPermission() {
-    if ('Notification' in window) Notification.requestPermission().then(function(p) { notifPermission = p==='granted'; });
-}
-function sendNotification(title, body, urgency) {
-    if (notifPermission) try { new Notification(title, { body:body, icon:'img/icon.svg' }); } catch(e) {}
-    var colors = {critical:'#B71C1C', high:'#F44336', medium:'#FF9800', info:'#1976D2'};
-    var old = document.getElementById('alertBanner');
-    if (old) old.remove();
-    var b = document.createElement('div');
-    b.id = 'alertBanner';
-    b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:'+(colors[urgency]||colors.info)+';color:#fff;padding:12px 16px;z-index:500;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:slideDown 0.3s ease;font-family:inherit;';
-    b.innerHTML = '<div style="flex:1;margin-right:8px"><div style="font-weight:700;font-size:14px">'+title+'</div><div style="font-size:12px;opacity:0.95;margin-top:2px">'+body+'</div></div><button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.25);border:none;color:#fff;font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px">✕</button>';
-    document.body.appendChild(b);
-    setTimeout(function() { if (b.parentNode) b.remove(); }, 10000);
-}
-
-// ========== TABS ==========
-function setupTabs() {
-    document.querySelectorAll('.tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-            document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-            this.classList.add('active');
-            document.getElementById('panel-'+this.dataset.tab).classList.add('active');
-            if (this.dataset.tab==='mapa' && !mapInitialized) initMap();
-            if (this.dataset.tab==='tips') refreshSmartTips();
-        });
-    });
-}
-
-// ========== LOCATION BUTTONS ==========
-function setupLocationButtons() {
-    function geoLocate(cb) {
-        if (!navigator.geolocation) { showToast('Geolocalización no disponible'); return; }
-        showToast('📍 Detectando ubicación...');
-        navigator.geolocation.getCurrentPosition(
-            function(pos) {
-                var lat = pos.coords.latitude, lon = pos.coords.longitude;
-                // Use coords immediately
-                cb({ lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' });
-                // Get city name in background
-                LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                    if (geo.city) {
-                        currentLocation.name = geo.city;
-                        currentLocation.country = geo.country || '';
-                        LocationManager.setCurrent(currentLocation);
-                        updateLocationDisplay(currentLocation.name);
-                        updateStarButtons();
-                    }
-                }).catch(function(){});
-            },
-            function() { showToast('⚠️ No se pudo obtener ubicación. Verifica permisos.'); },
-            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
-        );
-    }
-    document.getElementById('btnMyLocation').addEventListener('click', function() {
-        try { localStorage.removeItem('ag_current'); } catch(e) {}
-        currentLocation = { lat: null, lon: null, name: '', country: '' };
-        geoLocate(selectLocation);
-    });
-    document.getElementById('btnSearchLocation').addEventListener('click', openSearch);
-    document.getElementById('btnWeatherLocation').addEventListener('click', function() {
-        try { localStorage.removeItem('ag_current'); } catch(e) {}
-        currentLocation = { lat: null, lon: null, name: '', country: '' };
-        geoLocate(selectLocation);
-    });
-    document.getElementById('btnWeatherSearch').addEventListener('click', openSearch);
-    document.getElementById('btnRefresh').addEventListener('click', function() {
-        loadAlerts();
-        if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon);
-        showToast('✅ Datos actualizados');
-    });
 }
 
 // ========== SAVED LOCATIONS ==========
@@ -422,7 +253,59 @@ function renderSavedLocations() {
         }).join('');
     });
 }
-function removeSavedLocation(name) { LocationManager.remove(name); renderSavedLocations(); showToast('Eliminado de favoritos'); }
+function removeSavedLocation(name) { LocationManager.remove(name); renderSavedLocations(); showToast('Eliminado'); }
+
+// ========== BUTTONS ==========
+function setupLocationButtons() {
+    // 📍 Button: always fresh GPS, clear saved
+    document.getElementById('btnMyLocation').addEventListener('click', function() {
+        try { localStorage.removeItem('ag_current'); } catch(e) {}
+        currentLocation = { lat: null, lon: null, name: '', country: '' };
+        updateLocationDisplay('Detectando...');
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(function(pos) {
+            var lat = pos.coords.latitude, lon = pos.coords.longitude;
+            currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
+            updateLocationDisplay(currentLocation.name);
+            alertsLoading = false;
+            loadAlerts();
+            loadWeather(lat, lon);
+            LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                if (geo && geo.city) {
+                    currentLocation.name = geo.city;
+                    currentLocation.country = geo.country || '';
+                }
+                LocationManager.setCurrent(currentLocation);
+                updateLocationDisplay(currentLocation.name);
+            }).catch(function(){});
+        }, function() { showToast('⚠️ No se pudo obtener ubicación'); },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 });
+    });
+
+    document.getElementById('btnSearchLocation').addEventListener('click', openSearch);
+
+    document.getElementById('btnWeatherLocation').addEventListener('click', function() {
+        try { localStorage.removeItem('ag_current'); } catch(e) {}
+        document.getElementById('btnMyLocation').click();
+    });
+
+    document.getElementById('btnWeatherSearch').addEventListener('click', openSearch);
+
+    document.getElementById('btnSaveLocation').addEventListener('click', function() {
+        if (!currentLocation.lat) { showToast('📍 Detecta tu ubicación primero'); return; }
+        var ok = LocationManager.save(currentLocation);
+        renderSavedLocations();
+        showToast(ok ? '⭐ Guardado: '+currentLocation.name : '⭐ '+currentLocation.name);
+        updateFavBadge();
+    });
+
+    document.getElementById('btnRefresh').addEventListener('click', function() {
+        alertsLoading = false;
+        loadAlerts();
+        if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon);
+        showToast('✅ Actualizando...');
+    });
+}
 
 // ========== SEARCH ==========
 function setupSearch() {
@@ -454,7 +337,8 @@ function doSearch() {
     LocationManager.search(q).then(function(locs) {
         if (!locs.length) { r.innerHTML='<p style="text-align:center;color:#999;padding:16px">Sin resultados</p>'; return; }
         r.innerHTML = locs.map(function(l) {
-            return '<button class="search-result" onclick="selectLocation({name:\''+l.name.replace(/'/g,"\\'")+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+l.country.replace(/'/g,"\\'")+'\'})">'+'<strong>'+l.name+'</strong><br><small>'+l.fullName+'</small></button>';
+            return '<button class="search-result" onclick="selectLocation({name:\''+l.name.replace(/'/g,"\\'")+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+l.country.replace(/'/g,"\\'")+'\'})">'
+                +'<strong>'+l.name+'</strong><br><small>'+l.fullName+'</small></button>';
         }).join('');
     }).catch(function(e) { r.innerHTML='<p style="color:red;padding:16px">Error: '+e.message+'</p>'; });
 }
@@ -488,7 +372,7 @@ function setupFavorites() {
     updateStarButtons(); updateFavBadge();
 }
 function toggleFavorite() {
-    if (!currentLocation.lat) { showToast('📍 Primero detecta tu ubicación'); return; }
+    if (!currentLocation.lat) { showToast('📍 Detecta tu ubicación primero'); return; }
     var exists = LocationManager.getAll().find(function(l) { return l.name===currentLocation.name; });
     if (exists) { LocationManager.remove(currentLocation.name); showToast('Eliminado de favoritos'); }
     else { LocationManager.save(currentLocation); showToast('⭐ Guardado: '+currentLocation.name); }
@@ -517,7 +401,13 @@ function openFavorites() {
         empty.style.display='none';
         list.innerHTML = locs.map(function(l) {
             var sn=l.name.replace(/'/g,"\\'"), sc=(l.country||'').replace(/'/g,"\\'");
-            return '<div class="fav-item"><div class="fav-item-info" onclick="selectLocation({name:\''+sn+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+sc+'\'});closePopups()"><div class="fav-item-name">⭐ '+l.name+'</div><div class="fav-item-country">'+(l.country||'')+' · '+l.lat.toFixed(2)+', '+l.lon.toFixed(2)+'</div></div><div class="fav-item-actions"><button class="fav-go-btn" onclick="selectLocation({name:\''+sn+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+sc+'\'});closePopups()">Ir →</button><button class="fav-del-btn" onclick="removeFavorite(\''+sn+'\')">🗑️</button></div></div>';
+            return '<div class="fav-item">'
+                +'<div class="fav-item-info" onclick="selectLocation({name:\''+sn+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+sc+'\'});closePopups()">'
+                +'<div class="fav-item-name">⭐ '+l.name+'</div>'
+                +'<div class="fav-item-country">'+(l.country||'')+' · '+l.lat.toFixed(2)+', '+l.lon.toFixed(2)+'</div></div>'
+                +'<div class="fav-item-actions">'
+                +'<button class="fav-go-btn" onclick="selectLocation({name:\''+sn+'\',lat:'+l.lat+',lon:'+l.lon+',country:\''+sc+'\'});closePopups()">Ir →</button>'
+                +'<button class="fav-del-btn" onclick="removeFavorite(\''+sn+'\')">🗑️</button></div></div>';
         }).join('');
     }
     document.getElementById('favoritesPopup').style.display='flex';
@@ -527,11 +417,11 @@ function removeFavorite(name) { LocationManager.remove(name); updateStarButtons(
 // ========== SHARE ==========
 function openShare(text) {
     document.getElementById('shareContent').textContent = text;
-    var encoded = encodeURIComponent(text), appUrl = encodeURIComponent('https://appcml.github.io/AlertaGlobal/');
-    document.getElementById('shareWhatsapp').onclick = function() { window.open('https://wa.me/?text='+encoded,'_blank'); };
-    document.getElementById('shareTwitter').onclick  = function() { window.open('https://twitter.com/intent/tweet?text='+encoded+'&url='+appUrl,'_blank'); };
-    document.getElementById('shareFacebook').onclick = function() { window.open('https://www.facebook.com/sharer/sharer.php?u='+appUrl+'&quote='+encoded,'_blank'); };
-    document.getElementById('shareTelegram').onclick = function() { window.open('https://t.me/share/url?url='+appUrl+'&text='+encoded,'_blank'); };
+    var enc = encodeURIComponent(text), url = encodeURIComponent('https://appcml.github.io/AlertaGlobal/');
+    document.getElementById('shareWhatsapp').onclick = function() { window.open('https://wa.me/?text='+enc,'_blank'); };
+    document.getElementById('shareTwitter').onclick = function() { window.open('https://twitter.com/intent/tweet?text='+enc+'&url='+url,'_blank'); };
+    document.getElementById('shareFacebook').onclick = function() { window.open('https://www.facebook.com/sharer/sharer.php?u='+url+'&quote='+enc,'_blank'); };
+    document.getElementById('shareTelegram').onclick = function() { window.open('https://t.me/share/url?url='+url+'&text='+enc,'_blank'); };
     document.getElementById('shareCopy').onclick = function() {
         if (navigator.clipboard) navigator.clipboard.writeText(text).then(function() { showToast('📋 Copiado'); });
         else { var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); showToast('📋 Copiado'); }
@@ -543,69 +433,66 @@ function openShare(text) {
 function buildShareText(type, data) {
     var app = '\n🌍 Alerta Global — appcml.github.io/AlertaGlobal/';
     if (type==='earthquake') return (data.mag>=7?'🚨':'⚠️')+' SISMO M'+data.mag.toFixed(1)+'\n📍 '+data.place+'\n⬇️ Prof: '+data.depth+' km\n'+(data.dist?'📏 '+data.dist+' km de '+(currentLocation.name||'tu zona')+'\n':'')+'🕐 '+data.time+app;
-    if (type==='weather') return '🌤️ CLIMA — '+data.city+'\n🌡️ '+data.temp+'°C (Sensación: '+data.feels+'°C)\n☁️ '+data.desc+'\n💧 '+data.hum+'%  💨 '+data.wind+' m/s'+app;
+    if (type==='weather') return '🌤️ CLIMA — '+data.city+'\n🌡️ '+data.temp+'°C\n☁️ '+data.desc+'\n💧 '+data.hum+'%  💨 '+data.wind+' m/s'+app;
     return app;
 }
 
-// ========== ALERTS ==========
-var alertsLoading = false;
+// ========== ALERTS (TIEMPO REAL) ==========
 function loadAlerts() {
-    if (alertsLoading) return; // prevent concurrent requests
+    if (alertsLoading) return;
     alertsLoading = true;
     var loading = document.getElementById('alertsLoading');
     var list = document.getElementById('alertList');
     var error = document.getElementById('alertsError');
     loading.style.display='flex'; list.innerHTML=''; error.style.display='none';
 
-    // Use location-filtered endpoint when we have real GPS coords
+    // URL con filtro de ubicación si disponible
     var url;
     if (currentLocation.lat && currentLocation.lon) {
-        url = 'https://earthquake.usgs.gov/fdsnws/event/1/query'
-            + '?format=geojson&limit=50&minmagnitude=2.0&orderby=time'
-            + '&latitude=' + currentLocation.lat
-            + '&longitude=' + currentLocation.lon
-            + '&maxradiuskm=2000';
+        url = CONFIG.USGS_BASE + '&latitude='+currentLocation.lat+'&longitude='+currentLocation.lon+'&maxradiuskm=2000';
     } else {
-        url = CONFIG.USGS_URL; // global fallback
+        url = CONFIG.USGS_GLOBAL;
     }
 
     var ctrl = typeof AbortController!=='undefined' ? new AbortController() : null;
-    var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
+    var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 9000) : null;
 
-    fetch(url, ctrl?{signal:ctrl.signal}:{})
+    fetch(url, ctrl ? { signal: ctrl.signal } : {})
         .then(function(r) { if (timer) clearTimeout(timer); return r.json(); })
         .then(function(data) {
+            alertsLoading = false;
             loading.style.display='none';
-            lastEarthquakes = data.features||[];
+            lastEarthquakes = data.features || [];
             dataReady.earthquakes = true;
-            list.innerHTML='';
+
+            // Ordenar más reciente primero
+            lastEarthquakes.sort(function(a, b) { return b.properties.time - a.properties.time; });
 
             var now = Date.now();
             lastEarthquakes.forEach(function(f) {
-                if (!seenAlertIds[f.id] && (now-f.properties.time)<1800000) {
-                    seenAlertIds[f.id] = true;
-                    var mag = f.properties.mag;
-                    var place = f.properties.place || '';
-                    var depth = f.geometry.coordinates[2];
-                    // Check if national alert threshold met
-                    var alertLevel = shouldTriggerNationalAlert(mag, depth, place);
-                    if (alertLevel) {
-                        triggerEmergencyAlert(mag, place, depth.toFixed(0), alertLevel);
-                    } else if (mag >= 5.0) {
-                        playNotificationSound();
-                        sendNotification('🚨 SISMO M'+mag.toFixed(1), place, mag>=6?'critical':'high');
-                    }
-                } else seenAlertIds[f.id] = true;
+                if (seenAlertIds[f.id]) return;
+                seenAlertIds[f.id] = true;
+                var mag = f.properties.mag, place = f.properties.place || '', depth = f.geometry.coordinates[2];
+                if ((now - f.properties.time) > 1800000) return; // only notify last 30min
+                var level = checkAlertLevel(mag, depth, place);
+                if (level === 'ROJA' || level === 'TSUNAMI') {
+                    playSiren();
+                    showEmergencyModal('🚨 ALERTA '+level+' M'+mag.toFixed(1), place, mag, depth.toFixed(0), level);
+                    sendNotification('🚨 ALERTA '+level+' M'+mag.toFixed(1), place, 'critical');
+                } else if (level === 'NARANJA') {
+                    playBeep(660, 0.5, 'square'); setTimeout(function(){playBeep(660,0.5,'square');},400);
+                    sendNotification('🟠 SISMO M'+mag.toFixed(1), place, 'high');
+                } else if (level === 'AMARILLA' || mag >= 5.0) {
+                    playBeep(880, 0.4);
+                    sendNotification('⚠️ SISMO M'+mag.toFixed(1), place, 'medium');
+                }
             });
 
+            list.innerHTML = '';
             if (!lastEarthquakes.length) {
-                list.innerHTML='<div class="loading"><p>No hay alertas recientes</p></div>';
+                list.innerHTML = '<div class="loading"><p>No hay alertas recientes</p></div>';
             } else {
-                // Sort by TIME (most recent first) — like CSN
-                var sorted = lastEarthquakes.slice().sort(function(a, b) {
-                    return b.properties.time - a.properties.time;
-                });
-                sorted.forEach(function(f) {
+                lastEarthquakes.forEach(function(f) {
                     var mag=f.properties.mag, place=f.properties.place||'?', time=f.properties.time;
                     var c=f.geometry.coordinates, depth=c[2].toFixed(1);
                     var risk=calcRisk(mag);
@@ -624,7 +511,6 @@ function loadAlerts() {
                     card.appendChild(sb); list.appendChild(card);
                 });
             }
-            alertsLoading = false;
             if (lastWeatherData) addWeatherAlertCards(list);
             if (externalAlerts.length) renderExternalAlerts();
             if (dataReady.weather) refreshSmartTips();
@@ -634,7 +520,7 @@ function loadAlerts() {
             if (timer) clearTimeout(timer);
             loading.style.display='none';
             error.style.display='block';
-            error.textContent = e.name==='AbortError' ? '⚠️ Sin respuesta. Verifica tu conexión.' : '⚠️ '+e.message;
+            error.textContent = e.name==='AbortError' ? '⚠️ Sin respuesta. Verifica conexión.' : '⚠️ '+e.message;
         });
 }
 
@@ -677,12 +563,14 @@ function loadExternalSourcesData() {
             var id='ext_'+a.title.substring(0,30);
             if (!seenAlertIds[id] && (a.priority||0)>=85) {
                 seenAlertIds[id]=true;
+                if ((a.priority||0)>=95) playSiren();
+                else playBeep(660, 0.5);
                 sendNotification(a.icon+' '+a.type, a.title, (a.priority||0)>=95?'critical':'high');
             }
             seenAlertIds[id]=true;
         });
-        var alertList=document.getElementById('alertList');
-        if (alertList && lastEarthquakes.length) renderExternalAlerts();
+        var al=document.getElementById('alertList');
+        if (al && lastEarthquakes.length) renderExternalAlerts();
     });
 }
 
@@ -691,8 +579,7 @@ function loadWeather(lat, lon) {
     var loading=document.getElementById('weatherLoading'), container=document.getElementById('weatherContainer'), error=document.getElementById('weatherError');
     loading.style.display='flex'; container.style.display='none'; error.style.display='none';
     fetch(CONFIG.WEATHER_URL+'?lat='+lat+'&lon='+lon+'&appid='+CONFIG.WEATHER_API_KEY+'&units=metric&lang='+currentLang)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
+        .then(function(r){return r.json();}).then(function(d) {
             loading.style.display='none'; container.style.display='block';
             lastWeatherData=d; dataReady.weather=true;
             document.getElementById('wCity').textContent=d.name||currentLocation.name;
@@ -704,7 +591,7 @@ function loadWeather(lat, lon) {
             document.getElementById('wPressure').textContent=d.main.pressure+' hPa';
             var temp=d.main.temp, rec;
             if(temp>35)rec='🔥 Extremadamente caluroso. Evita salir.';
-            else if(temp>30)rec='☀️ Muy caluroso. Hidrátate y busca sombra.';
+            else if(temp>30)rec='☀️ Muy caluroso. Hidrátate.';
             else if(temp>25)rec='🌤️ Caluroso. Usa protector solar.';
             else if(temp>15)rec='🌈 Condiciones agradables.';
             else if(temp>10)rec='🍂 Fresco. Lleva chaqueta.';
@@ -713,26 +600,25 @@ function loadWeather(lat, lon) {
             document.getElementById('wRecommendation').textContent=rec;
             var wsb=document.getElementById('wShareBtn');
             if (!wsb) { wsb=document.createElement('button'); wsb.id='wShareBtn'; wsb.className='alert-share-btn'; wsb.style.marginTop='12px'; wsb.textContent='📤 Compartir clima'; container.appendChild(wsb); }
-            wsb.onclick=function() { openShare(buildShareText('weather',{city:d.name||currentLocation.name,temp:Math.round(d.main.temp),feels:Math.round(d.main.feels_like),desc:d.weather[0].description,hum:d.main.humidity,wind:d.wind.speed})); };
+            wsb.onclick=function(){ openShare(buildShareText('weather',{city:d.name||currentLocation.name,temp:Math.round(d.main.temp),desc:d.weather[0].description,hum:d.main.humidity,wind:d.wind.speed})); };
             var main=d.weather[0].main.toLowerCase();
-            if(main==='thunderstorm') sendNotification('⛈️ Tormenta eléctrica','En '+(d.name||currentLocation.name)+'. Refúgiate.','critical');
-            else if(d.wind.speed>15) sendNotification('💨 Viento extremo: '+d.wind.speed.toFixed(0)+' m/s','En '+(d.name||currentLocation.name),'high');
-            var alertList=document.getElementById('alertList');
-            if (alertList) { alertList.querySelectorAll('.weather-alert-card').forEach(function(c){c.remove();}); addWeatherAlertCards(alertList); }
+            if(main==='thunderstorm') { playSiren(); sendNotification('⛈️ Tormenta eléctrica','En '+(d.name||currentLocation.name)+'. Refúgiate.','critical'); }
+            else if(d.wind.speed>15) { playBeep(660,0.5); sendNotification('💨 Viento extremo: '+d.wind.speed.toFixed(0)+' m/s','En '+(d.name||currentLocation.name),'high'); }
+            var al=document.getElementById('alertList');
+            if(al){al.querySelectorAll('.weather-alert-card').forEach(function(c){c.remove();});addWeatherAlertCards(al);}
             loadForecast(lat, lon);
-        })
-        .catch(function(e) { loading.style.display='none'; error.style.display='block'; error.textContent='⚠️ '+e.message; });
+        }).catch(function(e){loading.style.display='none';error.style.display='block';error.textContent='⚠️ '+e.message;});
 }
 
 function loadForecast(lat, lon) {
     fetch(CONFIG.FORECAST_URL+'?lat='+lat+'&lon='+lon+'&appid='+CONFIG.WEATHER_API_KEY+'&units=metric&lang='+currentLang+'&cnt=16')
-        .then(function(r){return r.json();}).then(function(d){ lastForecastData=d; refreshSmartTips(); }).catch(function(){ refreshSmartTips(); });
+        .then(function(r){return r.json();}).then(function(d){lastForecastData=d;refreshSmartTips();}).catch(function(){refreshSmartTips();});
 }
 
 // ========== SMART TIPS ==========
 function refreshSmartTips() {
     if (!dataReady.weather && !dataReady.earthquakes) {
-        document.getElementById('tipsList').innerHTML='<div class="loading"><div class="spinner"></div><p>Cargando datos...</p></div>';
+        document.getElementById('tipsList').innerHTML='<div class="loading"><div class="spinner"></div><p>Cargando...</p></div>';
         return;
     }
     var tips=[], now=Date.now();
@@ -741,40 +627,31 @@ function refreshSmartTips() {
         if (big.length) {
             var eq=big[0], mag=eq.properties.mag, place=eq.properties.place;
             var dist=currentLocation.lat?calcDistance(currentLocation.lat,currentLocation.lon,eq.geometry.coordinates[1],eq.geometry.coordinates[0]):null;
-            tips.push({title:'🚨 SISMO M'+mag.toFixed(1)+' — HACE MENOS DE 1H',desc:'Epicentro: '+place+(dist?' · '+dist+' km de ti':'')+'. Mantén la calma. Aléjate de ventanas. No uses ascensores. Revisa posibles fugas de gas.',cat:'⚫ EMERGENCIA',color:'#B71C1C',priority:100});
-            if(mag>=7&&eq.geometry.coordinates[2]<70) tips.push({title:'🌊 RIESGO DE TSUNAMI',desc:'Terremoto superficial M'+mag.toFixed(1)+'. Evacúa INMEDIATAMENTE a zonas altas.',cat:'⚫ EMERGENCIA',color:'#880E4F',priority:99});
+            tips.push({title:'🚨 SISMO M'+mag.toFixed(1)+' — HACE MENOS DE 1H',desc:'Epicentro: '+place+(dist?' · '+dist+' km de ti':'')+'. Mantén la calma. Aléjate de ventanas.',cat:'⚫ EMERGENCIA',color:'#B71C1C',priority:100});
+            if(mag>=7&&eq.geometry.coordinates[2]<70) tips.push({title:'🌊 RIESGO DE TSUNAMI',desc:'Evacúa INMEDIATAMENTE a zonas altas. No regreses hasta autorización.',cat:'⚫ EMERGENCIA',color:'#880E4F',priority:99});
         }
         var mod=lastEarthquakes.filter(function(f){return (now-f.properties.time)<21600000&&f.properties.mag>=5;});
-        if(mod.length&&!big.length) tips.push({title:'⚠️ '+mod.length+' sismos M5+ en 6h',desc:'Actividad sísmica elevada. Conoce tus rutas de evacuación.',cat:'🟠 PRECAUCIÓN',color:'#E65100',priority:75});
+        if(mod.length&&!big.length) tips.push({title:'⚠️ '+mod.length+' sismos M5+ en 6h',desc:'Actividad sísmica elevada. Ten lista tu mochila de emergencia.',cat:'🟠 PRECAUCIÓN',color:'#E65100',priority:75});
     }
     if (lastWeatherData) {
-        var d=lastWeatherData, temp=d.main.temp, wind=d.wind.speed, hum=d.main.humidity, feels=d.main.feels_like;
+        var d=lastWeatherData, temp=d.main.temp, wind=d.wind.speed, hum=d.main.humidity;
         var main=d.weather[0].main.toLowerCase(), desc2=d.weather[0].description, city=d.name||currentLocation.name||'tu zona';
-        if(main==='thunderstorm') tips.push({title:'⛈️ TORMENTA ELÉCTRICA — '+city,desc:'No permanezcas bajo árboles. Desconecta aparatos. Refúgiate en interior.',cat:'🔴 EMERGENCIA',color:'#B71C1C',priority:95});
-        if(main==='tornado') tips.push({title:'🌪️ TORNADO',desc:'Busca refugio en sótano o habitación interior. Aléjate de ventanas.',cat:'⚫ EXTREMO',color:'#000',priority:98});
+        if(main==='thunderstorm') tips.push({title:'⛈️ TORMENTA ELÉCTRICA — '+city,desc:'No permanezcas bajo árboles. Desconecta aparatos. Refúgiate.',cat:'🔴 EMERGENCIA',color:'#B71C1C',priority:95});
+        if(main==='tornado') tips.push({title:'🌪️ TORNADO',desc:'Busca refugio en sótano. Aléjate de ventanas.',cat:'⚫ EXTREMO',color:'#000',priority:98});
         if(main==='rain'||main==='drizzle') tips.push({title:'🌧️ LLUVIA: '+desc2+' — '+city,desc:'Lleva paraguas. Conduce con precaución. Evita zonas inundables.',cat:'🟡 PRECAUCIÓN',color:'#1565C0',priority:85});
-        if(main==='snow') tips.push({title:'❄️ NEVANDO — '+city,desc:'Conduce solo si es necesario. Protege cañerías. Abrígate.',cat:'🟠 PRECAUCIÓN',color:'#0277BD',priority:83});
-        if(main==='mist'||main==='fog') tips.push({title:'🌫️ NIEBLA — '+city,desc:'Usa luces bajas. Reduce velocidad. Aumenta distancia de frenado.',cat:'🟡 PRECAUCIÓN',color:'#546E7A',priority:70});
-        if(wind>15) tips.push({title:'💨 VIENTO EXTREMO: '+wind.toFixed(0)+' m/s — '+city,desc:'Asegura objetos. Evita zonas con árboles. Reduce velocidad en puentes.',cat:'🔴 ALTO',color:'#E64A19',priority:88});
-        else if(wind>10) tips.push({title:'💨 VIENTO FUERTE: '+wind.toFixed(0)+' m/s — '+city,desc:'Hoy: '+desc2+'. Asegura toldos y objetos exteriores.',cat:'🟠 PRECAUCIÓN',color:'#FF6F00',priority:60});
-        if(temp>38) tips.push({title:'🔥 CALOR EXTREMO: '+Math.round(temp)+'°C — '+city,desc:'Nunca dejes niños en vehículos. Hidrátate cada 20 min. SPF 50+.',cat:'🔴 EMERGENCIA',color:'#B71C1C',priority:90});
-        else if(temp>30) tips.push({title:'☀️ MUCHO CALOR: '+Math.round(temp)+'°C',desc:'Bebe agua. Usa ropa ligera. Busca sombra.',cat:'🟡 PRECAUCIÓN',color:'#FF6F00',priority:65});
-        if(temp<-5) tips.push({title:'🥶 CONGELANTE: '+Math.round(temp)+'°C — '+city,desc:'Riesgo de hipotermia. Abrígate. No salgas sin necesidad.',cat:'🔴 EMERGENCIA',color:'#0D47A1',priority:89});
-        else if(temp<3) tips.push({title:'❄️ BAJO 3°C: '+Math.round(temp)+'°C — '+city,desc:'Hoy: '+desc2+'. Abrígate en capas. Protege plantas. Cuidado con escarcha.',cat:'🟠 PRECAUCIÓN',color:'#1565C0',priority:70});
-        else if(temp<10) tips.push({title:'🌬️ DÍA FRÍO: '+Math.round(temp)+'°C — '+city,desc:'Hoy: '+desc2+' con '+Math.round(temp)+'°C y '+hum+'% humedad'+(wind>8?' · Viento '+wind.toFixed(0)+' m/s':'')+'. Lleva chaqueta.',cat:'🟢 PREVENCIÓN',color:'#0288D1',priority:35});
-        if(hum>85&&temp>22) tips.push({title:'💧 BOCHORNO: '+Math.round(temp)+'°C + '+hum+'%',desc:'Calor húmedo. Sensación: '+Math.round(feels)+'°C. Busca lugares ventilados.',cat:'🟠 PRECAUCIÓN',color:'#FF6F00',priority:55});
-        if(main==='clouds'&&temp>5&&temp<=15) tips.push({title:'☁️ NUBLADO Y FRESCO: '+Math.round(temp)+'°C — '+city,desc:'Hoy: '+desc2+' con '+Math.round(temp)+'°C y '+hum+'% humedad. Lleva chaqueta.',cat:'🟢 PREVENCIÓN',color:'#0288D1',priority:30});
-        if(main==='clear'&&temp>10&&temp<=25) tips.push({title:'☀️ DÍA DESPEJADO: '+Math.round(temp)+'°C — '+city,desc:'Buenas condiciones. Usa protector solar al aire libre.',cat:'🟢 PREVENCIÓN',color:'#F57F17',priority:25});
+        if(main==='snow') tips.push({title:'❄️ NEVANDO — '+city,desc:'Conduce solo si es necesario. Abrígate en capas.',cat:'🟠 PRECAUCIÓN',color:'#0277BD',priority:83});
+        if(main==='mist'||main==='fog') tips.push({title:'🌫️ NIEBLA — '+city,desc:'Usa luces bajas. Reduce velocidad.',cat:'🟡 PRECAUCIÓN',color:'#546E7A',priority:70});
+        if(wind>15) tips.push({title:'💨 VIENTO EXTREMO: '+wind.toFixed(0)+' m/s — '+city,desc:'Asegura objetos. Evita zonas con árboles grandes.',cat:'🔴 ALTO',color:'#E64A19',priority:88});
+        else if(wind>10) tips.push({title:'💨 VIENTO FUERTE: '+wind.toFixed(0)+' m/s — '+city,desc:desc2+'. Asegura toldos y objetos exteriores.',cat:'🟠 PRECAUCIÓN',color:'#FF6F00',priority:60});
+        if(temp>38) tips.push({title:'🔥 CALOR EXTREMO: '+Math.round(temp)+'°C',desc:'Hidrátate cada 20 min. Evita salir al mediodía.',cat:'🔴 EMERGENCIA',color:'#B71C1C',priority:90});
+        else if(temp>30) tips.push({title:'☀️ MUCHO CALOR: '+Math.round(temp)+'°C',desc:'Bebe agua. Busca sombra.',cat:'🟡 PRECAUCIÓN',color:'#FF6F00',priority:65});
+        if(temp<-5) tips.push({title:'🥶 CONGELANTE: '+Math.round(temp)+'°C',desc:'Riesgo de hipotermia. No salgas sin necesidad.',cat:'🔴 EMERGENCIA',color:'#0D47A1',priority:89});
+        else if(temp<3) tips.push({title:'❄️ BAJO 3°C: '+Math.round(temp)+'°C — '+city,desc:desc2+' con '+Math.round(temp)+'°C. Abrígate. Protege plantas.',cat:'🟠 PRECAUCIÓN',color:'#1565C0',priority:70});
+        else if(temp<10) tips.push({title:'🌬️ DÍA FRÍO: '+Math.round(temp)+'°C — '+city,desc:desc2+' con '+Math.round(temp)+'°C y '+hum+'% humedad'+(wind>8?' · Viento '+wind.toFixed(0)+' m/s':'')+'. Lleva chaqueta.',cat:'🟢 PREVENCIÓN',color:'#0288D1',priority:35});
+        if((main==='clouds')&&temp>5&&temp<=15) tips.push({title:'☁️ NUBLADO Y FRESCO: '+Math.round(temp)+'°C — '+city,desc:desc2+'. Lleva chaqueta o polar.',cat:'🟢 PREVENCIÓN',color:'#0288D1',priority:30});
+        if(main==='clear'&&temp>10&&temp<=25) tips.push({title:'☀️ DÍA DESPEJADO: '+Math.round(temp)+'°C — '+city,desc:'Usa protector solar al aire libre.',cat:'🟢 PREVENCIÓN',color:'#F57F17',priority:25});
     }
-    if (lastForecastData&&lastForecastData.list) {
-        var fc=lastForecastData.list, storm=false, rain=false, cold=false;
-        var curMain=lastWeatherData?lastWeatherData.weather[0].main.toLowerCase():'';
-        for(var i=0;i<Math.min(fc.length,8);i++){var m=fc[i].weather[0].main.toLowerCase();if(m==='thunderstorm')storm=true;if(m==='rain'||m==='drizzle')rain=true;if(fc[i].main.temp<1)cold=true;}
-        if(storm&&curMain!=='thunderstorm') tips.push({title:'⛈️ Tormenta próximas horas',desc:'Asegura objetos. Ten linterna a mano.',cat:'🟠 PRECAUCIÓN',color:'#E64A19',priority:72});
-        if(rain&&['rain','drizzle'].indexOf(curMain)<0) tips.push({title:'🌧️ Lluvias próximas horas',desc:'Lleva paraguas. Revisa canaletas.',cat:'🟡 PREVENCIÓN',color:'#1976D2',priority:45});
-        if(cold&&lastWeatherData&&lastWeatherData.main.temp>3) tips.push({title:'🌡️ Descenso de temperatura',desc:'Se esperan temperaturas bajo 0°C. Protege plantas y mascotas.',cat:'🟡 PREVENCIÓN',color:'#0288D1',priority:40});
-    }
-    if(tips.length<2) {
+    if(tips.length<2){
         tips.push({title:'🎒 Mochila de emergencia',desc:'Agua, linterna, radio a pilas, documentos y medicamentos.',cat:'🟢 PREVENCIÓN',color:'#795548',priority:10});
         tips.push({title:'📱 Emergencias Chile',desc:'Bomberos 132 · Ambulancia 131 · Carabineros 133 · SENAPRED 1470',cat:'🟢 PREVENCIÓN',color:'#607D8B',priority:5});
     }
@@ -783,7 +660,7 @@ function refreshSmartTips() {
     var h=document.createElement('div'); h.style.cssText='padding:8px 12px;font-size:11px;color:#999;text-align:right;';
     h.textContent='🔄 '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+(currentLocation.name?' — '+currentLocation.name:'');
     list.appendChild(h);
-    tips.forEach(function(tip) {
+    tips.forEach(function(tip){
         var card=document.createElement('div'); card.className='tip-card'; card.style.borderLeft='4px solid '+tip.color;
         if(tip.priority>=85){card.style.background=tip.color+'12';card.style.border='1px solid '+tip.color+'40';card.style.borderLeft='4px solid '+tip.color;}
         card.innerHTML='<span class="tip-category" style="color:'+tip.color+';background:'+tip.color+'18">'+tip.cat+'</span><div class="tip-title">'+tip.title+'</div><div class="tip-desc">'+tip.desc+'</div>';
@@ -794,28 +671,17 @@ function refreshSmartTips() {
 // ========== MAP ==========
 function initMap() {
     var lat=currentLocation.lat||-37.8, lon=currentLocation.lon||-73.4;
-    // Load Leaflet lazily only when map tab is opened
-    if (typeof L === 'undefined') {
-        var css = document.createElement('link');
-        css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(css);
-        var script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = function() { buildMap(lat, lon); };
-        document.head.appendChild(script);
-        return;
-    }
-    buildMap(lat, lon);
-}
-function buildMap(lat, lon) {
     leafletMap=L.map('map').setView([lat,lon],7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(leafletMap);
-    if(currentLocation.lat) { userMarker=L.marker([currentLocation.lat,currentLocation.lon],{icon:createUserIcon()}).addTo(leafletMap).bindPopup('<b>📍 '+currentLocation.name+'</b>').openPopup(); }
-    fetch(CONFIG.USGS_URL).then(function(r){return r.json();}).then(function(data){
+    if(currentLocation.lat){
+        userMarker=L.marker([currentLocation.lat,currentLocation.lon],{icon:createUserIcon()}).addTo(leafletMap).bindPopup('<b>📍 '+currentLocation.name+'</b>').openPopup();
+    }
+    fetch(CONFIG.USGS_GLOBAL).then(function(r){return r.json();}).then(function(data){
         data.features.forEach(function(f){
             var c=f.geometry.coordinates, mag=f.properties.mag, place=f.properties.place;
             var color=mag>=7?'#B71C1C':mag>=5?'#E64A19':mag>=4?'#FF9800':'#FFC107';
-            L.circleMarker([c[1],c[0]],{radius:Math.max(mag*2.5,5),color:color,fillColor:color,fillOpacity:0.7,weight:1}).addTo(leafletMap).bindPopup('<b>🌍 M'+mag.toFixed(1)+'</b><br>'+place+'<br><small>Prof: '+c[2].toFixed(0)+' km</small>');
+            L.circleMarker([c[1],c[0]],{radius:Math.max(mag*2.5,5),color:color,fillColor:color,fillOpacity:0.7,weight:1})
+                .addTo(leafletMap).bindPopup('<b>🌍 M'+mag.toFixed(1)+'</b><br>'+place+'<br><small>Prof: '+c[2].toFixed(0)+' km</small>');
         });
     }).catch(function(){});
     mapInitialized=true;

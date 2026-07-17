@@ -30,8 +30,11 @@ document.addEventListener('DOMContentLoaded', function() {
     initLocation();
     setInterval(loadAlerts, CONFIG.ALERTS_INTERVAL);
     setInterval(function() { if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon); }, CONFIG.WEATHER_INTERVAL);
-    setInterval(loadExternalSourcesData, 300000);
-    loadExternalSourcesData();
+    // Delay external sources 4s so main alerts load first
+    setTimeout(function() {
+        loadExternalSourcesData();
+        setInterval(loadExternalSourcesData, 300000);
+    }, 4000);
 });
 
 // ========== CLOSE ALL POPUPS ==========
@@ -463,8 +466,11 @@ function loadAlerts() {
     var url = CONFIG.USGS_URL;
     if (currentLocation.lat && currentLocation.lon) url += '&latitude='+currentLocation.lat+'&longitude='+currentLocation.lon+'&maxradiuskm=3000';
 
-    fetch(url)
-        .then(function(r) { return r.json(); })
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
+    var fetchOpts = ctrl ? { signal: ctrl.signal } : {};
+    fetch(url, fetchOpts)
+        .then(function(r) { if (timer) clearTimeout(timer); return r.json(); })
         .then(function(data) {
             loading.style.display = 'none';
             lastEarthquakes = data.features || [];
@@ -516,7 +522,14 @@ function loadAlerts() {
             if (dataReady.weather) refreshSmartTips();
         })
         .catch(function(e) {
-            loading.style.display = 'none'; error.style.display = 'block'; error.textContent = '⚠️ '+e.message;
+            loading.style.display = 'none';
+            if (e.name === 'AbortError') {
+                error.style.display = 'block';
+                error.textContent = '⚠️ Tiempo de espera agotado. Verifica tu conexión.';
+            } else {
+                error.style.display = 'block';
+                error.textContent = '⚠️ ' + e.message;
+            }
         });
 }
 

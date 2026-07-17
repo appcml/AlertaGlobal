@@ -52,6 +52,9 @@
                 <button class="location-btn" id="btnMyLocation">📍 <span id="currentLocationName">Detectando...</span></button>
                 <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
                 <button class="location-btn fav-btn" id="btnStarAlert" title="Guardar en favoritos">☆</button>
+
+                <!-- Radio selector: muestra radio actual y abre popup -->
+                <button class="location-btn" id="btnRadius" title="Radio de alertas">📏 <span id="radiusLabel">500 km</span></button>
             </div>
             <div class="loading" id="alertsLoading"><div class="spinner"></div><p>Cargando alertas...</p></div>
             <div class="alert-list" id="alertList"></div>
@@ -149,6 +152,27 @@
             </div>
             <div class="search-results" id="searchResults"></div>
             <button class="popup-close" id="closeSearch">✕</button>
+        </div>
+    </div>
+
+    <!-- POPUP: RADIO (selector) -->
+    <div class="popup-overlay" id="radiusPopup" style="display:none">
+        <div class="popup">
+            <h3>📏 Radio de alertas</h3>
+            <div style="padding:8px 0;">
+                <label for="radiusSelect">Selecciona radio:</label>
+                <select id="radiusSelect" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;">
+                    <option value="50">50 km</option>
+                    <option value="200">200 km</option>
+                    <option value="500">500 km</option>
+                    <option value="1000">1000 km</option>
+                    <option value="0">Global (sin filtro)</option>
+                </select>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+                <button id="saveRadiusBtn" class="btn-small" style="background:var(--accent);color:#000;padding:8px 12px;border-radius:8px;border:none;cursor:pointer">Guardar</button>
+                <button class="popup-close" id="closeRadius" style="background:none;border:none;color:var(--text-muted);cursor:pointer">Cancelar</button>
+            </div>
         </div>
     </div>
 
@@ -250,5 +274,36 @@
     <script src="js/sources.js"></script>
     <script src="js/locations.js"></script>
     <script src="js/app.js"></script>
+
+    <!-- Small initializer for the radius popup UI (safe if app.js already wires it too) -->
+    <script>
+        // sync UI label & popup with stored value
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                var lbl = document.getElementById('radiusLabel');
+                var sel = document.getElementById('radiusSelect');
+                var popup = document.getElementById('radiusPopup');
+                if (lbl) lbl.textContent = (localStorage.getItem('ag_radius_km') === '0') ? 'Global' : (localStorage.getItem('ag_radius_km') || '500') + ' km';
+                if (sel) sel.value = String(localStorage.getItem('ag_radius_km') || '500');
+                var btn = document.getElementById('btnRadius');
+                if (btn) btn.addEventListener('click', function() { if (popup) popup.style.display='flex'; });
+
+                var closeBtn = document.getElementById('closeRadius');
+                if (closeBtn) closeBtn.addEventListener('click', function(){ if (popup) popup.style.display='none'; });
+
+                var saveBtn = document.getElementById('saveRadiusBtn');
+                if (saveBtn) saveBtn.addEventListener('click', function(){
+                    var v = document.getElementById('radiusSelect').value;
+                    try { localStorage.setItem('ag_radius_km', String(v)); } catch(e){}
+                    if (lbl) lbl.textContent = (v==='0') ? 'Global' : v + ' km';
+                    if (popup) popup.style.display='none';
+                    // trigger reload of alerts using the app's API if available
+                    if (typeof setUserRadiusKm === 'function') setUserRadiusKm(parseInt(v,10));
+                    if (typeof loadAlerts === 'function') { try{ loadAlerts(); } catch(e){} }
+                    if (typeof showToast === 'function') showToast('📏 Radio actualizado: '+ (v==='0'?'Global':v+' km'));
+                });
+            } catch(e){}
+        });
+    </script>
 </body>
 </html>

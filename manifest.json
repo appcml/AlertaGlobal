@@ -1,1 +1,16 @@
-{"name":"Alerta Global","short_name":"AlertaGlobal","description":"Alertas de desastres naturales y clima en tiempo real","start_url":"./","display":"standalone","background_color":"#F5F5F5","theme_color":"#6200EE","orientation":"portrait","icons":[{"src":"img/icon.svg","sizes":"any","type":"image/svg+xml"}]}
+{
+    "name": "Alerta Global",
+    "short_name": "AlertaGlobal",
+    "description": "Alertas de desastres naturales y clima en tiempo real",
+    "start_url": "/AlertaGlobal/",
+    "display": "standalone",
+    "background_color": "#000000",
+    "theme_color": "#000000",
+    "icons": [
+        {
+            "src": "img/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ]
+}

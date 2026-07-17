@@ -37,37 +37,37 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    // If we have a saved location, use it instantly
+    // PASO 1: cargar alertas globales INMEDIATAMENTE — sin esperar nada
+    loadAlerts();
+
+    // PASO 2: ubicación guardada → instantáneo desde localStorage
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
-        loadAlerts();
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
         return;
     }
 
-    // Request GPS — use cached position (maximumAge) for speed
-    // enableHighAccuracy:false = WiFi/cell tower, sub-second response
+    // PASO 3: pedir GPS en paralelo — no bloquea la carga de alertas
     updateLocationDisplay('Detectando...');
     if (!navigator.geolocation) {
         updateLocationDisplay('Global');
-        loadAlerts();
         return;
     }
 
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            // Set coords immediately and load data — don't wait for city name
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(1)+', '+lon.toFixed(1), country: '' };
             updateLocationDisplay(currentLocation.name);
+            // Recargar alertas ahora filtradas por ubicación
             loadAlerts();
             loadWeather(lat, lon);
             renderSavedLocations();
-            // Get city name in background after data is loading
+            // Nombre de ciudad en background — no bloquea nada
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
                 currentLocation.name = geo.city || currentLocation.name;
                 currentLocation.country = geo.country || '';
@@ -77,11 +77,10 @@ function initLocation() {
             }).catch(function() {});
         },
         function() {
-            // Permission denied — load global alerts
             updateLocationDisplay('Global');
-            loadAlerts();
+            // Ya tenemos alertas globales cargadas — no hacer nada más
         },
-        { enableHighAccuracy: false, timeout: 4000, maximumAge: 600000 }
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 600000 }
     );
 }
 
@@ -564,4 +563,4 @@ function initMap() {
     }).catch(function(){});
     mapInitialized=true;
     setTimeout(function(){leafletMap.invalidateSize();},300);
-}
+}v

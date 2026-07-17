@@ -14,6 +14,7 @@ var currentLocation = { lat: null, lon: null, name: '', country: '' };
 var leafletMap = null, mapInitialized = false, userMarker = null;
 var lastWeatherData = null, lastForecastData = null, lastEarthquakes = [];
 var seenAlertIds = {}, notifPermission = false;
+var externalAlerts = [];
 var searchTimer = null;
 var dataReady = { weather: false, earthquakes: false };
 
@@ -29,6 +30,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initLocation();
     setInterval(loadAlerts, CONFIG.ALERTS_INTERVAL);
     setInterval(function() { if (currentLocation.lat) loadWeather(currentLocation.lat, currentLocation.lon); }, CONFIG.WEATHER_INTERVAL);
+    setInterval(loadExternalSources, 300000); // every 5 min
+    loadExternalSources();
 });
 
 // ========== CLOSE ALL POPUPS ==========
@@ -380,6 +383,59 @@ function calcRisk(mag) {
     return {label:'🟢 BAJO',color:'#2E7D32'};
 }
 
+// ========== EXTERNAL SOURCES (GDACS, NHC, NASA, EMSC) ==========
+function loadExternalSources() {
+    Promise.all([
+        fetchGDACS(),
+        fetchNHC(),
+        fetchNASANeo()
+    ]).then(function(results) {
+        externalAlerts = [];
+        results.forEach(function(arr) { externalAlerts = externalAlerts.concat(arr); });
+        // Sort by time desc
+        externalAlerts.sort(function(a,b) { return (b.time||0)-(a.time||0); });
+        // Notify critical ones
+        externalAlerts.forEach(function(a) {
+            var id = 'ext_' + a.title.substring(0,20);
+            if (!seenAlertIds[id] && ['HURACÁN','CICLÓN TROPICAL'].indexOf(a.type)>=0) {
+                seenAlertIds[id] = true;
+                sendNotification(a.icon+' '+a.type, a.title, 'critical');
+            }
+            seenAlertIds[id] = true;
+        });
+        // Re-render alerts tab if active
+        var activeTab = document.querySelector('.tab.active');
+        if (activeTab && activeTab.dataset.tab === 'alertas') {
+            renderExternalAlerts();
+        }
+    }).catch(function(){});
+}
+
+function renderExternalAlerts() {
+    var list = document.getElementById('alertList');
+    if (!list) return;
+    // Remove old external cards
+    list.querySelectorAll('.ext-alert-card').forEach(function(c) { c.remove(); });
+    // Add new ones
+    externalAlerts.forEach(function(a) {
+        var card = document.createElement('div');
+        card.className = 'alert-card ext-alert-card';
+        card.style.borderLeftColor = a.color;
+        var shareText = a.icon+' '+a.type+'\n'+a.title+'\n'+a.description+'\n\n🌍 Alerta Global — appcml.github.io/AlertaGlobal/';
+        card.innerHTML = '<div class="alert-header">'
+            +'<span class="alert-type" style="background:'+a.color+'">'+a.icon+' '+a.type+'</span>'
+            +'</div>'
+            +'<div class="alert-title">'+a.title+'</div>'
+            +(a.description?'<div class="alert-location" style="margin-top:6px">'+a.description+'</div>':'')
+            +'<div class="alert-footer"><span>📡 '+a.source+'</span>'
+            +(a.link?'<a href="'+a.link+'" target="_blank" style="color:#6200EE;font-size:11px;text-decoration:none">Ver más →</a>':'')
+            +'</div>'
+            +'<button class="alert-share-btn" onclick="openShare(''+shareText.replace(/'/g,"\'").replace(/\n/g,'\\n')+'')">'
+            +'📤 Compartir</button>';
+        list.appendChild(card);
+    });
+}
+
 // ========== ALERTS ==========
 function loadAlerts() {
     var loading = document.getElementById('alertsLoading');
@@ -438,6 +494,8 @@ function loadAlerts() {
 
             // Add weather alerts below earthquakes
             if (lastWeatherData) addWeatherAlertCards(list);
+            // Add external alerts (GDACS, NHC, NASA)
+            if (externalAlerts.length) renderExternalAlerts();
             if (dataReady.weather) refreshSmartTips();
         })
         .catch(function(e) {

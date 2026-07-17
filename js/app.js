@@ -121,12 +121,17 @@ function triggerEmergencyAlert(mag, place, depth, alertLevel) {
     }
 }
 
+function closeEmergencyModal() {
+    var m = document.getElementById('em_modal');
+    if (m) m.remove();
+}
+
 function showEmergencyModal(title, place, mag, depth, level) {
-    var old = document.getElementById('emergencyModal');
+    var old = document.getElementById('em_modal');
     if (old) old.remove();
     var colors = { 'ALERTA_ROJA':'#B71C1C', 'ALERTA_TSUNAMI':'#880E4F' };
     var modal = document.createElement('div');
-    modal.id = 'emergencyModal';
+    modal.id = 'em_modal';
     modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
     modal.innerHTML = '<div style="background:'+(colors[level]||'#B71C1C')+';border-radius:16px;padding:24px;max-width:380px;width:100%;color:#fff;text-align:center;">'
         + '<div style="font-size:48px;margin-bottom:12px">'+(level==='ALERTA_TSUNAMI'?'🌊':'🚨')+'</div>'
@@ -139,7 +144,7 @@ function showEmergencyModal(title, place, mag, depth, level) {
         + (level==='ALERTA_TSUNAMI'
             ? '<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:14px;text-align:left">🌊 EVACÚA INMEDIATAMENTE hacia zonas altas.<br>📍 Aléjate de la costa y ríos.<br>🚫 No regreses hasta autorización oficial.</div>'
             : '<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-bottom:16px;font-size:14px;text-align:left">⚠️ Mantén la calma.<br>🪟 Aléjate de ventanas.<br>🚪 No uses ascensores.<br>🔥 Revisa posibles fugas de gas.</div>')
-        + '<button onclick="document.getElementById('emergencyModal').remove()" style="background:#fff;color:'+(colors[level]||'#B71C1C')+';border:none;border-radius:10px;padding:12px 24px;font-size:16px;font-weight:800;cursor:pointer;width:100%">ENTENDIDO</button>'
+        + '<button onclick="closeEmergencyModal()" style="background:#fff;color:'+(colors[level]||'#B71C1C')+';border:none;border-radius:10px;padding:12px 24px;font-size:16px;font-weight:800;cursor:pointer;width:100%">ENTENDIDO</button>'
         + '</div>';
     document.body.appendChild(modal);
     // Auto-cerrar en 30 segundos
@@ -185,14 +190,14 @@ function initLocation() {
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
-        return; // ← termina aquí, NO pide GPS
+        return;
     }
 
-    // Caso 2: sin ubicación guardada → pedir GPS una sola vez
+    // Caso 2: sin ubicación → cargar alertas globales YA, GPS en paralelo
+    loadAlerts(); // alertas globales inmediatas
     updateLocationDisplay('Detectando...');
     if (!navigator.geolocation) {
         updateLocationDisplay('🌍 Global');
-        loadAlerts();
         return;
     }
 
@@ -201,7 +206,7 @@ function initLocation() {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            loadAlerts();          // ahora sí filtra por zona del usuario
+            loadAlerts(); // recargar filtrado por zona          // ahora sí filtra por zona del usuario
             loadWeather(lat, lon);
             // Nombre ciudad en background
             // Get city name in background — NO loadAlerts here

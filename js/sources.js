@@ -1,39 +1,53 @@
 // ============================================
-// js/sources.js — Fuentes oficiales globales v3
-// Combina gobiernos + redes científicas
+// js/sources.js — Fuentes oficiales globales v4
+// CORS fix + USGS Chile direct + fallbacks
 // ============================================
 
-// Multiple CORS proxies with fallback to avoid rate limits
+// CORS proxies — rotación con fallback real
 var CORS_PROXIES = [
-    'https://corsproxy.io/?',
     'https://api.allorigins.win/get?url=',
-    'https://api.codetabs.com/v1/proxy?quest='
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://corsproxy.io/?'
 ];
 var proxyIndex = 0;
+var proxyFails = {};
 
 function fetchCors(url, timeout) {
-    timeout = timeout || 7000;
-    // Try current proxy
-    var proxy = CORS_PROXIES[proxyIndex % CORS_PROXIES.length];
-    var fullUrl = proxy + encodeURIComponent(url);
-    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, timeout) : null;
-    return fetch(fullUrl, ctrl ? { signal: ctrl.signal } : {})
-        .then(function(r) { if (timer) clearTimeout(timer); return r.json(); })
-        .then(function(d) {
-            // Handle different proxy response formats
-            if (typeof d === 'string') return d;
-            return d.contents || d.body || d.data || '';
-        })
-        .catch(function(e) {
-            if (timer) clearTimeout(timer);
-            // Try next proxy on failure
-            proxyIndex++;
-            if (proxyIndex < CORS_PROXIES.length * 2) {
-                return fetchCors(url, timeout);
-            }
-            return '';
-        });
+    timeout = timeout || 8000;
+    var maxTries = CORS_PROXIES.length;
+
+    function tryProxy(attempt) {
+        if (attempt >= maxTries) return Promise.resolve('');
+        var idx = (proxyIndex + attempt) % CORS_PROXIES.length;
+        var proxy = CORS_PROXIES[idx];
+        var fullUrl = proxy + encodeURIComponent(url);
+        var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, timeout) : null;
+
+        return fetch(fullUrl, ctrl ? { signal: ctrl.signal } : {})
+            .then(function(r) {
+                if (timer) clearTimeout(timer);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function(text) {
+                // allorigins returns JSON wrapper
+                if (proxy.indexOf('allorigins') > -1) {
+                    try {
+                        var j = JSON.parse(text);
+                        return j.contents || j.body || text;
+                    } catch(e) { return text; }
+                }
+                // codetabs returns raw
+                return text;
+            })
+            .catch(function(e) {
+                if (timer) clearTimeout(timer);
+                proxyFails[idx] = (proxyFails[idx]||0) + 1;
+                return tryProxy(attempt + 1);
+            });
+    }
+    return tryProxy(0);
 }
 
 function parseRSS(xmlText) {
@@ -63,254 +77,196 @@ function makeAlert(source, type, icon, title, description, color, link, pubDate,
 }
 
 // =============================================
-// FUENTES GUBERNAMENTALES POR PAÍS/REGIÓN
+// 🌍 USGS — SISMOS CHILE DIRECTO (sin CORS proxy)
+// USGS API soporta CORS nativo
 // =============================================
+function fetchUSGSChile() {
+    // Chile region: lat -18 to -56, lon -75 to -66
+    var now = new Date();
+    var start = new Date(now.getTime() - 172800000).toISOString(); // últimas 48h
+    var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=100'
+        + '&minlatitude=-56&maxlatitude=-17&minlongitude=-76&maxlongitude=-65'
+        + '&starttime=' + start + '&minmagnitude=2.0';
 
-// 🇨🇱 CHILE — SENAPRED + CSN + SERNAGEOMIN
-function fetchChile() {
-    return Promise.all([
-        // SENAPRED (ex-ONEMI) — alertas nacionales
-        fetchCors('https://www.senapred.cl/rss/alertas.xml').then(function(xml) {
-            return parseRSS(xml).map(function(i) {
-                return makeAlert('SENAPRED · Chile', detectType(i.title+i.description), detectIcon(i.title), i.title, i.description, '#CC0000', i.link, i.pubDate, 90);
-            });
-        }).catch(function() { return []; }),
-        // SERNAGEOMIN — volcanes Chile
-        fetchCors('https://rnvv.sernageomin.cl/rnvv/TI_WLS_volcanes_los_lagos_sur.php').then(function(xml) {
-            return parseRSS(xml).map(function(i) {
-                return makeAlert('SERNAGEOMIN · Chile', 'VOLCÁN', '🌋', i.title, i.description, '#E65100', i.link, i.pubDate, 85);
-            });
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0].concat(r[1]); });
-}
-
-// 🇺🇸 ESTADOS UNIDOS — NOAA NWS + FEMA
-function fetchUSA() {
-    return Promise.all([
-        // NOAA NWS — alertas meteorológicas nacionales
-        fetchCors('https://alerts.weather.gov/cap/us.php?x=1').then(function(xml) {
-            var items = parseRSS(xml).slice(0, 10);
-            return items.filter(function(i) {
-                return /tornado|hurricane|tsunami|flood|extreme|warning|emergency/i.test(i.title);
-            }).map(function(i) {
-                var p = /tornado|hurricane/i.test(i.title) ? 92 : /flood/i.test(i.title) ? 80 : 65;
-                return makeAlert('NOAA NWS · USA', detectType(i.title), detectIcon(i.title), i.title, i.description, '#003087', i.link, i.pubDate, p);
-            });
-        }).catch(function() { return []; }),
-        // NHC — Huracanes Atlántico (en español)
-        fetchCors('https://www.nhc.noaa.gov/index-at-sp.xml').then(function(xml) {
-            return parseRSS(xml).slice(0,5).filter(function(i) { return i.title.length > 3; }).map(function(i) {
-                var isMajor = /hurricane|huracán/i.test(i.title);
-                return makeAlert('NHC NOAA · Atlántico', isMajor?'HURACÁN':'TORMENTA TROPICAL', '🌀', i.title, i.description, isMajor?'#B71C1C':'#7B1FA2', i.link, i.pubDate, isMajor?95:80);
-            });
-        }).catch(function() { return []; }),
-        // NHC — Huracanes Pacífico E. (en español)
-        fetchCors('https://www.nhc.noaa.gov/index-ep-sp.xml').then(function(xml) {
-            return parseRSS(xml).slice(0,5).filter(function(i) { return i.title.length > 3; }).map(function(i) {
-                return makeAlert('NHC NOAA · Pacífico', 'TORMENTA TROPICAL', '🌀', i.title, i.description, '#7B1FA2', i.link, i.pubDate, 80);
-            });
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0].concat(r[1]).concat(r[2]); });
-}
-
-// 🇲🇽 MÉXICO — SMN + CENAPRED
-function fetchMexico() {
-    return Promise.all([
-        fetchCors('https://smn.conagua.gob.mx/rss/avisos.xml').then(function(xml) {
-            return parseRSS(xml).slice(0,8).map(function(i) {
-                return makeAlert('SMN · México', detectType(i.title), detectIcon(i.title), i.title, i.description, '#006847', i.link, i.pubDate, 75);
-            });
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0]; });
-}
-
-// 🌊 TSUNAMI — PTWC NOAA (Pacífico) + IOC UNESCO
-function fetchTsunami() {
-    return Promise.all([
-        // PTWC — alertas de tsunami Pacífico
-        fetchCors('https://www.tsunami.gov/events/PAAQ/2022/feed.atom').then(function(xml) {
-            return parseRSS(xml).slice(0,5).map(function(i) {
-                var isCritical = /warning|evacuate|alerta/i.test(i.title+i.description);
-                return makeAlert('PTWC · NOAA', 'TSUNAMI', '🌊', i.title, i.description, isCritical?'#880E4F':'#1565C0', i.link, i.pubDate, isCritical?99:75);
-            });
-        }).catch(function() { return []; }),
-        // NHC storm wallets Pac. Este (Elida y otros activos)
-        fetchCors('https://www.nhc.noaa.gov/nhc_ep1.xml').then(function(xml) {
-            return parseRSS(xml).slice(0,3).filter(function(i){ return i.title.length>3; }).map(function(i) {
-                return makeAlert('NHC · Pacífico E.', 'TORMENTA TROPICAL', '🌀', i.title, i.description, '#7B1FA2', i.link, i.pubDate, 85);
-            });
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0].concat(r[1]); });
-}
-
-// 🇯🇵 JAPÓN — JMA
-function fetchJapan() {
-    return fetchCors('https://www.jma.go.jp/bosai/feed/sample.json').then(function(text) {
-        try {
-            var data = JSON.parse(text);
-            if (!Array.isArray(data)) return [];
-            return data.slice(0,5).map(function(item) {
-                return makeAlert('JMA · Japón', detectType(item.title||''), detectIcon(item.title||''), item.title||'', item.description||'', '#BC002D', item.url||'', item.time||'', 80);
-            });
-        } catch(e) { return []; }
-    }).catch(function() { return []; });
-}
-
-// 🇪🇺 EUROPA — EFAS + Copernicus EFFIS (incendios)
-function fetchEurope() {
-    return Promise.all([
-        // GDACS — sistema ONU global
-        fetchCors('https://www.gdacs.org/xml/rss.xml').then(function(xml) {
-            return parseRSS(xml).slice(0,15).map(function(item) {
-                var t=item.title, d=item.description;
-                var type=detectType(t+d), icon=detectIcon(t+d);
-                var color='#FF9800', priority=60;
-                if(/tsunami/i.test(t+d))         { color='#880E4F'; priority=99; }
-                else if(/cyclone|hurricane/i.test(t+d)) { color='#7B1FA2'; priority=90; }
-                else if(/earthquake/i.test(t+d)) { color='#B71C1C'; priority=80; }
-                else if(/volcano/i.test(t+d))    { color='#E65100'; priority=85; }
-                else if(/flood/i.test(t+d))      { color='#1565C0'; priority=75; }
-                else if(/wildfire|fire/i.test(t+d)) { color='#D84315'; priority=80; }
-                if (!t || t.length<3) return null;
-                return makeAlert('GDACS · ONU', type, icon, t, d, color, item.link, item.pubDate, priority);
-            }).filter(Boolean);
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0]; });
-}
-
-// ☄️ NASA — Objetos cercanos y clima espacial
-function fetchSpace() {
-    return Promise.all([
-        // NASA NEO — asteroides
-        fetchCors('https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=today&sort=dist&limit=3', 8000)
-            .then(function(text) {
-                try { return JSON.parse(text); } catch(e) { return {}; }
-            })
-            .then(function(r) { return r; })
-            .then(function(data) {
-                if (!data || !data.data || !data.fields) return [];
-                var fi=data.fields, di=fi.indexOf('des'), distI=fi.indexOf('dist'), dateI=fi.indexOf('cd'), vI=fi.indexOf('v_rel');
-                return data.data.slice(0,3).map(function(obj) {
-                    var distKm = Math.round(parseFloat(obj[distI])*149597870.7);
-                    var isMoon = distKm < 384400;
-                    return makeAlert('NASA CNEOS', 'OBJETO CERCANO', '☄️',
-                        'Asteroide '+obj[di]+' — '+distKm.toLocaleString()+' km',
-                        'Aproximación: '+obj[dateI]+' · '+distKm.toLocaleString()+' km · '+parseFloat(obj[vI]).toFixed(1)+' km/s'+(isMoon?' (< distancia lunar)':''),
-                        isMoon?'#E65100':'#37474F', 'https://cneos.jpl.nasa.gov/ca/', '', isMoon?70:20);
-                });
-            }).catch(function() { return []; }),
-        // NOAA Space Weather
-        fetchCors('https://services.swpc.noaa.gov/products/alerts.json').then(function(text) {
-            try {
-                var data = JSON.parse(text);
-                if (!Array.isArray(data)) return [];
-                return data.slice(0,5).filter(function(d) {
-                    return /warning|watch|kp/i.test(d.message||'');
-                }).map(function(d) {
-                    var msg = (d.message||'').substring(0,200);
-                    var isKp = /kp [5-9]/i.test(msg);
-                    return makeAlert('NOAA SWC · Clima Espacial', 'TORMENTA SOLAR', '🌞',
-                        'Alerta clima espacial — ' + (isKp?'Tormenta geomagnética':'Actividad solar'),
-                        msg, isKp?'#6A1B9A':'#37474F',
-                        'https://www.swpc.noaa.gov/', d.issue_time||'', isKp?75:40);
-                });
-            } catch(e) { return []; }
-        }).catch(function() { return []; })
-    ]).then(function(r) { return r[0].concat(r[1]); });
-}
-
-// =============================================
-// DETECCIÓN AUTOMÁTICA DE TIPO E ÍCONO
-// =============================================
-function detectType(text) {
-    text = (text||'').toLowerCase();
-    if(/tsunami/i.test(text))                          return 'TSUNAMI';
-    if(/tornado/i.test(text))                          return 'TORNADO';
-    if(/hurricane|huracán|ciclón|typhoon|tifón/i.test(text)) return 'CICLÓN TROPICAL';
-    if(/tropical storm|tormenta tropical/i.test(text)) return 'TORMENTA TROPICAL';
-    if(/earthquake|terremoto|sismo/i.test(text))       return 'SISMO';
-    if(/volcano|volcán|eruption/i.test(text))          return 'VOLCÁN';
-    if(/wildfire|incendio|fire/i.test(text))           return 'INCENDIO';
-    if(/flood|inundac/i.test(text))                    return 'INUNDACIÓN';
-    if(/landslide|deslizamiento|aluvión/i.test(text))  return 'DESLIZAMIENTO';
-    if(/snow|nieve|blizzard/i.test(text))              return 'NEVADA';
-    if(/drought|sequía/i.test(text))                   return 'SEQUÍA';
-    if(/solar|geomagnetic|kp/i.test(text))             return 'TORMENTA SOLAR';
-    if(/asteroid|asteroide|meteor/i.test(text))        return 'OBJETO CERCANO';
-    if(/chemical|químico|nuclear|radiolog/i.test(text)) return 'EMERGENCIA TECNOLÓGICA';
-    if(/heat|calor|wave/i.test(text))                  return 'OLA DE CALOR';
-    if(/cold|frío|freeze/i.test(text))                 return 'OLA DE FRÍO';
-    return 'ALERTA';
-}
-
-function detectIcon(text) {
-    var type = detectType(text);
-    var icons = {
-        'TSUNAMI':'🌊','TORNADO':'🌪️','CICLÓN TROPICAL':'🌀','TORMENTA TROPICAL':'🌀',
-        'SISMO':'🌍','VOLCÁN':'🌋','INCENDIO':'🔥','INUNDACIÓN':'🌊',
-        'DESLIZAMIENTO':'🏔️','NEVADA':'❄️','SEQUÍA':'🏜️',
-        'TORMENTA SOLAR':'🌞','OBJETO CERCANO':'☄️',
-        'EMERGENCIA TECNOLÓGICA':'☣️','OLA DE CALOR':'🌡️','OLA DE FRÍO':'🥶','ALERTA':'⚠️'
-    };
-    return icons[type] || '⚠️';
-}
-
-
-// 🇨🇱 CSN Chile — sismos locales desde M1.5 (más sensible que USGS)
-function fetchCSN() {
-    // CSN provides RSS feed with latest earthquakes
-    return fetchCors('https://www.sismologia.cl/rss/ultimos_sismos.xml', 8000)
-        .then(function(xml) {
-            if (!xml || xml.length < 50) return [];
-            var items = parseRSS(xml);
-            return items.slice(0, 20).map(function(item) {
-                // CSN format: "2026-07-17 10:45:04 | 90 km al E de Socaire | Prof: 198 km | Mag: 3.8"
-                var title = item.title || '';
-                var mag = 0;
-                var magMatch = title.match(/[Mm]ag[nitud]*[:\s]+([0-9.]+)/);
-                if (!magMatch) magMatch = title.match(/([0-9.]+)\s*ML/);
-                if (magMatch) mag = parseFloat(magMatch[1]);
-                
-                var risk = mag >= 6 ? calcRisk(mag) : { label: mag >= 4 ? '🟡 MEDIO' : '🟢 BAJO', color: mag >= 4 ? '#F57F17' : '#2E7D32' };
-                
+    return fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.features || !data.features.length) return [];
+            return data.features.map(function(f) {
+                var mag = f.properties.mag;
+                var place = f.properties.place || '';
+                var depth = f.geometry.coordinates[2];
+                var time = f.properties.time;
+                var color = mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' : mag >= 4 ? '#FFC107' : '#0A84FF';
+                var priority = mag >= 7 ? 99 : mag >= 6 ? 90 : mag >= 5 ? 80 : mag >= 4 ? 70 : 50;
                 return makeAlert(
-                    'CSN · Chile',
-                    'SISMO',
-                    '🌍',
-                    title,
-                    item.description || '',
-                    mag >= 6 ? '#B71C1C' : mag >= 4 ? '#E65100' : '#1565C0',
-                    item.link || 'https://www.sismologia.cl',
-                    item.pubDate,
-                    mag >= 6 ? 90 : mag >= 4 ? 70 : 40
+                    'USGS · Chile', 'SISMO', '🌍',
+                    'M' + mag.toFixed(1) + ' — ' + place,
+                    'Prof: ' + depth.toFixed(0) + ' km · ' + new Date(time).toLocaleString('es-CL', {hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}),
+                    color, 'https://earthquake.usgs.gov/earthquakes/eventpage/' + f.id,
+                    new Date(time).toISOString(), priority
                 );
-            }).filter(function(a) { return a.title.length > 3; });
+            });
+        })
+        .catch(function(e) { console.log('USGS Chile fetch error:', e.message); return []; });
+}
+
+// USGS Global M4.5+ (también sin CORS, API directa)
+function fetchUSGSGlobal() {
+    return fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.features) return [];
+            return data.features.slice(0, 20).map(function(f) {
+                var mag = f.properties.mag, place = f.properties.place || '';
+                var depth = f.geometry.coordinates[2], time = f.properties.time;
+                var color = mag >= 7 ? '#FF3B30' : mag >= 5 ? '#FF9500' : '#FFC107';
+                return makeAlert('USGS · Global', 'SISMO', '🌍',
+                    'M' + mag.toFixed(1) + ' — ' + place,
+                    'Prof: ' + depth.toFixed(0) + ' km',
+                    color, '', new Date(time).toISOString(),
+                    mag >= 7 ? 95 : mag >= 5 ? 75 : 55
+                );
+            });
         })
         .catch(function() { return []; });
 }
 
-function calcRisk(mag) {
-    if (mag >= 8) return { label: '⚫ EXTREMO', color: '#212121' };
-    if (mag >= 7) return { label: '🔴 CRÍTICO', color: '#B71C1C' };
-    if (mag >= 5) return { label: '🟠 ALTO', color: '#E64A19' };
-    if (mag >= 4) return { label: '🟡 MEDIO', color: '#F57F17' };
-    return { label: '🟢 BAJO', color: '#2E7D32' };
+// 🇨🇱 CSN Chile — sismos locales (via CORS proxy)
+function fetchCSN() {
+    return fetchCors('https://www.sismologia.cl/rss/ultimos_sismos.xml', 10000)
+        .then(function(xml) {
+            if (!xml || xml.length < 50) return [];
+            var items = parseRSS(xml);
+            return items.slice(0, 25).map(function(item) {
+                var title = item.title || '';
+                var mag = 0;
+                var magMatch = title.match(/[Mm]ag[nitud]*[:\s]+([0-9.]+)/);
+                if (!magMatch) magMatch = title.match(/([0-9.]+)\s*ML/i);
+                if (!magMatch) magMatch = title.match(/(\d+\.\d+)/);
+                if (magMatch) mag = parseFloat(magMatch[1]);
+                return makeAlert('CSN · Chile', 'SISMO', '🌍', title, item.description || '',
+                    mag >= 6 ? '#FF3B30' : mag >= 4 ? '#FF9500' : '#0A84FF',
+                    item.link || 'https://www.sismologia.cl', item.pubDate,
+                    mag >= 6 ? 90 : mag >= 4 ? 70 : 40
+                );
+            }).filter(function(a) { return a.title.length > 3; });
+        })
+        .catch(function(e) { console.log('CSN error:', e); return []; });
+}
+
+// 🇺🇸 NHC Huracanes
+function fetchNHC() {
+    return Promise.all([
+        fetchCors('https://www.nhc.noaa.gov/index-at-sp.xml').then(function(xml) {
+            return parseRSS(xml).slice(0,5).filter(function(i) { return i.title.length > 3; }).map(function(i) {
+                var isMajor = /hurricane|huracán/i.test(i.title);
+                return makeAlert('NHC NOAA', isMajor?'HURACÁN':'TORMENTA', '🌀', i.title, i.description, isMajor?'#FF3B30':'#7B1FA2', i.link, i.pubDate, isMajor?95:80);
+            });
+        }).catch(function() { return []; }),
+        fetchCors('https://www.nhc.noaa.gov/index-ep-sp.xml').then(function(xml) {
+            return parseRSS(xml).slice(0,5).filter(function(i) { return i.title.length > 3; }).map(function(i) {
+                return makeAlert('NHC · Pacífico', 'TORMENTA', '🌀', i.title, i.description, '#7B1FA2', i.link, i.pubDate, 80);
+            });
+        }).catch(function() { return []; })
+    ]).then(function(r) { return r[0].concat(r[1]); });
+}
+
+// 🌍 GDACS ONU
+function fetchGDACS() {
+    return fetchCors('https://www.gdacs.org/xml/rss.xml').then(function(xml) {
+        return parseRSS(xml).slice(0,15).map(function(item) {
+            var t=item.title, d=item.description;
+            var type=detectType(t+d), icon=detectIcon(t+d);
+            var color='#FF9800', priority=60;
+            if(/tsunami/i.test(t+d))         { color='#FF2D55'; priority=99; }
+            else if(/cyclone|hurricane/i.test(t+d)) { color='#7B1FA2'; priority=90; }
+            else if(/earthquake/i.test(t+d)) { color='#FF3B30'; priority=80; }
+            else if(/volcano/i.test(t+d))    { color='#FF6D00'; priority=85; }
+            else if(/flood/i.test(t+d))      { color='#0A84FF'; priority=75; }
+            else if(/wildfire|fire/i.test(t+d)) { color='#D84315'; priority=80; }
+            if (!t || t.length<3) return null;
+            return makeAlert('GDACS · ONU', type, icon, t, d, color, item.link, item.pubDate, priority);
+        }).filter(Boolean);
+    }).catch(function() { return []; });
+}
+
+// ☄️ NASA — Asteroides (API directa, sin CORS proxy)
+function fetchNASA() {
+    return fetch('https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=now&sort=dist&limit=3')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.data || !data.fields) return [];
+            var fi=data.fields, di=fi.indexOf('des'), distI=fi.indexOf('dist'), dateI=fi.indexOf('cd'), vI=fi.indexOf('v_rel');
+            return data.data.slice(0,3).map(function(obj) {
+                var distKm = Math.round(parseFloat(obj[distI])*149597870.7);
+                var isMoon = distKm < 384400;
+                return makeAlert('NASA CNEOS', 'OBJETO CERCANO', '☄️',
+                    'Asteroide '+obj[di]+' — '+distKm.toLocaleString()+' km',
+                    'Aprox: '+obj[dateI]+' · '+parseFloat(obj[vI]).toFixed(1)+' km/s'+(isMoon?' (< Luna)':''),
+                    isMoon?'#FF6D00':'#636366', 'https://cneos.jpl.nasa.gov/ca/', '', isMoon?70:20);
+            });
+        }).catch(function() { return []; });
+}
+
+// NOAA Space Weather (API directa)
+function fetchSpaceWeather() {
+    return fetch('https://services.swpc.noaa.gov/products/alerts.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!Array.isArray(data)) return [];
+            return data.slice(0,5).filter(function(d) {
+                return /warning|watch|kp/i.test(d.message||'');
+            }).map(function(d) {
+                var msg = (d.message||'').substring(0,200);
+                var isKp = /kp [5-9]/i.test(msg);
+                return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
+                    isKp?'Tormenta geomagnética':'Actividad solar',
+                    msg, isKp?'#7B1FA2':'#636366',
+                    'https://www.swpc.noaa.gov/', d.issue_time||'', isKp?75:40);
+            });
+        }).catch(function() { return []; });
 }
 
 // =============================================
-// MASTER FETCH — todas las fuentes en paralelo
+// DETECCIÓN DE TIPO E ÍCONO
+// =============================================
+function detectType(text) {
+    text = (text||'').toLowerCase();
+    if(/tsunami/i.test(text)) return 'TSUNAMI';
+    if(/tornado/i.test(text)) return 'TORNADO';
+    if(/hurricane|huracán|ciclón|typhoon/i.test(text)) return 'CICLÓN';
+    if(/tropical storm|tormenta tropical/i.test(text)) return 'TORMENTA';
+    if(/earthquake|terremoto|sismo/i.test(text)) return 'SISMO';
+    if(/volcano|volcán|eruption/i.test(text)) return 'VOLCÁN';
+    if(/wildfire|incendio|fire/i.test(text)) return 'INCENDIO';
+    if(/flood|inundac/i.test(text)) return 'INUNDACIÓN';
+    if(/snow|nieve|blizzard/i.test(text)) return 'NEVADA';
+    if(/solar|geomagnetic/i.test(text)) return 'TORMENTA SOLAR';
+    if(/asteroid|asteroide|meteor/i.test(text)) return 'ASTEROIDE';
+    return 'ALERTA';
+}
+function detectIcon(text) {
+    var icons = {'TSUNAMI':'🌊','TORNADO':'🌪️','CICLÓN':'🌀','TORMENTA':'🌀','SISMO':'🌍','VOLCÁN':'🌋','INCENDIO':'🔥','INUNDACIÓN':'🌊','NEVADA':'❄️','TORMENTA SOLAR':'🌞','ASTEROIDE':'☄️','ALERTA':'⚠️'};
+    return icons[detectType(text)] || '⚠️';
+}
+
+// =============================================
+// MASTER FETCH — Prioridad: APIs directas primero
 // =============================================
 function loadExternalSources(callback) {
-    // Sequential loading to avoid rate limits - most important first
     Promise.all([
-        fetchEurope(),   // GDACS ONU — más confiable
-        fetchUSA(),      // NHC huracanes
-        fetchTsunami(),  // alertas tsunami
-        fetchCSN()       // CSN Chile — sismos locales M1.5+
+        fetchUSGSChile(),      // DIRECTO — sin CORS
+        fetchUSGSGlobal(),     // DIRECTO — sin CORS
+        fetchCSN(),            // CORS proxy — puede fallar
+        fetchGDACS(),          // CORS proxy
+        fetchNHC(),            // CORS proxy
+        fetchNASA(),           // DIRECTO
+        fetchSpaceWeather()    // DIRECTO
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });
-        // Deduplicar por título similar
+        // Deduplicar
         var seen = {};
         all = all.filter(function(a) {
             var key = a.title.substring(0,35).toLowerCase().replace(/\s+/g,'');
@@ -318,7 +274,6 @@ function loadExternalSources(callback) {
             seen[key] = true;
             return true;
         });
-        // Ordenar por prioridad descendente, luego por tiempo
         all.sort(function(a, b) {
             if (b.priority !== a.priority) return b.priority - a.priority;
             return (b.time||0) - (a.time||0);

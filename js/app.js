@@ -151,36 +151,56 @@ function initLocation() {
     }
 
     // maximumAge:300000 = usa posición cacheada de hasta 5 min → instantáneo
-    navigator.geolocation.getCurrentPosition(
-        function(pos) {
-            var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            // Usar coordenadas inmediatamente, sin esperar nombre de ciudad
-            currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
-            updateLocationDisplay(currentLocation.name);
-            loadAlerts();
-            loadWeather(lat, lon);
-            renderSavedLocations();
-            updateStarButtons();
-            // Nombre ciudad en background — no bloquea nada
-            LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-                if (geo && geo.city && geo.city.length > 1) {
-                    currentLocation.name = geo.city;
-                    currentLocation.country = geo.country || '';
-                }
-                // Guardar ubicación real, no Santiago genérico
-                LocationManager.setCurrent(currentLocation);
+    // Try HIGH accuracy first (real GPS/WiFi positioning)
+    // Falls back to low accuracy if fails (cell tower / IP)
+    function tryGPS(highAccuracy) {
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                var lat = pos.coords.latitude;
+                var lon = pos.coords.longitude;
+                var accuracy = pos.coords.accuracy; // meters
+
+                currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
                 updateLocationDisplay(currentLocation.name);
+                loadAlerts();
+                loadWeather(lat, lon);
+                renderSavedLocations();
                 updateStarButtons();
-            }).catch(function() {});
-        },
-        function() {
-            // GPS denegado — cargar alertas globales
-            updateLocationDisplay('Global');
-            loadAlerts();
-            renderSavedLocations();
-        },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
-    );
+
+                // Get city name in background
+                LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                    if (geo && geo.city && geo.city.length > 1) {
+                        currentLocation.name = geo.city;
+                        currentLocation.country = geo.country || '';
+                    }
+                    LocationManager.setCurrent(currentLocation);
+                    updateLocationDisplay(currentLocation.name);
+                    updateStarButtons();
+                    // Show accuracy warning only if very imprecise (IP-based)
+                    if (accuracy > 10000) {
+                        showLocationAccuracyBanner(currentLocation.name);
+                    }
+                }).catch(function() {});
+            },
+            function(err) {
+                if (highAccuracy) {
+                    // High accuracy failed — try low accuracy as fallback
+                    tryGPS(false);
+                } else {
+                    // Both failed — load global alerts
+                    updateLocationDisplay('Global');
+                    loadAlerts();
+                    renderSavedLocations();
+                }
+            },
+            {
+                enableHighAccuracy: highAccuracy,
+                timeout: highAccuracy ? 8000 : 5000,
+                maximumAge: highAccuracy ? 60000 : 300000
+            }
+        );
+    }
+    tryGPS(true); // start with high accuracy (GPS/WiFi)
 }
 
 function updateLocationDisplay(name) {
@@ -279,7 +299,7 @@ function setupLocationButtons() {
                 updateLocationDisplay(currentLocation.name);
             }).catch(function(){});
         }, function() { showToast('⚠️ No se pudo obtener ubicación'); },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 });
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     });
 
     document.getElementById('btnSearchLocation').addEventListener('click', openSearch);
@@ -435,6 +455,21 @@ function buildShareText(type, data) {
     if (type==='earthquake') return (data.mag>=7?'🚨':'⚠️')+' SISMO M'+data.mag.toFixed(1)+'\n📍 '+data.place+'\n⬇️ Prof: '+data.depth+' km\n'+(data.dist?'📏 '+data.dist+' km de '+(currentLocation.name||'tu zona')+'\n':'')+'🕐 '+data.time+app;
     if (type==='weather') return '🌤️ CLIMA — '+data.city+'\n🌡️ '+data.temp+'°C\n☁️ '+data.desc+'\n💧 '+data.hum+'%  💨 '+data.wind+' m/s'+app;
     return app;
+}
+
+
+// Show banner when GPS accuracy is low (PC/IP-based location)
+function showLocationAccuracyBanner(detectedCity) {
+    var old = document.getElementById('locAccBanner');
+    if (old) return; // already showing
+    var b = document.createElement('div');
+    b.id = 'locAccBanner';
+    b.style.cssText = 'background:#E8F5E9;border-left:4px solid #4CAF50;padding:10px 14px;margin:6px 10px;border-radius:10px;font-size:13px;display:flex;align-items:center;gap:10px;';
+    b.innerHTML = '<div style="flex:1">📍 Detectado: <strong>'+detectedCity+'</strong><br><span style="color:#666;font-size:12px">¿No es tu ubicación real? Búscala manualmente.</span></div>'
+        + '<button onclick="openSearch();document.getElementById('locAccBanner').remove()" style="background:#4CAF50;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Cambiar</button>'
+        + '<button onclick="document.getElementById('locAccBanner').remove()" style="background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:0 4px">✕</button>';
+    var alertList = document.getElementById('alertList');
+    if (alertList) alertList.insertBefore(b, alertList.firstChild);
 }
 
 // ========== ALERTS (TIEMPO REAL) ==========

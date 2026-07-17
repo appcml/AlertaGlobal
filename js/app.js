@@ -86,9 +86,10 @@ function setupTabs() {
 
 // ========== GEOLOCATION ==========
 function initLocation() {
-    // Show global alerts immediately
+    // 1. Load global alerts IMMEDIATELY — no waiting for anything
     loadAlerts();
 
+    // 2. Check saved location (instant, from localStorage)
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
@@ -96,24 +97,37 @@ function initLocation() {
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
-        return;
+        return; // done — no geolocation needed
     }
 
+    // 3. Try geolocation in background AFTER alerts are already showing
+    // Use maximumAge to get cached position instantly if available
     if (navigator.geolocation) {
+        // First try: get cached position immediately (maximumAge = any age)
         navigator.geolocation.getCurrentPosition(
             function(pos) {
-                LocationManager.reverseGeocode(pos.coords.latitude, pos.coords.longitude).then(function(geo) {
-                    currentLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude, name: geo.city, country: geo.country };
+                var lat = pos.coords.latitude, lon = pos.coords.longitude;
+                // Use coords immediately without waiting for reverse geocode
+                currentLocation = { lat: lat, lon: lon, name: 'Tu ubicación', country: '' };
+                loadWeather(lat, lon);
+                loadAlerts(); // reload filtered by location
+                // Get city name in background (non-blocking)
+                LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+                    currentLocation.name = geo.city || 'Tu ubicación';
+                    currentLocation.country = geo.country || '';
                     LocationManager.setCurrent(currentLocation);
                     updateLocationDisplay(currentLocation.name);
-                    loadWeather(currentLocation.lat, currentLocation.lon);
-                    loadAlerts();
                     renderSavedLocations();
                     updateStarButtons();
+                }).catch(function() {
+                    updateLocationDisplay('Tu ubicación');
                 });
             },
-            function() { updateLocationDisplay('Global'); },
-            { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+            function() {
+                // Geolocation denied or failed — already showing global alerts, that's fine
+                updateLocationDisplay('Global');
+            },
+            { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
         );
     }
 }

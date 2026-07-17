@@ -262,7 +262,7 @@ function requestLocation() {
             });
         },
         function() { showToast('Permiso de ubicación denegado'); },
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 120000 }
     );
 }
 
@@ -524,17 +524,8 @@ function loadAlerts() {
     var error = document.getElementById('alertsError');
     loading.style.display='flex'; list.innerHTML=''; error.style.display='none';
 
-    // Filtered by user location when available
-    var url;
-    if (currentLocation.lat && currentLocation.lon) {
-        // Within 2000km of user — relevant regional alerts
-        url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=30&minmagnitude=3.5&orderby=time'
-            + '&latitude=' + currentLocation.lat
-            + '&longitude=' + currentLocation.lon
-            + '&maxradiuskm=2000';
-    } else {
-        url = CONFIG.USGS_URL; // global feed fallback
-    }
+    // Fast static feed — filter client-side
+    var url = CONFIG.USGS_URL;
 
     var ctrl = typeof AbortController!=='undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
@@ -564,6 +555,14 @@ function loadAlerts() {
                     }
                 } else seenAlertIds[f.id] = true;
             });
+
+            // Filter by distance client-side (faster than API filtering)
+            if (currentLocation.lat && currentLocation.lon) {
+                lastEarthquakes = lastEarthquakes.filter(function(f) {
+                    var c = f.geometry.coordinates;
+                    return calcDistance(currentLocation.lat, currentLocation.lon, c[1], c[0]) <= 3000;
+                });
+            }
 
             if (!lastEarthquakes.length) {
                 list.innerHTML='<div class="loading"><p>No hay alertas recientes</p></div>';

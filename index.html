@@ -11,6 +11,8 @@
     <title>Alerta Global</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
+    <!-- LEAFLET CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -25,16 +27,17 @@
     <header class="toolbar">
         <div class="toolbar-title">🌍 Alerta Global</div>
         <div class="toolbar-actions">
-            <button class="toolbar-btn" id="btnFavorites" title="Ubicaciones favoritas">⭐</button>
+            <button class="toolbar-btn" id="btnFavorites" title="Favoritos">⭐</button>
+            <button class="toolbar-btn" id="btnTheme" title="Tema">🎨</button>
             <button class="toolbar-btn" id="btnLang" title="Idioma">🌐</button>
             <button class="toolbar-btn" id="btnRefresh" title="Actualizar">🔄</button>
         </div>
     </header>
 
-    <!-- TABS — 5 tabs: Mapa, Alertas, Reportar, Kit SOS, Ajustes/Tips -->
+    <!-- TABS -->
     <nav class="tabs">
-        <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
         <button class="tab active" data-tab="alertas">🚨 <span data-i18n="tab_alerts">Alertas</span></button>
+        <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
         <button class="tab" data-tab="clima">🌤️ <span data-i18n="tab_weather">Clima</span></button>
         <button class="tab" data-tab="sos">🦺 <span>Kit SOS</span></button>
         <button class="tab" data-tab="tips">💡 Tips</button>
@@ -42,11 +45,6 @@
 
     <!-- CONTENT -->
     <main class="content">
-
-        <!-- MAPA -->
-        <section class="tab-panel" id="panel-mapa">
-            <div id="map" style="height:calc(100vh - 160px);min-height:400px;"></div>
-        </section>
 
         <!-- ALERTAS -->
         <section class="tab-panel active" id="panel-alertas">
@@ -58,6 +56,11 @@
             <div class="loading" id="alertsLoading"><div class="spinner"></div><p>Cargando alertas...</p></div>
             <div class="alert-list" id="alertList"></div>
             <div class="error-msg" id="alertsError" style="display:none"></div>
+        </section>
+
+        <!-- MAPA -->
+        <section class="tab-panel" id="panel-mapa">
+            <div id="map" style="height:calc(100vh - 160px);min-height:400px;background:#111;"></div>
         </section>
 
         <!-- CLIMA -->
@@ -154,7 +157,7 @@
         <div class="popup">
             <h3>⭐ Ubicaciones favoritas</h3>
             <div id="favoritesList"></div>
-            <p id="favoritesEmpty" style="text-align:center;color:#666;padding:20px;display:none">No tienes favoritos guardados.<br>Toca ☆ en cualquier ubicación para guardarla.</p>
+            <p id="favoritesEmpty" style="text-align:center;color:#666;padding:20px;display:none">No tienes favoritos guardados.<br>Toca ☆ para guardar.</p>
             <button class="popup-close" id="closeFavorites">✕</button>
         </div>
     </div>
@@ -169,7 +172,7 @@
                 <button class="share-btn twitter" id="shareTwitter"><span class="share-icon">🐦</span> Twitter/X</button>
                 <button class="share-btn facebook" id="shareFacebook"><span class="share-icon">📘</span> Facebook</button>
                 <button class="share-btn telegram" id="shareTelegram"><span class="share-icon">✈️</span> Telegram</button>
-                <button class="share-btn copy" id="shareCopy"><span class="share-icon">📋</span> Copiar texto</button>
+                <button class="share-btn copy" id="shareCopy"><span class="share-icon">📋</span> Copiar</button>
                 <button class="share-btn native" id="shareNative" style="display:none"><span class="share-icon">📤</span> Compartir</button>
             </div>
             <button class="popup-close" id="closeShare">✕</button>
@@ -194,6 +197,40 @@
         </div>
     </div>
 
+    <!-- POPUP: TEMAS -->
+    <div class="popup-overlay" id="themePopup" style="display:none">
+        <div class="popup">
+            <h3>🎨 Tema Visual</h3>
+            <div class="theme-grid">
+                <button class="theme-option" data-theme="dark" onclick="setTheme('dark')">
+                    <span class="theme-preview dark-preview"></span>
+                    <span>🌑 Oscuro OLED</span>
+                </button>
+                <button class="theme-option" data-theme="midnight" onclick="setTheme('midnight')">
+                    <span class="theme-preview midnight-preview"></span>
+                    <span>🌌 Medianoche</span>
+                </button>
+                <button class="theme-option" data-theme="emerald" onclick="setTheme('emerald')">
+                    <span class="theme-preview emerald-preview"></span>
+                    <span>💚 Esmeralda</span>
+                </button>
+                <button class="theme-option" data-theme="volcano" onclick="setTheme('volcano')">
+                    <span class="theme-preview volcano-preview"></span>
+                    <span>🌋 Volcán</span>
+                </button>
+                <button class="theme-option" data-theme="ocean" onclick="setTheme('ocean')">
+                    <span class="theme-preview ocean-preview"></span>
+                    <span>🌊 Océano</span>
+                </button>
+                <button class="theme-option" data-theme="light" onclick="setTheme('light')">
+                    <span class="theme-preview light-preview"></span>
+                    <span>☀️ Claro</span>
+                </button>
+            </div>
+            <button class="popup-close" id="closeTheme">✕</button>
+        </div>
+    </div>
+
     <!-- POPUP: SOS DETAIL -->
     <div class="popup-overlay" id="sosPopup" style="display:none">
         <div class="popup sos-popup">
@@ -202,11 +239,13 @@
         </div>
     </div>
 
-    <!-- EMERGENCY FULLSCREEN ALERT -->
+    <!-- EMERGENCY FULLSCREEN -->
     <div class="emergency-screen" id="emergencyScreen" style="display:none">
         <div class="emergency-content" id="emergencyContent"></div>
     </div>
 
+    <!-- LEAFLET JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="js/i18n.js"></script>
     <script src="js/sources.js"></script>
     <script src="js/locations.js"></script>

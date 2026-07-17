@@ -787,4 +787,4 @@ function buildMap(lat, lon) {
     }).catch(function(){});
     mapInitialized=true;
     setTimeout(function(){leafletMap.invalidateSize();},300);
-}v
+}

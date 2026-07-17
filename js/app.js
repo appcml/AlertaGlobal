@@ -181,40 +181,37 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    var saved = LocationManager.getCurrent();
-
-    // Mostrar ubicación guardada visualmente mientras GPS carga
-    if (saved && saved.lat && saved.name) {
-        currentLocation = saved;
-        updateLocationDisplay(saved.name);
-        loadWeather(saved.lat, saved.lon);
-        renderSavedLocations();
-        updateStarButtons();
-    }
-
-    // SIEMPRE pedir GPS fresco — es la fuente de verdad
-    // maximumAge:120000 = acepta posición de hasta 2 min (rápido en celular)
+    // SIEMPRE pedir GPS - es la fuente de verdad
+    // maximumAge:300000 = acepta posición cacheada de 5 min (instantánea en celular)
     updateLocationDisplay('Detectando...');
+
     if (!navigator.geolocation) {
+        // Sin geolocalización: usar guardado o global
+        var saved = LocationManager.getCurrent();
         if (saved && saved.lat) {
+            currentLocation = saved;
             updateLocationDisplay(saved.name);
             loadAlerts();
+            loadWeather(saved.lat, saved.lon);
         } else {
             updateLocationDisplay('🌍 Global');
             loadAlerts();
         }
+        renderSavedLocations();
+        updateStarButtons();
         return;
     }
 
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            // Usar coordenadas reales del GPS
+            // Coordenadas reales del GPS → usar inmediatamente
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            // Cargar alertas filtradas por ubicación REAL
-            loadAlerts();
-            if (!saved || !saved.lat) loadWeather(lat, lon);          // ahora sí filtra por zona del usuario
+            loadAlerts();   // filtrado por zona real
+            loadWeather(lat, lon);
+            renderSavedLocations();
+            updateStarButtons();          // ahora sí filtra por zona del usuario
             loadWeather(lat, lon);
             // Nombre ciudad en background
             // Get city name in background — NO loadAlerts here
@@ -394,9 +391,17 @@ function setupLocationButtons() {
             { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
         );
     }
-    document.getElementById('btnMyLocation').addEventListener('click', function() { geoLocate(selectLocation); });
+    document.getElementById('btnMyLocation').addEventListener('click', function() {
+        try { localStorage.removeItem('ag_current'); } catch(e) {}
+        currentLocation = { lat: null, lon: null, name: '', country: '' };
+        geoLocate(selectLocation);
+    });
     document.getElementById('btnSearchLocation').addEventListener('click', openSearch);
-    document.getElementById('btnWeatherLocation').addEventListener('click', function() { geoLocate(selectLocation); });
+    document.getElementById('btnWeatherLocation').addEventListener('click', function() {
+        try { localStorage.removeItem('ag_current'); } catch(e) {}
+        currentLocation = { lat: null, lon: null, name: '', country: '' };
+        geoLocate(selectLocation);
+    });
     document.getElementById('btnWeatherSearch').addEventListener('click', openSearch);
     document.getElementById('btnRefresh').addEventListener('click', function() {
         loadAlerts();
@@ -556,7 +561,7 @@ function loadAlerts() {
     var url;
     if (currentLocation.lat && currentLocation.lon) {
         url = 'https://earthquake.usgs.gov/fdsnws/event/1/query'
-            + '?format=geojson&limit=50&minmagnitude=2.5&orderby=time'
+            + '?format=geojson&limit=50&minmagnitude=2.0&orderby=time'
             + '&latitude=' + currentLocation.lat
             + '&longitude=' + currentLocation.lon
             + '&maxradiuskm=2000';

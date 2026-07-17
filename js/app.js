@@ -37,37 +37,35 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    // Cargar alertas globales AL INSTANTE — sin esperar GPS ni permisos
-    loadAlerts();
-
-    // Ubicación guardada → instantáneo desde localStorage
+    // PASO 1: ubicación guardada → set coords PRIMERO, luego cargar filtrado
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
+        loadAlerts();           // ya tiene coords → filtra por zona
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
         return;
     }
 
-    // Sin ubicación guardada → mostrar Global y pedir GPS silenciosamente
-    updateLocationDisplay('🌍 Global');
-
+    // PASO 2: pedir GPS — cuando llegue, set coords y cargar filtrado
+    updateLocationDisplay('Detectando...');
     if (!navigator.geolocation) {
+        updateLocationDisplay('🌍 Global');
+        loadAlerts(); // sin coords → global
         return;
     }
 
-    // Pedir posición con maximumAge alto = entrega caché instantáneo si existe
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            currentLocation = { lat: lat, lon: lon, name: '📍 '+lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
+            // Set coords ANTES de loadAlerts para que filtre por zona
+            currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            // Con ubicación real → recargar filtrado por zona + clima
-            loadAlerts();
+            loadAlerts();           // ahora sí filtra por zona del usuario
             loadWeather(lat, lon);
-            // Nombre de ciudad en background
+            // Nombre ciudad en background
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
                 currentLocation.name = geo.city || currentLocation.name;
                 currentLocation.country = geo.country || '';
@@ -77,9 +75,10 @@ function initLocation() {
                 updateStarButtons();
             }).catch(function() {});
         },
-        function(err) {
-            // Permiso denegado o error — la app igual funciona con alertas globales
+        function() {
+            // GPS denegado → cargar alertas globales
             updateLocationDisplay('🌍 Global');
+            loadAlerts();
             showLocationBanner();
         },
         { enableHighAccuracy: false, timeout: 6000, maximumAge: 600000 }

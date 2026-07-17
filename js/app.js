@@ -170,41 +170,41 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
         loadExternalSourcesData();
         setInterval(loadExternalSourcesData, 300000);
-    }, 5000);
+    }, 8000);
 });
 
 // ========== GEOLOCATION ==========
 // Order: GPS coords → load data → city name in background
 function initLocation() {
-    // PASO 1: ubicación guardada → set coords PRIMERO, luego cargar filtrado
+    // Caso 1: ubicación guardada → instantáneo, sin GPS
     var saved = LocationManager.getCurrent();
     if (saved && saved.lat) {
         currentLocation = saved;
         updateLocationDisplay(saved.name);
-        loadAlerts();           // ya tiene coords → filtra por zona
+        loadAlerts();
         loadWeather(saved.lat, saved.lon);
         renderSavedLocations();
         updateStarButtons();
-        return;
+        return; // ← termina aquí, NO pide GPS
     }
 
-    // PASO 2: pedir GPS — cuando llegue, set coords y cargar filtrado
+    // Caso 2: sin ubicación guardada → pedir GPS una sola vez
     updateLocationDisplay('Detectando...');
     if (!navigator.geolocation) {
         updateLocationDisplay('🌍 Global');
-        loadAlerts(); // sin coords → global
+        loadAlerts();
         return;
     }
 
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var lat = pos.coords.latitude, lon = pos.coords.longitude;
-            // Set coords ANTES de loadAlerts para que filtre por zona
             currentLocation = { lat: lat, lon: lon, name: lat.toFixed(2)+', '+lon.toFixed(2), country: '' };
             updateLocationDisplay(currentLocation.name);
-            loadAlerts();           // ahora sí filtra por zona del usuario
+            loadAlerts();          // ahora sí filtra por zona del usuario
             loadWeather(lat, lon);
             // Nombre ciudad en background
+            // Get city name in background — NO loadAlerts here
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
                 currentLocation.name = geo.city || currentLocation.name;
                 currentLocation.country = geo.country || '';
@@ -212,7 +212,9 @@ function initLocation() {
                 updateLocationDisplay(currentLocation.name);
                 renderSavedLocations();
                 updateStarButtons();
-            }).catch(function() {});
+            }).catch(function() {
+                updateLocationDisplay(lat.toFixed(2)+', '+lon.toFixed(2));
+            });
         },
         function() {
             // GPS denegado → cargar alertas globales
@@ -220,7 +222,7 @@ function initLocation() {
             loadAlerts();
             showLocationBanner();
         },
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 600000 }
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
     );
 }
 
@@ -247,6 +249,7 @@ function requestLocation() {
             updateLocationDisplay(currentLocation.name);
             loadAlerts();
             loadWeather(lat, lon);
+            // Get city name in background — NO loadAlerts here
             LocationManager.reverseGeocode(lat, lon).then(function(geo) {
                 currentLocation.name = geo.city || currentLocation.name;
                 currentLocation.country = geo.country || '';
@@ -254,7 +257,9 @@ function requestLocation() {
                 updateLocationDisplay(currentLocation.name);
                 renderSavedLocations();
                 updateStarButtons();
-            }).catch(function() {});
+            }).catch(function() {
+                updateLocationDisplay(lat.toFixed(2)+', '+lon.toFixed(2));
+            });
         },
         function() { showToast('Permiso de ubicación denegado'); },
         { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
@@ -389,6 +394,4 @@ function removeSavedLocation(name) { LocationManager.remove(name); renderSavedLo
 // ========== SEARCH ==========
 function setupSearch() {
     document.getElementById('closeSearch').addEventListener('click', closePopups);
-    document.getElementById('searchBtn').addEventListener('click', doSearch);
-    document.getElementById('searchPopup').addEventListener('click', function(e) { if (e.target===this) closePopups(); });
-    var input = document.getElementById
+    document.getElementById('searchBtn').addEventListener('click', doSearch)

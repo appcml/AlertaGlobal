@@ -3,16 +3,37 @@
 // Combina gobiernos + redes científicas
 // ============================================
 
-var CORS_PROXY = 'https://api.allorigins.win/get?url=';
+// Multiple CORS proxies with fallback to avoid rate limits
+var CORS_PROXIES = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/get?url=',
+    'https://api.codetabs.com/v1/proxy?quest='
+];
+var proxyIndex = 0;
 
 function fetchCors(url, timeout) {
-    timeout = timeout || 6000;
+    timeout = timeout || 7000;
+    // Try current proxy
+    var proxy = CORS_PROXIES[proxyIndex % CORS_PROXIES.length];
+    var fullUrl = proxy + encodeURIComponent(url);
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, timeout) : null;
-    return fetch(CORS_PROXY + encodeURIComponent(url), ctrl ? { signal: ctrl.signal } : {})
+    return fetch(fullUrl, ctrl ? { signal: ctrl.signal } : {})
         .then(function(r) { if (timer) clearTimeout(timer); return r.json(); })
-        .then(function(d) { return d.contents || ''; })
-        .catch(function() { return ''; });
+        .then(function(d) {
+            // Handle different proxy response formats
+            if (typeof d === 'string') return d;
+            return d.contents || d.body || d.data || '';
+        })
+        .catch(function(e) {
+            if (timer) clearTimeout(timer);
+            // Try next proxy on failure
+            proxyIndex++;
+            if (proxyIndex < CORS_PROXIES.length * 2) {
+                return fetchCors(url, timeout);
+            }
+            return '';
+        });
 }
 
 function parseRSS(xmlText) {
@@ -161,8 +182,11 @@ function fetchEurope() {
 function fetchSpace() {
     return Promise.all([
         // NASA NEO — asteroides
-        fetch('https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=today&sort=dist&limit=3')
-            .then(function(r) { return r.json(); })
+        fetchCors('https://ssd-api.jpl.nasa.gov/cad.api?dist-max=0.05&date-min=today&sort=dist&limit=3', 8000)
+            .then(function(text) {
+                try { return JSON.parse(text); } catch(e) { return {}; }
+            })
+            .then(function(r) { return r; })
             .then(function(data) {
                 if (!data || !data.data || !data.fields) return [];
                 var fi=data.fields, di=fi.indexOf('des'), distI=fi.indexOf('dist'), dateI=fi.indexOf('cd'), vI=fi.indexOf('v_rel');
@@ -235,12 +259,11 @@ function detectIcon(text) {
 // MASTER FETCH — todas las fuentes en paralelo
 // =============================================
 function loadExternalSources(callback) {
+    // Sequential loading to avoid rate limits - most important first
     Promise.all([
-        fetchEurope(),   // GDACS ONU
-        fetchUSA(),      // NOAA NWS + NHC
-        fetchTsunami(),  // PTWC + NHC wallets
-        fetchChile(),    // SENAPRED + SERNAGEOMIN
-        fetchSpace()     // NASA + NOAA Space
+        fetchEurope(),   // GDACS ONU — más confiable
+        fetchUSA(),      // NHC huracanes
+        fetchTsunami()   // alertas tsunami
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

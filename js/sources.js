@@ -570,6 +570,173 @@ var CellBroadcastHook = {
 };
 
 
+
+// ============================================================
+// 🔥 NASA FIRMS — Incendios activos por satélite en tiempo real
+// MODIS + VIIRS — cobertura global, actualización cada 3 horas
+// API gratuita sin key para acceso básico
+// ============================================================
+function fetchNASAFIRMS(lat, lon, radiusKm) {
+    // FIRMS World Fire Map — área de búsqueda basada en coords usuario
+    var dayRange = 2; // últimas 48h
+    var mapKey = 'FIRMS_MODIS_C6_1'; // MODIS Collection 6
+    
+    // Calcular bounding box
+    var degRadius = (radiusKm || 500) / 111;
+    var minLat = (lat - degRadius).toFixed(3);
+    var maxLat = (lat + degRadius).toFixed(3);
+    var minLon = (lon - degRadius).toFixed(3);
+    var maxLon = (lon + degRadius).toFixed(3);
+    
+    // NASA FIRMS CSV API — gratuita sin key para área pequeña
+    var url = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv/'
+        + 'FIRMS_MODIS_C6_1/World/' + dayRange
+        + '?bbox=' + minLon + ',' + minLat + ',' + maxLon + ',' + maxLat;
+    
+    return fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+        })
+        .then(function(csv) {
+            if (!csv || csv.length < 50) return [];
+            var lines = csv.trim().split('\n');
+            if (lines.length < 2) return [];
+            var headers = lines[0].split(',');
+            var latIdx = headers.indexOf('latitude');
+            var lonIdx = headers.indexOf('longitude');
+            var confIdx = headers.indexOf('confidence');
+            var brightIdx = headers.indexOf('bright_t31') > -1 ? 
+                headers.indexOf('bright_t31') : headers.indexOf('brightness');
+            var dateIdx = headers.indexOf('acq_date');
+            var timeIdx = headers.indexOf('acq_time');
+            
+            // Agrupar puntos cercanos en un solo evento
+            var clusters = [];
+            lines.slice(1).forEach(function(line) {
+                if (!line.trim()) return;
+                var cols = line.split(',');
+                var fLat = parseFloat(cols[latIdx]);
+                var fLon = parseFloat(cols[lonIdx]);
+                var conf = cols[confIdx] || 'n';
+                var bright = parseFloat(cols[brightIdx]) || 0;
+                var date = cols[dateIdx] || '';
+                var time = cols[timeIdx] || '';
+                if (isNaN(fLat) || isNaN(fLon)) return;
+                // Solo confianza nominal o alta
+                if (conf === 'l' || conf === '0') return;
+                // Buscar cluster cercano (dentro de 50km)
+                var merged = false;
+                for (var i = 0; i < clusters.length; i++) {
+                    if (calcDistKm(fLat, fLon, clusters[i].lat, clusters[i].lon) < 50) {
+                        clusters[i].count++;
+                        clusters[i].maxBright = Math.max(clusters[i].maxBright, bright);
+                        merged = true; break;
+                    }
+                }
+                if (!merged) clusters.push({ lat: fLat, lon: fLon, count: 1,
+                    maxBright: bright, date: date, time: time });
+            });
+            
+            return clusters.slice(0, 10).map(function(c) {
+                var dist = calcDistKm(lat, lon, c.lat, c.lon);
+                var isLarge = c.count > 10;
+                var isIntense = c.maxBright > 340;
+                var priority = isLarge && isIntense ? 85 : isLarge ? 75 : isIntense ? 70 : 60;
+                var title = isLarge ? 
+                    'Incendio forestal activo — ' + c.count + ' focos detectados' :
+                    'Foco de incendio detectado por satélite';
+                var dateStr = c.date + (c.time ? ' ' + c.time.substring(0,2)+':'+c.time.substring(2) + ' UTC' : '');
+                var a = makeAlert(
+                    'NASA FIRMS · MODIS', 'INCENDIO', '🔥',
+                    title,
+                    'Temperatura radiativa: ' + c.maxBright.toFixed(0) + 'K · ' +
+                    c.count + ' píxeles · A ' + dist + ' km · ' + dateStr,
+                    isLarge ? '#FF3B30' : '#D84315',
+                    'https://firms.modaps.eosdis.nasa.gov/map/',
+                    c.date || new Date().toISOString(),
+                    priority
+                );
+                a.lat = c.lat; a.lon = c.lon; a.distKm = dist;
+                return a;
+            });
+        })
+        .catch(function(e) {
+            console.log('NASA FIRMS error:', e.message);
+            return [];
+        });
+}
+
+// ============================================================
+// 🌋 GeoNet NZ — Sismos y volcanes Nueva Zelanda + Pacífico Sur
+// Uno de los mejores sistemas sísmicos del mundo
+// API GeoJSON con CORS nativo
+// ============================================================
+function fetchGeoNet(lat, lon, radiusKm) {
+    var url = 'https://api.geonet.org.nz/quake?MMI=3';
+    
+    return fetch(url, {
+        headers: { 'Accept': 'application/vnd.geo+json' }
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.features) return [];
+            return data.features.filter(function(f) {
+                var fLat = f.geometry.coordinates[1];
+                var fLon = f.geometry.coordinates[0];
+                return calcDistKm(lat, lon, fLat, fLon) <= (radiusKm || 500);
+            }).slice(0, 10).map(function(f) {
+                var p = f.properties || {};
+                var mag = p.magnitude || 0;
+                var depth = p.depth || 0;
+                var fLat = f.geometry.coordinates[1];
+                var fLon = f.geometry.coordinates[0];
+                var dist = calcDistKm(lat, lon, fLat, fLon);
+                var color = mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' :
+                            mag >= 4 ? '#FFC107' : '#64B5F6';
+                var priority = mag >= 6 ? 88 : mag >= 5 ? 75 : mag >= 4 ? 60 : 40;
+                var a = makeAlert(
+                    'GeoNet · Nueva Zelanda', 'SISMO', '🌍',
+                    'M' + mag.toFixed(1) + ' — ' + (p.locality || 'Nueva Zelanda'),
+                    'Prof: ' + depth.toFixed(0) + 'km · A ' + dist + ' km',
+                    color,
+                    'https://www.geonet.org.nz/earthquake/' + p.publicID,
+                    p.time || '',
+                    priority
+                );
+                a.lat = fLat; a.lon = fLon; a.distKm = dist;
+                return a;
+            });
+        })
+        .catch(function() { return []; });
+}
+
+// ============================================================
+// 🌋 Smithsonian GVP — Volcanes activos globales
+// Global Volcanism Program — actualización semanal
+// ============================================================
+function fetchSmithsonianVolcano() {
+    return fetchCors('https://volcano.si.edu/news/WeeklyVolcanicActivityReport_Feed.xml', 10000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            var items = parseRSS(xml);
+            return items.slice(0, 10).map(function(item) {
+                var t = translateAlert(item.title || '', getLang());
+                var d = translateAlert((item.description || '').replace(/<[^>]+>/g,'').substring(0,300), getLang());
+                var isEruption = /erupc|eruption|lava|explosion|ash/i.test(t + d);
+                return makeAlert(
+                    'Smithsonian GVP', 'VOLCÁN', '🌋',
+                    t || 'Actividad volcánica reportada',
+                    d,
+                    isEruption ? '#FF6D00' : '#FF9500',
+                    item.link || 'https://volcano.si.edu',
+                    item.pubDate, isEruption ? 80 : 65
+                );
+            }).filter(function(a) { return a.title && a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
 // ============================================================
 // 🎯 ESCANEO POR COORDENADAS — El núcleo de la app
 // Recibe lat/lon del usuario y consulta TODAS las fuentes
@@ -985,6 +1152,15 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             })
             .catch(function() { return []; }),
 
+        // ── NASA FIRMS — Incendios activos por satélite ──
+        fetchNASAFIRMS(lat, lon, radiusKm),
+
+        // ── GeoNet NZ — Sismos Pacífico Sur ──
+        fetchGeoNet(lat, lon, radiusKm),
+
+        // ── Smithsonian GVP — Volcanes activos globales ──
+        fetchSmithsonianVolcano(),
+
         // ── GDACS API — Eventos activos filtrados por proximidad ──
         fetch('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH'
             + '?eventlist=EQ,TC,FL,VO,WF,DR'
@@ -1192,17 +1368,18 @@ function fetchGFZ() {
 // =============================================
 function loadExternalSources(callback) {
     Promise.all([
-        fetchUSGSChile(),       // USGS Chile M1.5+ 48h
-        fetchUSGSChile24h(),    // USGS Chile M2.0+ 24h
-        fetchUSGSGlobal(),      // USGS Global M4.5+
-        fetchGFZ(),             // GFZ Potsdam — respaldo sismos
-        fetchSENAPRED(),        // SENAPRED Chile (cuando disponible)
-        fetchPTWC(),            // PTWC — Tsunamis Pacífico
-        fetchVolcanoDiscovery(),// Volcanes activos globales
-        fetchVAAC(),            // Ceniza volcánica Sudamérica
-        fetchGDACS(),           // GDACS ONU
-        fetchNHC(),             // NHC NOAA — huracanes
-        fetchSpaceWeather()     // NOAA clima espacial
+        fetchUSGSChile(),        // USGS Chile M1.5+ 48h
+        fetchUSGSChile24h(),     // USGS Chile M2.0+ 24h
+        fetchUSGSGlobal(),       // USGS Global M4.5+
+        fetchGFZ(),              // GFZ Potsdam — respaldo sismos
+        fetchSENAPRED(),         // SENAPRED Chile (cuando disponible)
+        fetchPTWC(),             // PTWC — Tsunamis Pacífico
+        fetchVolcanoDiscovery(), // Volcanes activos globales
+        fetchSmithsonianVolcano(), // Smithsonian GVP — volcanes
+        fetchVAAC(),             // Ceniza volcánica Sudamérica
+        fetchGDACS(),            // GDACS ONU
+        fetchNHC(),              // NHC NOAA — huracanes
+        fetchSpaceWeather()      // NOAA clima espacial
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

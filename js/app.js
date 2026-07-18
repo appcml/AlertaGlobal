@@ -850,6 +850,13 @@ function loadAlerts() {
     if (list) list.innerHTML = '';
     if (errEl) errEl.style.display = 'none';
 
+    if (typeof loadExternalSources !== 'function') {
+        console.error('loadExternalSources no disponible — sources.js no cargó');
+        alertsLoading = false;
+        if (loading) loading.style.display = 'none';
+        if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error cargando fuentes. Recarga la página.</p></div>';
+        return;
+    }
     loadExternalSources(function(alerts) {
         alertsLoading = false;
         externalAlerts = alerts || [];

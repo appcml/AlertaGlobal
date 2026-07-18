@@ -435,8 +435,7 @@ function loadExternalSources(callback) {
         fetchSHOA(),           // CORS proxy — tsunamis Chile
         fetchGDACS(),          // CORS proxy — alertas globales ONU
         fetchNHC(),            // CORS proxy — huracanes
-        fetchNASA(),           // DIRECTO
-        fetchSpaceWeather()    // DIRECTO
+        fetchSpaceWeather()    // DIRECTO — NASA bloqueada por CORS
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

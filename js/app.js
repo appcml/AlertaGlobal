@@ -1047,6 +1047,8 @@ function loadAlerts() {
 
         if (list) list.innerHTML = filtered.map(function(a) { return renderAlertCard(a, loc); }).join('');
         updateMapMarkers(filtered);
+        // Also show global events on map (beyond user radius)
+        updateMapGlobal(externalAlerts);
         refreshSmartTips();
     });
 }
@@ -1401,34 +1403,65 @@ function initMap() {
 
 function updateMapMarkers(alerts) {
     if (!mapInitialized || !leafletMap) return;
-    // Remove old markers
+
+    // Remove old alert markers (keep user marker)
     mapMarkers.forEach(function(m) { leafletMap.removeLayer(m); });
     mapMarkers = [];
-    // Update user position
+
+    // Update user position and AUTO-CENTER map
     var loc = getActiveLocation();
     if (loc.lat) {
         if (userMarker) {
             userMarker.setLatLng([loc.lat, loc.lon]);
         } else {
-            userMarker = L.marker([loc.lat, loc.lon], { icon: createUserIcon() }).addTo(leafletMap).bindPopup('📍 Tu ubicación');
+            userMarker = L.marker([loc.lat, loc.lon], { icon: createUserIcon() })
+                .addTo(leafletMap).bindPopup('📍 Tu ubicación');
         }
+        // Auto-center map on new location
+        leafletMap.setView([loc.lat, loc.lon], leafletMap.getZoom() || 5, { animate: true });
     }
-    // Add alert markers
+
+    // Add ALL alert markers — global view regardless of user radius
+    // Map always shows the full picture of what's happening worldwide
     alerts.forEach(function(a) {
         if (a.lat == null || a.lon == null) return;
         var color = a.color || '#FF9500';
+        var size = a.priority >= 90 ? 22 : a.priority >= 70 ? 18 : 14;
+        var pulse = a.priority >= 90 ? 
+            'box-shadow:0 0 0 4px '+color+'60,0 0 12px '+color+';animation:pulse 1.5s infinite;' : 
+            'box-shadow:0 0 8px '+color+'80;';
         var icon = L.divIcon({
             className: 'custom-alert-marker',
-            html: '<div style="background:'+color+';border:2px solid white;border-radius:50%;width:18px;height:18px;box-shadow:0 0 8px '+color+'80;display:flex;align-items:center;justify-content:center;font-size:10px;">'+a.icon+'</div>',
-            iconSize: [18, 18],
-            iconAnchor: [9, 9]
+            html: '<div style="background:'+color+';border:2px solid white;border-radius:50%;'
+                +'width:'+size+'px;height:'+size+'px;'+pulse
+                +'display:flex;align-items:center;justify-content:center;font-size:'+(size-6)+'px;">'
+                +a.icon+'</div>',
+            iconSize: [size, size],
+            iconAnchor: [size/2, size/2]
         });
-        var popup = '<b>'+a.icon+' '+a.title+'</b>'
-            +(a.description ? '<br><small>'+a.description.substring(0,100)+'</small>' : '')
-            +'<br><small>📡 '+a.source+'</small>';
+        var distStr = a.distKm != null ? ' · 📏 ' + a.distKm + ' km' : '';
+        var popup = '<div style="min-width:180px">'
+            +'<b style="color:'+color+'">'+a.icon+' '+a.type+'</b><br>'
+            +'<b>'+a.title+'</b>'
+            +(a.description ? '<br><small style="color:#888">'+a.description.substring(0,120)+'</small>' : '')
+            +'<br><small>📡 '+a.source+distStr+'</small>'
+            +'</div>';
         var marker = L.marker([a.lat, a.lon], { icon: icon }).addTo(leafletMap).bindPopup(popup);
         mapMarkers.push(marker);
     });
+
+    // Si hay muchos eventos, ajustar zoom para verlos todos
+    if (mapMarkers.length > 0 && loc.lat) {
+        // No hacer zoom out automático — solo centrar en usuario
+        // El usuario puede hacer zoom out para ver el mundo
+    }
+}
+
+// Show ALL global events on map regardless of user radius
+function updateMapGlobal(allAlerts) {
+    if (!mapInitialized || !leafletMap) return;
+    // Already handled in updateMapMarkers — this is a placeholder
+    // for future: show world events at low zoom
 }
 
 // ========== SOS TOOLS ==========

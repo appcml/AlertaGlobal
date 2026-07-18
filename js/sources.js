@@ -623,6 +623,82 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                         isKp ? 72 : 35);
                 });
             })
+            .catch(function() { return []; }),
+
+        // ── NASA EONET — Eventos naturales por satélite ──
+        // Incendios, tormentas, volcanes, inundaciones detectados por NASA
+        fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=50&days=7')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.events) return [];
+                return data.events.filter(function(ev) {
+                    // Filtrar por proximidad si tenemos coords
+                    if (!ev.geometry || !ev.geometry.length) return true;
+                    var g = ev.geometry[ev.geometry.length-1];
+                    if (!g.coordinates) return true;
+                    var eLat = g.coordinates[1], eLon = g.coordinates[0];
+                    var d = calcDistKm(lat, lon, eLat, eLon);
+                    ev._dist = d;
+                    return d <= (radiusKm * 2); // 2x radio para eventos satelitales
+                }).slice(0,15).map(function(ev) {
+                    var cat = ev.categories && ev.categories[0] ? ev.categories[0].title : '';
+                    var icon = cat.match(/wildfire|fire/i) ? '🔥' :
+                               cat.match(/volcano/i) ? '🌋' :
+                               cat.match(/storm/i) ? '🌀' :
+                               cat.match(/flood/i) ? '🌊' :
+                               cat.match(/drought/i) ? '☀️' : '⚠️';
+                    var type = cat.match(/wildfire|fire/i) ? 'INCENDIO' :
+                               cat.match(/volcano/i) ? 'VOLCÁN' :
+                               cat.match(/storm/i) ? 'TORMENTA' :
+                               cat.match(/flood/i) ? 'INUNDACIÓN' : 'EVENTO';
+                    var g = ev.geometry && ev.geometry[ev.geometry.length-1];
+                    var eLat = g && g.coordinates ? g.coordinates[1] : null;
+                    var eLon = g && g.coordinates ? g.coordinates[0] : null;
+                    var dist = ev._dist || (eLat ? calcDistKm(lat, lon, eLat, eLon) : null);
+                    var a = makeAlert('NASA EONET', type, icon,
+                        ev.title || 'Evento natural detectado por satélite',
+                        cat + (dist ? ' · A ' + dist + ' km' : ''),
+                        type === 'INCENDIO' ? '#D84315' :
+                        type === 'VOLCÁN' ? '#FF6D00' : '#FF9500',
+                        ev.sources && ev.sources[0] ? ev.sources[0].url : 'https://eonet.gsfc.nasa.gov',
+                        ev.geometry && ev.geometry[0] ? ev.geometry[0].date : '',
+                        type === 'INCENDIO' ? 75 : type === 'VOLCÁN' ? 85 : 65);
+                    if (eLat) { a.lat = eLat; a.lon = eLon; a.distKm = dist; }
+                    return a;
+                });
+            })
+            .catch(function() { return []; }),
+
+        // ── ReliefWeb ONU — Desastres activos globales ──
+        fetch('https://api.reliefweb.int/v1/disasters?appname=alertaglobal&limit=10'
+            + '&filter[operator]=AND'
+            + '&filter[conditions][0][field]=status&filter[conditions][0][value]=ongoing'
+            + '&fields[include][]=name&fields[include][]=glide'
+            + '&fields[include][]=type&fields[include][]=country'
+            + '&fields[include][]=date&fields[include][]=url')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.data) return [];
+                return data.data.slice(0,8).map(function(ev) {
+                    var f = ev.fields || {};
+                    var types = f.type || [];
+                    var typeName = types[0] && types[0].name || 'DESASTRE';
+                    var country = f.country && f.country[0] ? f.country[0].name : '';
+                    var icon = /earthquake|sismo/i.test(typeName) ? '🌍' :
+                               /flood/i.test(typeName) ? '🌊' :
+                               /storm|cyclone|typhoon/i.test(typeName) ? '🌀' :
+                               /volcano/i.test(typeName) ? '🌋' :
+                               /fire/i.test(typeName) ? '🔥' : '⚠️';
+                    return makeAlert(
+                        'ReliefWeb · ONU', typeName.toUpperCase(), icon,
+                        f.name || typeName,
+                        country ? 'País: ' + country : '',
+                        '#FF9500',
+                        f.url || 'https://reliefweb.int',
+                        f.date && f.date.created || '',
+                        70);
+                });
+            })
             .catch(function() { return []; })
 
     ]).then(function(results) {

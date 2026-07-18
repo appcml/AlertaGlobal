@@ -502,61 +502,53 @@ function initLocation() {
     var el2 = document.getElementById('weatherLocationName');
     if (el2) el2.textContent = 'Detectando...';
 
-    function applyPosition(pos) {
-        var acc = pos.coords.accuracy;
-        console.log('GPS recibido:', pos.coords.latitude, pos.coords.longitude, 'precision:', acc + 'm');
-
-        // Si la precisión es peor que 20km probablemente es geoloc por IP — ignorar
-        if (acc > 20000) {
-            console.log('Precisión insuficiente (' + acc + 'm), esperando mejor señal...');
-            showToast('📡 Buscando señal GPS...');
-            return false;
-        }
-        return true;
-    }
-
-    function applyDeviceLocation(pos) {
-        deviceLocation.lat = pos.coords.latitude;
-        deviceLocation.lon = pos.coords.longitude;
-        deviceLocation.accuracy = pos.coords.accuracy;
-        showToast('📍 GPS: ' + pos.coords.latitude.toFixed(3) + ', ' + pos.coords.longitude.toFixed(3));
-        LocationManager.reverseGeocode(deviceLocation.lat, deviceLocation.lon).then(function(geo) {
-            deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2) + ', ' + deviceLocation.lon.toFixed(2));
+    function applyDeviceLocation(lat, lon, acc, label) {
+        deviceLocation.lat = lat;
+        deviceLocation.lon = lon;
+        deviceLocation.accuracy = acc;
+        console.log('Ubicación aplicada [' + label + ']:', lat, lon, acc + 'm');
+        LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+            deviceLocation.name = geo.city || (lat.toFixed(2) + ', ' + lon.toFixed(2));
             deviceLocation.country = geo.country || '';
             updateLocationUI();
             if (!focusLocation.lat) {
                 loadAlerts();
-                loadWeather(deviceLocation.lat, deviceLocation.lon);
+                loadWeather(lat, lon);
             }
         });
     }
 
-    function onSuccess(pos) {
-        if (!applyPosition(pos)) {
-            // Coordenada imprecisa — iniciar watchPosition para esperar señal real
-            startWatch();
-            return;
-        }
-        applyDeviceLocation(pos);
-        startWatch();
-    }
-
     function startWatch() {
         if (geoWatchId !== null) return;
+        // watchPosition: acepta cualquier mejora significativa de precisión
         geoWatchId = navigator.geolocation.watchPosition(function(p) {
+            var lat = p.coords.latitude;
+            var lon = p.coords.longitude;
             var acc = p.coords.accuracy;
-            // Solo aceptar si precisión <= 5km
-            if (acc > 5000) return;
-            var distChange = Math.abs(p.coords.latitude - (deviceLocation.lat || 0)) > 0.001 ||
-                             Math.abs(p.coords.longitude - (deviceLocation.lon || 0)) > 0.001;
-            var firstFix = !deviceLocation.lat;
-            if (firstFix || distChange) {
-                console.log('watchPosition fix:', p.coords.latitude, p.coords.longitude, acc + 'm');
-                applyDeviceLocation(p);
+            var prevAcc = deviceLocation.accuracy || 99999;
+            // Actualizar si: primera vez, o precisión mejoró más del 30%, o nos movimos
+            var mejoraPrecision = acc < prevAcc * 0.7;
+            var nosTuvimos = deviceLocation.lat &&
+                (Math.abs(lat - deviceLocation.lat) > 0.005 ||
+                 Math.abs(lon - deviceLocation.lon) > 0.005);
+            var primeraVez = !deviceLocation.lat;
+            if (primeraVez || mejoraPrecision || nosTuvimos) {
+                applyDeviceLocation(lat, lon, acc, 'watch ±' + Math.round(acc) + 'm');
             }
         }, function(e) {
             console.log('watchPosition error:', e.message);
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+    }
+
+    function onSuccess(pos) {
+        var lat = pos.coords.latitude;
+        var lon = pos.coords.longitude;
+        var acc = pos.coords.accuracy;
+        console.log('GPS recibido:', lat, lon, '±' + Math.round(acc) + 'm');
+        // Usar la ubicación inmediatamente, cualquier precisión es mejor que nada
+        applyDeviceLocation(lat, lon, acc, 'first ±' + Math.round(acc) + 'm');
+        // watchPosition seguirá refinando si llega mejor señal
+        startWatch();
     }
 
     function onError(err) {
@@ -564,9 +556,9 @@ function initLocation() {
         showNoGPSMessage();
     }
 
-    // Intentar con alta precisión primero
+    // Alta precisión desde el inicio — el navegador combinará WiFi + celular + GPS
     navigator.geolocation.getCurrentPosition(onSuccess, onError,
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
 }
 

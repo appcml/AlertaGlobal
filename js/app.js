@@ -831,15 +831,42 @@ function loadAlerts() {
         externalAlerts = alerts || [];
         if (loading) loading.style.display = 'none';
 
+        // Detectar si el usuario está en Chile para priorizar fuentes locales
+        var userRegion = (typeof getRegionFromLocation === 'function')
+            ? getRegionFromLocation(loc) : null;
+
         var filtered = externalAlerts.filter(function(a) {
             if (!loc.lat) return true;
             var radius = getUserRadiusKm();
             if (radius === 0) return true;
+
+            // Alertas con coordenadas → filtrar por radio
             if (a.lat != null && a.lon != null) {
                 return isWithinRadius(a.lat, a.lon, loc.lat, loc.lon, radius);
             }
-            return true; // include alerts without coords
+
+            // Alertas SENAPRED/CONAF/SHOA sin coords → mostrar si usuario está en Chile
+            if (a.source && /SENAPRED|CONAF|SHOA|CSN/i.test(a.source)) {
+                if (userRegion) return true; // usuario en Chile → mostrar todas locales
+                // Si hay texto de región, intentar match
+                if (a.region_text && loc.name) {
+                    return loc.name.toLowerCase().indexOf(a.region_text.toLowerCase()) > -1;
+                }
+            }
+
+            return true;
         });
+
+        // Ordenar: alertas locales Chile primero si el usuario está en Chile
+        if (userRegion) {
+            filtered.sort(function(a, b) {
+                var aLocal = /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(a.source) ? 1 : 0;
+                var bLocal = /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(b.source) ? 1 : 0;
+                if (bLocal !== aLocal) return bLocal - aLocal;
+                if (b.priority !== a.priority) return b.priority - a.priority;
+                return (b.time || 0) - (a.time || 0);
+            });
+        }
 
         if (!filtered.length) {
             if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()+' km')+'</small></div>';

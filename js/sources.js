@@ -1075,37 +1075,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                 return [];
             }),
 
-        // ── NOAA Clima Espacial ──
-        fetch('https://services.swpc.noaa.gov/products/alerts.json')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!Array.isArray(data)) return [];
-                var now = Date.now();
-                return data.filter(function(d) {
-                    var msg = d.message || '';
-                    if (d.issue_time && (now - new Date(d.issue_time).getTime()) > 72*3600000) return false;
-                    if (/K-index of [1-4]/.test(msg) && !/K-index of [5-9]/.test(msg)) return false;
-                    return /WARNING|WATCH|geomagnetic storm|G[2-5]|solar radiation storm/.test(msg);
-                }).slice(0,2).map(function(d) {
-                    var msg = d.message || '';
-                    var isStorm = /geomagnetic storm|G[2-5]/.test(msg);
-                    var isSolar = /solar radiation|proton/.test(msg);
-                    var clean = msg.split('\n').filter(function(l) {
-                        l = l.trim();
-                        return l.length > 10 &&
-                            !l.match(/^Space Weather/) && !l.match(/^Serial/) &&
-                            !l.match(/^Issue Time/) && !l.match(/^[A-Z]{4}[0-9]{2}/);
-                    }).join(' ').replace(/\s+/g,' ').trim().substring(0,250);
-                    if (!clean || clean.length < 15) return null;
-                    var gLevel = (msg.match(/G([2-5])/) || ['',''])[1];
-                    var title = isStorm ? ('Tormenta geomagnética' + (gLevel ? ' G'+gLevel : '')) :
-                                isSolar ? 'Tormenta de radiacion solar' : 'Alerta clima espacial';
-                    return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
-                        title, clean, isStorm ? '#7B1FA2' : '#FF9500',
-                        'https://www.swpc.noaa.gov/', d.issue_time || '', isStorm ? 78 : 60);
-                }).filter(Boolean);
-            })
-            .catch(function() { return []; }),
+        // NOAA Clima Espacial — removido (demasiado ruido técnico)
+        Promise.resolve([]),
 
 
         // ── NASA EONET — Eventos naturales por satélite ──
@@ -1379,7 +1350,7 @@ function loadExternalSources(callback) {
         fetchVAAC(),             // Ceniza volcánica Sudamérica
         fetchGDACS(),            // GDACS ONU
         fetchNHC(),              // NHC NOAA — huracanes
-        fetchSpaceWeather()      // NOAA clima espacial
+        Promise.resolve([])       // NOAA clima espacial — desactivado
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

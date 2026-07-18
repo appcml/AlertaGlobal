@@ -477,22 +477,36 @@ function selectLocation(loc) {
 
 function updateLocationUI() {
     var loc = getActiveLocation();
-    var name = loc.name || (loc.lat ? (loc.lat.toFixed(2)+', '+loc.lon.toFixed(2)) : 'Detectando...');
     var el1 = document.getElementById('currentLocationName');
     var el2 = document.getElementById('weatherLocationName');
-    if (el1) el1.textContent = name;
-    if (el2) el2.textContent = name;
-    if (focusLocation.lat) {
-        ['btnStarAlert','btnStarWeather'].forEach(function(id) {
-            var b = document.getElementById(id);
-            if (b) b.textContent = '⭐';
-        });
+    var btnMyLoc = document.getElementById('btnMyLocation');
+    var btnWeatherLoc = document.getElementById('btnWeatherLocation');
+
+    if (!loc.lat) {
+        // Sin ubicación aún → botón invita a detectar
+        if (el1) el1.textContent = 'Detectar mi ubicación';
+        if (el2) el2.textContent = 'Detectar mi ubicación';
+        if (btnMyLoc) btnMyLoc.title = 'Toca para detectar tu ubicación';
     } else {
-        ['btnStarAlert','btnStarWeather'].forEach(function(id) {
-            var b = document.getElementById(id);
-            if (b) b.textContent = '☆';
-        });
+        // Tenemos ubicación — mostrar nombre + indicador de precisión
+        var name = loc.name || (loc.lat.toFixed(3) + ', ' + loc.lon.toFixed(3));
+        var precIcon = '';
+        if (loc === deviceLocation) {
+            var acc = deviceLocation.accuracy || 99999;
+            if (acc <= 100)        precIcon = ' 🛰️';   // GPS preciso
+            else if (acc <= 2000)  precIcon = ' 📶';   // Red/WiFi
+            else if (acc <= 20000) precIcon = ' 📡';   // Torres celulares
+            else                   precIcon = ' 🌐';   // IP aproximada
+        }
+        if (el1) el1.textContent = name + (focusLocation.lat ? '' : precIcon);
+        if (el2) el2.textContent = name + (focusLocation.lat ? '' : precIcon);
     }
+
+    // Estrella
+    ['btnStarAlert','btnStarWeather'].forEach(function(id) {
+        var b = document.getElementById(id);
+        if (b) b.textContent = focusLocation.lat ? '⭐' : '☆';
+    });
 }
 
 // ========== GEOLOCATION ==========

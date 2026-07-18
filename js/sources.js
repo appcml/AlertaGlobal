@@ -183,26 +183,69 @@ function fetchNHC() {
     ]).then(function(r) { return r[0].concat(r[1]); });
 }
 
-// 🌍 GDACS ONU
+// 🌍 GDACS ONU — con extracción de coordenadas del XML nativo
 function fetchGDACS() {
     return fetchCors('https://www.gdacs.org/xml/rss.xml').then(function(xml) {
-        return parseRSS(xml).slice(0,15).map(function(item) {
-            var t=item.title, d=item.description;
-            var type=detectType(t+d), icon=detectIcon(t+d);
-            var color='#FF9800', priority=60;
-            if(/tsunami/i.test(t+d))         { color='#FF2D55'; priority=99; }
-            else if(/cyclone|hurricane/i.test(t+d)) { color='#7B1FA2'; priority=90; }
-            else if(/earthquake/i.test(t+d)) { color='#FF3B30'; priority=80; }
-            else if(/volcano/i.test(t+d))    { color='#FF6D00'; priority=85; }
-            else if(/flood/i.test(t+d))      { color='#0A84FF'; priority=75; }
-            else if(/wildfire|fire/i.test(t+d)) { color='#D84315'; priority=80; }
-            if (!t || t.length<3) return null;
-            var a = makeAlert('GDACS · ONU', type, icon, t, d, color, item.link, item.pubDate, priority);
-            // try to extract coords from description if present (heuristic)
-            var m = (item.description||'').match(/(-?\d+\.\d+)[^\d-]+(-?\d+\.\d+)/);
-            if (m) { a.lat = parseFloat(m[1]); a.lon = parseFloat(m[2]); }
-            return a;
-        }).filter(Boolean);
+        if (!xml || xml.length < 100) return [];
+        // Parsear XML completo para acceder a campos geo: y gdacs:
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(xml, 'text/xml');
+        var items = doc.querySelectorAll('item');
+        var results = [];
+        items.forEach(function(item) {
+            var t = (item.querySelector('title') || {}).textContent || '';
+            var d = (item.querySelector('description') || {}).textContent || '';
+            var link = (item.querySelector('link') || {}).textContent || '';
+            var pubDate = (item.querySelector('pubDate') || {}).textContent || '';
+            if (!t || t.length < 3) return;
+
+            // Extraer coordenadas de geo:point o georss:point o gdacs campos
+            var lat = null, lon = null;
+            var geoPoint = item.querySelector('point') ||
+                           item.getElementsByTagNameNS('*','point')[0];
+            if (geoPoint && geoPoint.textContent) {
+                var pts = geoPoint.textContent.trim().split(/\s+/);
+                if (pts.length >= 2) { lat = parseFloat(pts[0]); lon = parseFloat(pts[1]); }
+            }
+            // Fallback: buscar lat/lon en atributos o texto
+            if (!lat) {
+                var latEl = item.getElementsByTagNameNS('*','lat')[0];
+                var lonEl = item.getElementsByTagNameNS('*','long')[0] ||
+                            item.getElementsByTagNameNS('*','lon')[0];
+                if (latEl && lonEl) {
+                    lat = parseFloat(latEl.textContent);
+                    lon = parseFloat(lonEl.textContent);
+                }
+            }
+            // Fallback regex en descripción
+            if (!lat) {
+                var mLat = d.match(/lat[itude]*[:\s]+(-?\d+\.?\d*)/i);
+                var mLon = d.match(/lon[gitude]*[:\s]+(-?\d+\.?\d*)/i);
+                if (mLat && mLon) { lat = parseFloat(mLat[1]); lon = parseFloat(mLon[1]); }
+            }
+
+            var td = t + ' ' + d;
+            var type = detectType(td), icon = detectIcon(td);
+            var color = '#FF9800', priority = 60;
+            if (/tsunami/i.test(td))              { color='#FF2D55'; priority=99; }
+            else if (/cyclone|hurricane/i.test(td)) { color='#7B1FA2'; priority=90; }
+            else if (/volcano/i.test(td))         { color='#FF6D00'; priority=85; }
+            else if (/earthquake/i.test(td))      { color='#FF3B30'; priority=80; }
+            else if (/wildfire|fire/i.test(td))   { color='#D84315'; priority=80; }
+            else if (/flood/i.test(td))           { color='#0A84FF'; priority=75; }
+
+            // Nivel de alerta GDACS
+            if (/red alert/i.test(td))    priority = Math.max(priority, 90);
+            if (/orange alert/i.test(td)) priority = Math.max(priority, 75);
+
+            var a = makeAlert('GDACS · ONU', type, icon, t, d.substring(0,300),
+                color, link, pubDate, priority);
+            if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
+                a.lat = lat; a.lon = lon;
+            }
+            results.push(a);
+        });
+        return results.slice(0, 20);
     }).catch(function() { return []; });
 }
 

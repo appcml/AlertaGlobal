@@ -937,42 +937,8 @@ function fetchVolcanoDiscovery() {
         .catch(function() { return []; });
 }
 
-// ============================================================
-// ✈️ VAAC Buenos Aires — Ceniza volcánica Sudamérica
-// Vigila volcanes de Chile, Argentina, Bolivia, Perú
-// Fuente oficial para aviación — avisos de ceniza
-// ============================================================
-function fetchVAAC() {
-    return fetchCors('https://www.smn.gob.ar/vaac/VAACBA/products/', 8000)
-        .then(function(xml) {
-            if (!xml || xml.length < 50) return [];
-            // Si responde HTML con lista de archivos
-            var matches = xml.match(/VAA_\w+\.xml/g) || [];
-            if (!matches.length) return [];
-            // Fetch el más reciente
-            return fetchCors('https://www.smn.gob.ar/vaac/VAACBA/products/' + matches[matches.length-1], 8000)
-                .then(function(vaaXml) {
-                    if (!vaaXml) return [];
-                    var volcano = (vaaXml.match(/VOLCANO:\s*([^
-]+)/) || [])[1] || 'Volcán';
-                    var summit  = (vaaXml.match(/SUMMIT ELEV:\s*([^
-]+)/) || [])[1] || '';
-                    var cloud   = (vaaXml.match(/VA CLD:\s*([^
-]+)/) || [])[1] || '';
-                    if (!cloud || /NOT IDENTIF|NIL/i.test(cloud)) return [];
-                    return [makeAlert(
-                        'VAAC Buenos Aires', 'VOLCÁN', '🌋',
-                        'Ceniza volcánica: ' + volcano.trim(),
-                        'Nube de ceniza detectada. ' + (summit ? 'Cima: ' + summit.trim() + '. ' : '') + (cloud ? 'Extensión: ' + cloud.trim() : ''),
-                        '#FF6D00',
-                        'https://www.smn.gob.ar/vaac/VAACBA/products/',
-                        new Date().toISOString(), 88
-                    )];
-                })
-                .catch(function() { return []; });
-        })
-        .catch(function() { return []; });
-}
+// ✈️ VAAC Buenos Aires — stub (feed no disponible públicamente)
+function fetchVAAC() { return Promise.resolve([]); }
 
 // ============================================================
 // 🌍 GFZ Potsdam — Sismos globales M4.5+

@@ -921,7 +921,10 @@ function loadAlerts() {
                 return userInChile;
             }
 
-            // Alertas globales sin coords → incluir siempre
+            // Alertas globales sin coords (huracanes, tormentas, etc.)
+            // Si usuario está en Chile → mostrar solo si son relevantes globalmente
+            // (prioridad alta = evento importante para todos)
+            if (userInChile && a.priority < 70) return false;
             return true;
         });
 

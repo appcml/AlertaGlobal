@@ -708,14 +708,21 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                         desc,
                         color,
                         'https://www.weatherapi.com',
-                        al.effective || new Date().toISOString(),
+                        // Si la fecha efectiva es futura, usar fecha actual
+                        (function() {
+                            var eff = al.effective || al.onset || '';
+                            if (!eff) return new Date().toISOString();
+                            var effTime = new Date(eff).getTime();
+                            return effTime > Date.now() ? new Date().toISOString() : eff;
+                        })(),
                         priority
                     );
                     // Usar coordenadas de la ubicación consultada
                     if (data.location) {
                         a.lat = data.location.lat;
                         a.lon = data.location.lon;
-                        a.distKm = 0; // alerta para esta ubicación exacta
+                        // Distancia real entre usuario y ubicación de la alerta
+                        a.distKm = calcDistKm(lat, lon, data.location.lat, data.location.lon);
                     }
                     return a;
                 });
@@ -799,25 +806,36 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!Array.isArray(data)) return [];
-                return data.slice(0,5).filter(function(d) {
+                return data.filter(function(d) {
                     var msg = d.message || '';
-                    return /warning|watch|kp [5-9]|geomagnetic storm|solar radiation/i.test(msg);
-                }).map(function(d) {
+                    // Solo alertas de tormenta real K5+ o radiación solar
+                    // Ignorar K-index 1-4 (solo son informativos)
+                    if (/K-index of [1-4]/i.test(msg) && !/K-index of [5-9]/i.test(msg)) return false;
+                    return /STORM LEVEL WARNING|WATCH|kp [5-9]|geomagnetic storm.*G[2-5]|solar radiation storm/i.test(msg);
+                }).slice(0,2).map(function(d) {
                     var msg = d.message || '';
-                    var isStorm = /geomagnetic storm|kp [5-9]/i.test(msg);
-                    var isSolarFlare = /solar radiation|x-ray|proton/i.test(msg);
-                    // Extraer línea resumen del mensaje técnico
-                    var lines = msg.split('\n').filter(function(l) { return l.trim().length > 10; });
-                    var summary = lines.slice(0,3).join(' ').replace(/\s+/g,' ').trim().substring(0,200);
-                    var title = isStorm ? 'Tormenta geomagnética detectada' :
-                                isSolarFlare ? 'Llamarada solar / Radiación' :
-                                'Actividad solar elevada';
+                    var isStorm = /geomagnetic storm|G[2-5]|kp [5-9]/i.test(msg);
+                    var isSolarFlare = /solar radiation storm|proton event/i.test(msg);
+                    // Extraer solo texto útil — ignorar cabeceras técnicas
+                    var useful = msg
+                        .replace(/Space Weather Message Code:.*?\n/gi, '')
+                        .replace(/Serial Number:.*?\n/gi, '')
+                        .replace(/Issue Time:.*?\n/gi, '')
+                        .replace(/NOAA.*?Space Weather.*?\n/gi, '')
+                        .replace(/[A-Z]{4}\d{2}\s+[A-Z]{4}\s+\d+/g, '')
+                        .replace(/\n{2,}/g, ' ')
+                        .trim()
+                        .substring(0, 250);
+                    if (!useful || useful.length < 20) return null;
+                    var title = isStorm ? 'Tormenta geomagnética G' + (msg.match(/G([2-5])/)||['',''])[1] :
+                                isSolarFlare ? 'Tormenta de radiación solar' :
+                                'Alerta clima espacial activa';
                     return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
-                        title, summary,
+                        title, useful,
                         isStorm ? '#7B1FA2' : '#FF9500',
                         'https://www.swpc.noaa.gov/', d.issue_time||'',
-                        isStorm ? 72 : 50);
-                });
+                        isStorm ? 78 : 60);
+                }).filter(Boolean);
             })
             .catch(function() { return []; }),
 

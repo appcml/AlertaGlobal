@@ -506,6 +506,9 @@ function initLocation() {
         deviceLocation.lat = pos.coords.latitude;
         deviceLocation.lon = pos.coords.longitude;
         deviceLocation.accuracy = pos.coords.accuracy;
+        // Debug: mostrar coordenadas reales recibidas
+        showToast('GPS: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4));
+        console.log('GPS real:', pos.coords.latitude, pos.coords.longitude, 'precision:', pos.coords.accuracy + 'm');
         LocationManager.reverseGeocode(deviceLocation.lat, deviceLocation.lon).then(function(geo) {
             deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2)+', '+deviceLocation.lon.toFixed(2));
             deviceLocation.country = geo.country || '';
@@ -1092,8 +1095,12 @@ function toggleCheck(el, label) {
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedTheme();
-    // NO restauramos focusLocation al iniciar — siempre usamos GPS real primero.
-    // El usuario puede volver a buscar manualmente si quiere otra ciudad.
+    // Limpiar ubicacion guardada — siempre usar GPS real al abrir la app
+    try {
+        localStorage.removeItem('ag_focus');
+        localStorage.removeItem('ag_current');
+    } catch(e) {}
+    focusLocation = { lat: null, lon: null, name: '', country: '' };
     setLanguage(currentLang);
     document.addEventListener('click', function unlock() {
         var c = getAudio(); if (c && c.state === 'suspended') c.resume();

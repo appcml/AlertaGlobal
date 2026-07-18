@@ -584,18 +584,19 @@ function initLocation() {
     var el2 = document.getElementById('weatherLocationName');
     if (el2) el2.textContent = 'Detectando...';
 
-    // Mejor posición recibida hasta ahora
     var bestAccuracy = 99999;
+    var geoTimeout = null;
 
-    // Aplicar solo si es mejor que lo que ya tenemos
     function applyIfBetter(lat, lon, acc, label) {
         if (acc < bestAccuracy) {
             bestAccuracy = acc;
+            console.log('✅ [' + label + ']:', lat.toFixed(4), lon.toFixed(4), '±' + Math.round(acc) + 'm');
             applyDeviceLocation(lat, lon, acc, label);
+            if (geoTimeout) { clearTimeout(geoTimeout); geoTimeout = null; }
         }
     }
 
-    // ── CAPA 4: última conocida — solo texto visual mientras cargamos ──
+    // ── CAPA 4: Última conocida — solo texto visual ──
     var last = loadLastKnownLocation();
     if (last) {
         var elL = document.getElementById('currentLocationName');
@@ -604,45 +605,38 @@ function initLocation() {
         if (elL2) elL2.textContent = '⏳ ' + last.name + '...';
     }
 
-    // ── CAPA 3: IP geolocation — lanzar INMEDIATAMENTE en paralelo ──
+    // Si en 20s no hay señal → modo global
+    geoTimeout = setTimeout(function() {
+        if (!deviceLocation.lat) showNoGPSMessage();
+    }, 20000);
+
+    // ── CAPA 3: IP — inmediata, en paralelo, sin permisos ──
     geolocByIP(function(lat, lon, acc, label) {
         applyIfBetter(lat, lon, acc, label);
     });
 
-    // Si en 15s no detectamos nada → mostrar mensaje global
-    var geoTimeout = setTimeout(function() {
-        if (!deviceLocation.lat) {
-            showNoGPSMessage();
-        }
-    }, 15000);
-
-    // Cancelar timeout si se detecta ubicación
-    var origApply = applyDeviceLocation;
-    applyDeviceLocation = function(lat, lon, acc, label) {
-        clearTimeout(geoTimeout);
-        applyDeviceLocation = origApply;
-        origApply(lat, lon, acc, label);
-    };
-
     if (!navigator.geolocation) return;
 
-    // ── CAPA 1: Red móvil (Cell ID) + WiFi ──
-    // enableHighAccuracy:false = navegador usa Cell ID + WiFi, sin GPS
+    // ── CAPA 1: Antenas celulares (Cell ID) + WiFi ──
+    // enableHighAccuracy:false → navegador consulta:
+    //   • Torres celulares cercanas (MCC+MNC+LAC+CellID)
+    //   • Redes WiFi cercanas (BSSID del router)
+    // Responde en 1-3s, precisión 50m-2km, bajo consumo batería
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var acc = pos.coords.accuracy;
-            console.log('📶 Red/WiFi:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
-            applyIfBetter(pos.coords.latitude, pos.coords.longitude, acc, 'Red/WiFi ±' + Math.round(acc) + 'm');
+            console.log('📶 Antenas/WiFi: ±' + Math.round(acc) + 'm');
+            applyIfBetter(pos.coords.latitude, pos.coords.longitude, acc, 'Antenas/WiFi');
             startWatchPosition();
-            // ── CAPA 2: GPS en paralelo si la red fue imprecisa (>500m) ──
-            if (acc > 500) tryGPS(applyIfBetter);
+            // ── CAPA 2: GPS — si precisión de antenas es >300m ──
+            if (acc > 300) tryGPS(applyIfBetter);
         },
         function(err) {
-            console.log('Red/WiFi falló:', err.message);
-            // ── CAPA 2: GPS ──
+            console.log('Antenas/WiFi falló (code ' + err.code + ')');
+            // ── CAPA 2: GPS directo ──
             tryGPS(applyIfBetter);
         },
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
     );
 }
 

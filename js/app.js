@@ -659,37 +659,45 @@ function tryGPS(applyIfBetter) {
 }
 
 function geolocByIP(callback) {
-    // Capa 3: IP geolocation — sin permisos, sin GPS, funciona siempre
-    // Precisión ~50km (nivel ciudad/región) — útil en PC o cuando falla todo lo demás
+    // Capa IP: todas las APIs necesitan proxy CORS para funcionar desde GitHub Pages
+    // Usamos allorigins.win como proxy que ya tenemos en sources.js
+    var PROXY = 'https://api.allorigins.win/get?url=';
+
     var apis = [
-        { url: 'https://ipapi.co/json/', parse: function(d) {
-            return d.latitude ? { lat: d.latitude, lon: d.longitude, city: d.city || d.region } : null;
-        }},
-        { url: 'https://ip-api.com/json/?fields=lat,lon,city,regionName,status', parse: function(d) {
-            return (d.status === 'success' && d.lat) ? { lat: d.lat, lon: d.lon, city: d.city || d.regionName } : null;
-        }},
-        { url: 'https://freeipapi.com/api/json', parse: function(d) {
-            return d.latitude ? { lat: d.latitude, lon: d.longitude, city: d.cityName || d.regionName } : null;
-        }}
+        {
+            url: 'https://ipapi.co/json/',
+            parse: function(d) {
+                return d.latitude ? { lat: d.latitude, lon: d.longitude, city: d.city || d.region } : null;
+            }
+        },
+        {
+            url: 'https://ip-api.com/json/?fields=lat,lon,city,regionName,status',
+            parse: function(d) {
+                return (d.status === 'success' && d.lat) ? { lat: d.lat, lon: d.lon, city: d.city || d.regionName } : null;
+            }
+        },
+        {
+            url: 'https://ipwho.is/',
+            parse: function(d) {
+                return (d.success && d.latitude) ? { lat: d.latitude, lon: d.longitude, city: d.city || d.region } : null;
+            }
+        }
     ];
 
     function tryApi(i) {
-        if (i >= apis.length) {
-            if (!deviceLocation.lat) showNoGPSMessage();
-            return;
-        }
-        fetch(apis[i].url)
+        if (i >= apis.length) return;
+        var proxyUrl = PROXY + encodeURIComponent(apis[i].url);
+        fetch(proxyUrl)
             .then(function(r) { return r.json(); })
-            .then(function(d) {
+            .then(function(wrapper) {
+                // allorigins envuelve la respuesta en { contents: "..." }
+                var raw = wrapper.contents || wrapper;
+                var d = typeof raw === 'string' ? JSON.parse(raw) : raw;
                 var result = apis[i].parse(d);
-                if (result) {
-                    console.log('📡 IP geoloc [' + apis[i].url.split('/')[2] + ']:', result.city, result.lat, result.lon);
-                    if (callback) {
-                        callback(result.lat, result.lon, 50000, 'IP:' + (result.city || ''));
-                    } else {
-                        applyDeviceLocation(result.lat, result.lon, 50000, 'IP');
-                    }
-                    if (result.city) showToast('📡 Ubicación IP: ' + result.city);
+                if (result && result.lat) {
+                    console.log('📡 IP [' + apis[i].url.split('/')[2] + ']:', result.city, result.lat, result.lon);
+                    if (callback) callback(result.lat, result.lon, 50000, 'IP:' + (result.city || ''));
+                    else applyDeviceLocation(result.lat, result.lon, 50000, 'IP');
                 } else {
                     tryApi(i + 1);
                 }

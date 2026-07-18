@@ -502,49 +502,71 @@ function initLocation() {
     var el2 = document.getElementById('weatherLocationName');
     if (el2) el2.textContent = 'Detectando...';
 
-    function onSuccess(pos) {
+    function applyPosition(pos) {
+        var acc = pos.coords.accuracy;
+        console.log('GPS recibido:', pos.coords.latitude, pos.coords.longitude, 'precision:', acc + 'm');
+
+        // Si la precisión es peor que 20km probablemente es geoloc por IP — ignorar
+        if (acc > 20000) {
+            console.log('Precisión insuficiente (' + acc + 'm), esperando mejor señal...');
+            showToast('📡 Buscando señal GPS...');
+            return false;
+        }
+        return true;
+    }
+
+    function applyDeviceLocation(pos) {
         deviceLocation.lat = pos.coords.latitude;
         deviceLocation.lon = pos.coords.longitude;
         deviceLocation.accuracy = pos.coords.accuracy;
-        // Debug: mostrar coordenadas reales recibidas
-        showToast('GPS: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4));
-        console.log('GPS real:', pos.coords.latitude, pos.coords.longitude, 'precision:', pos.coords.accuracy + 'm');
+        showToast('📍 GPS: ' + pos.coords.latitude.toFixed(3) + ', ' + pos.coords.longitude.toFixed(3));
         LocationManager.reverseGeocode(deviceLocation.lat, deviceLocation.lon).then(function(geo) {
-            deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2)+', '+deviceLocation.lon.toFixed(2));
+            deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2) + ', ' + deviceLocation.lon.toFixed(2));
             deviceLocation.country = geo.country || '';
             updateLocationUI();
-            loadAlerts();
-            loadWeather(deviceLocation.lat, deviceLocation.lon);
+            if (!focusLocation.lat) {
+                loadAlerts();
+                loadWeather(deviceLocation.lat, deviceLocation.lon);
+            }
         });
-        // watch position for updates
-        if (geoWatchId === null) {
-            geoWatchId = navigator.geolocation.watchPosition(function(p) {
-                if (Math.abs(p.coords.latitude - deviceLocation.lat) > 0.01 ||
-                    Math.abs(p.coords.longitude - deviceLocation.lon) > 0.01) {
-                    deviceLocation.lat = p.coords.latitude;
-                    deviceLocation.lon = p.coords.longitude;
-                    if (!focusLocation.lat) { updateLocationUI(); loadAlerts(); }
-                }
-            }, null, { enableHighAccuracy: true, maximumAge: 30000 });
+    }
+
+    function onSuccess(pos) {
+        if (!applyPosition(pos)) {
+            // Coordenada imprecisa — iniciar watchPosition para esperar señal real
+            startWatch();
+            return;
         }
+        applyDeviceLocation(pos);
+        startWatch();
+    }
+
+    function startWatch() {
+        if (geoWatchId !== null) return;
+        geoWatchId = navigator.geolocation.watchPosition(function(p) {
+            var acc = p.coords.accuracy;
+            // Solo aceptar si precisión <= 5km
+            if (acc > 5000) return;
+            var distChange = Math.abs(p.coords.latitude - (deviceLocation.lat || 0)) > 0.001 ||
+                             Math.abs(p.coords.longitude - (deviceLocation.lon || 0)) > 0.001;
+            var firstFix = !deviceLocation.lat;
+            if (firstFix || distChange) {
+                console.log('watchPosition fix:', p.coords.latitude, p.coords.longitude, acc + 'm');
+                applyDeviceLocation(p);
+            }
+        }, function(e) {
+            console.log('watchPosition error:', e.message);
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
     }
 
     function onError(err) {
-        console.log('Geolocation error (intento 1):', err.message);
-        // Reintento sin alta precisión
-        navigator.geolocation.getCurrentPosition(
-            onSuccess,
-            function(err2) {
-                console.log('Geolocation error (intento 2):', err2.message);
-                showNoGPSMessage();
-            },
-            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-        );
+        console.log('Geolocation error:', err.message, '(code:', err.code + ')');
+        showNoGPSMessage();
     }
 
-    // Primer intento: alta precisión
+    // Intentar con alta precisión primero
     navigator.geolocation.getCurrentPosition(onSuccess, onError,
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 }
 

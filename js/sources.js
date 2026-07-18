@@ -652,16 +652,78 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                 if (!xml || xml.length < 50) return;
                 parseRSS(xml).slice(0,5).forEach(function(item) {
                     if (!item.title || item.title.length < 3) return;
+                    // Filtrar mensajes vacíos/sin alertas reales
+                    var t = item.title + ' ' + (item.description || '');
+                    if (/no avisos|no advisory|sin avisos|there are no/i.test(t)) return;
+                    if (/perspectivas|outlook|discussion|probabilidades/i.test(item.title) &&
+                        !/warning|watch|alerta|hurac|storm/i.test(item.title)) return;
                     var isMajor = /hurricane|hurac[aá]n/i.test(item.title);
+                    var isWarning = /warning|watch|alerta|advisory/i.test(item.title);
+                    if (!isMajor && !isWarning) return; // solo alertas reales
                     all.push(makeAlert(
-                        'NHC NOAA', isMajor ? 'HURACÁN' : 'TORMENTA', '🌀',
+                        'NHC NOAA', isMajor ? 'HURACÁN' : 'TORMENTA TROPICAL', '🌀',
                         item.title, (item.description||'').substring(0,200),
                         isMajor ? '#FF3B30' : '#7B1FA2',
-                        item.link, item.pubDate, isMajor ? 90 : 70));
+                        item.link, item.pubDate, isMajor ? 92 : 75));
                 });
             });
             return all;
         }).catch(function() { return []; }),
+
+
+        // ── WeatherAPI.com — Alertas meteorológicas oficiales por país ──
+        // 1,000,000 requests/mes gratis — incluye alertas de DMC, SENAPRED vía CAP
+        // Cubre lluvias intensas, vientos, tormentas, nevadas, tsunamis, etc.
+        fetch('https://api.weatherapi.com/v1/forecast.json'
+            + '?key=0abe21f18afb4a8f863183050261807'
+            + '&q=' + lat + ',' + lon
+            + '&days=1&alerts=yes&lang=es')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.alerts || !data.alerts.alert || !data.alerts.alert.length) return [];
+                return data.alerts.alert.map(function(al) {
+                    var sev = (al.severity || '').toLowerCase();
+                    var urgency = (al.urgency || '').toLowerCase();
+                    var event = al.event || 'Alerta meteorológica';
+                    var color = sev === 'extreme'  ? '#FF2D55' :
+                                sev === 'severe'   ? '#FF3B30' :
+                                sev === 'moderate' ? '#FF9500' : '#FFC107';
+                    var priority = sev === 'extreme'  ? 97 :
+                                   sev === 'severe'   ? 88 :
+                                   sev === 'moderate' ? 74 : 58;
+                    if (urgency === 'immediate') priority = Math.min(99, priority + 5);
+                    var icon = /wind|viento/i.test(event) ? '💨' :
+                               /rain|lluvia|precip/i.test(event) ? '🌧️' :
+                               /snow|nieve/i.test(event) ? '❄️' :
+                               /thunder|tormenta/i.test(event) ? '⛈️' :
+                               /flood|inundac/i.test(event) ? '🌊' :
+                               /heat|calor/i.test(event) ? '🥵' :
+                               /cold|frío|frost/i.test(event) ? '🥶' :
+                               /fire|incendio/i.test(event) ? '🔥' : '⚠️';
+                    var desc = (al.desc || al.instruction || '').substring(0, 300);
+                    var a = makeAlert(
+                        'WeatherAPI · ' + (data.location ? data.location.country : ''),
+                        event.toUpperCase(), icon,
+                        event + (sev ? ' — ' + sev.charAt(0).toUpperCase() + sev.slice(1) : ''),
+                        desc,
+                        color,
+                        'https://www.weatherapi.com',
+                        al.effective || new Date().toISOString(),
+                        priority
+                    );
+                    // Usar coordenadas de la ubicación consultada
+                    if (data.location) {
+                        a.lat = data.location.lat;
+                        a.lon = data.location.lon;
+                        a.distKm = 0; // alerta para esta ubicación exacta
+                    }
+                    return a;
+                });
+            })
+            .catch(function(e) {
+                console.log('WeatherAPI error:', e.message);
+                return [];
+            }),
 
         // ── MET Norway / Yr.no — Alertas meteorológicas globales ──
         // La misma fuente que usa MSN El Tiempo y Yr.no
@@ -737,16 +799,24 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!Array.isArray(data)) return [];
-                return data.slice(0,3).filter(function(d) {
-                    return /warning|watch|kp [5-9]/i.test(d.message||'');
+                return data.slice(0,5).filter(function(d) {
+                    var msg = d.message || '';
+                    return /warning|watch|kp [5-9]|geomagnetic storm|solar radiation/i.test(msg);
                 }).map(function(d) {
-                    var isKp = /kp [5-9]/i.test(d.message||'');
+                    var msg = d.message || '';
+                    var isStorm = /geomagnetic storm|kp [5-9]/i.test(msg);
+                    var isSolarFlare = /solar radiation|x-ray|proton/i.test(msg);
+                    // Extraer línea resumen del mensaje técnico
+                    var lines = msg.split('\n').filter(function(l) { return l.trim().length > 10; });
+                    var summary = lines.slice(0,3).join(' ').replace(/\s+/g,' ').trim().substring(0,200);
+                    var title = isStorm ? 'Tormenta geomagnética detectada' :
+                                isSolarFlare ? 'Llamarada solar / Radiación' :
+                                'Actividad solar elevada';
                     return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
-                        isKp ? 'Tormenta geomagnética' : 'Actividad solar',
-                        (d.message||'').substring(0,200),
-                        isKp ? '#7B1FA2' : '#636366',
+                        title, summary,
+                        isStorm ? '#7B1FA2' : '#FF9500',
                         'https://www.swpc.noaa.gov/', d.issue_time||'',
-                        isKp ? 72 : 35);
+                        isStorm ? 72 : 50);
                 });
             })
             .catch(function() { return []; }),

@@ -428,6 +428,217 @@ var CellBroadcastHook = {
     }
 };
 
+
+// ============================================================
+// 🎯 ESCANEO POR COORDENADAS — El núcleo de la app
+// Recibe lat/lon del usuario y consulta TODAS las fuentes
+// con esas coordenadas exactas. Sin filtros manuales.
+// ============================================================
+
+function scanByCoords(lat, lon, radiusKm, callback) {
+    if (!lat || !lon) { callback([]); return; }
+    var radiusDeg = (radiusKm || 500) / 111; // 1 grado ≈ 111 km
+
+    console.log('🔍 Escaneando por coords:', lat.toFixed(3), lon.toFixed(3), '±' + radiusKm + 'km');
+
+    Promise.all([
+
+        // ── SISMOS en radio del usuario (USGS — CORS nativo) ──
+        fetch('https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson'
+            + '&latitude=' + lat + '&longitude=' + lon
+            + '&maxradiuskm=' + (radiusKm || 500)
+            + '&minmagnitude=1.5&orderby=time&limit=50'
+            + '&starttime=' + new Date(Date.now() - 172800000).toISOString())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.features) return [];
+                return data.features.map(function(f) {
+                    var mag = f.properties.mag || 0;
+                    var place = f.properties.place || '';
+                    var depth = f.geometry.coordinates[2] || 0;
+                    var dist = calcDistKm(lat, lon,
+                        f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                    var color = mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' :
+                                mag >= 4 ? '#FFC107' : '#0A84FF';
+                    var priority = mag >= 7 ? 99 : mag >= 6 ? 90 : mag >= 5 ? 80 :
+                                   mag >= 4 ? 70 : mag >= 3 ? 55 : 40;
+                    var a = makeAlert('USGS', 'SISMO', '🌍',
+                        'M' + mag.toFixed(1) + ' — ' + place,
+                        'Prof: ' + depth.toFixed(0) + 'km · A ' + dist + ' km de ti',
+                        color, 'https://earthquake.usgs.gov/earthquakes/eventpage/' + f.id,
+                        new Date(f.properties.time).toISOString(), priority);
+                    a.lat = f.geometry.coordinates[1];
+                    a.lon = f.geometry.coordinates[0];
+                    a.source_id = f.id;
+                    a.distKm = dist;
+                    return a;
+                });
+            })
+            .catch(function(e) {
+                console.log('USGS coords error:', e.message);
+                return [];
+            }),
+
+        // ── CLIMA Y ALERTAS METEOROLÓGICAS (OpenWeather) ──
+        fetch('https://api.openweathermap.org/data/2.5/onecall?lat=' + lat
+            + '&lon=' + lon
+            + '&appid=6fe6e0dcca264864dbd631bf620aad64'
+            + '&exclude=minutely,hourly&units=metric&lang=es')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.alerts || !data.alerts.length) return [];
+                return data.alerts.map(function(alert) {
+                    var isExtreme = /extreme|rojo|red|emergenc/i.test(alert.event + alert.description);
+                    return makeAlert(
+                        'OpenWeather · ' + (alert.sender_name || 'SMN'),
+                        detectType(alert.event),
+                        detectIcon(alert.event),
+                        alert.event || 'Alerta meteorológica',
+                        (alert.description || '').substring(0, 200),
+                        isExtreme ? '#FF3B30' : '#FF9500',
+                        '', new Date(alert.start * 1000).toISOString(),
+                        isExtreme ? 85 : 70
+                    );
+                });
+            })
+            .catch(function() { return []; }),
+
+        // ── SISMOS CERCANOS EMSC (Europa + Global) ──
+        fetch('https://www.seismicportal.eu/fdsnws/event/1/query'
+            + '?lat=' + lat + '&lon=' + lon
+            + '&maxradius=' + radiusDeg.toFixed(1)
+            + '&minmag=3.0&format=json&limit=20&orderby=time')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.features) return [];
+                return data.features.map(function(f) {
+                    var p = f.properties;
+                    var mag = p.mag || 0;
+                    var dist = calcDistKm(lat, lon,
+                        f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                    var a = makeAlert('EMSC', 'SISMO', '🌍',
+                        'M' + mag.toFixed(1) + ' — ' + (p.flynn_region || p.auth || ''),
+                        'Prof: ' + (p.depth || 0) + 'km · A ' + dist + ' km',
+                        mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' : '#FFC107',
+                        'https://www.seismicportal.eu/eventdetails.html?id=' + p.unid,
+                        p.time || '', mag >= 6 ? 88 : mag >= 5 ? 72 : 50);
+                    a.lat = f.geometry.coordinates[1];
+                    a.lon = f.geometry.coordinates[0];
+                    a.distKm = dist;
+                    return a;
+                });
+            })
+            .catch(function() { return []; }),
+
+        // ── GDACS por país/región (via proxy) ──
+        fetchCors('https://www.gdacs.org/xml/rss.xml', 10000)
+            .then(function(xml) {
+                if (!xml || xml.length < 100) return [];
+                return parseRSS(xml).slice(0, 20).map(function(item) {
+                    var t = item.title || '', d = item.description || '';
+                    var a = makeAlert('GDACS · ONU', detectType(t+d), detectIcon(t+d),
+                        t, d.substring(0, 200),
+                        /tsunami/i.test(t+d) ? '#FF2D55' :
+                        /earthquake|sismo/i.test(t+d) ? '#FF3B30' :
+                        /volcano/i.test(t+d) ? '#FF6D00' : '#FF9500',
+                        item.link, item.pubDate,
+                        /tsunami/i.test(t+d) ? 98 : /earthquake/i.test(t+d) ? 82 : 65);
+                    // Intentar extraer coords del texto
+                    var m = d.match(/(-?\d+\.?\d*)[°\s,]+([NS])[^\d]*(-?\d+\.?\d*)[°\s,]+([EW])/i);
+                    if (m) {
+                        a.lat = parseFloat(m[1]) * (m[2].toUpperCase()==='S' ? -1 : 1);
+                        a.lon = parseFloat(m[3]) * (m[4].toUpperCase()==='W' ? -1 : 1);
+                        a.distKm = calcDistKm(lat, lon, a.lat, a.lon);
+                    }
+                    return a;
+                }).filter(Boolean);
+            })
+            .catch(function() { return []; }),
+
+        // ── NHC Huracanes (via proxy) ──
+        Promise.all([
+            fetchCors('https://www.nhc.noaa.gov/index-at-sp.xml', 8000),
+            fetchCors('https://www.nhc.noaa.gov/index-ep-sp.xml', 8000)
+        ]).then(function(xmls) {
+            var all = [];
+            xmls.forEach(function(xml) {
+                if (!xml || xml.length < 50) return;
+                parseRSS(xml).slice(0,5).forEach(function(item) {
+                    if (!item.title || item.title.length < 3) return;
+                    var isMajor = /hurricane|hurac[aá]n/i.test(item.title);
+                    all.push(makeAlert(
+                        'NHC NOAA', isMajor ? 'HURACÁN' : 'TORMENTA', '🌀',
+                        item.title, (item.description||'').substring(0,200),
+                        isMajor ? '#FF3B30' : '#7B1FA2',
+                        item.link, item.pubDate, isMajor ? 90 : 70));
+                });
+            });
+            return all;
+        }).catch(function() { return []; }),
+
+        // ── NOAA Clima Espacial ──
+        fetch('https://services.swpc.noaa.gov/products/alerts.json')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!Array.isArray(data)) return [];
+                return data.slice(0,3).filter(function(d) {
+                    return /warning|watch|kp [5-9]/i.test(d.message||'');
+                }).map(function(d) {
+                    var isKp = /kp [5-9]/i.test(d.message||'');
+                    return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
+                        isKp ? 'Tormenta geomagnética' : 'Actividad solar',
+                        (d.message||'').substring(0,200),
+                        isKp ? '#7B1FA2' : '#636366',
+                        'https://www.swpc.noaa.gov/', d.issue_time||'',
+                        isKp ? 72 : 35);
+                });
+            })
+            .catch(function() { return []; })
+
+    ]).then(function(results) {
+        var all = [];
+        results.forEach(function(arr) { all = all.concat(arr || []); });
+
+        // Deduplicar
+        var seen = {};
+        all = all.filter(function(a) {
+            var key = a.source_id || (a.title||'').substring(0,50);
+            if (seen[key]) return false;
+            seen[key] = true;
+            return true;
+        });
+
+        // Ordenar: más cercano y más urgente primero
+        all.sort(function(a, b) {
+            // Distancia al usuario (si disponible)
+            var dA = a.distKm != null ? a.distKm : 99999;
+            var dB = b.distKm != null ? b.distKm : 99999;
+            // Score combinado: prioridad + proximidad
+            var scoreA = a.priority - (dA / 100);
+            var scoreB = b.priority - (dB / 100);
+            return scoreB - scoreA;
+        });
+
+        console.log('🔍 Escaneo completado:', all.length, 'eventos encontrados');
+        callback(all);
+    }).catch(function(err) {
+        console.log('scanByCoords error:', err);
+        callback([]);
+    });
+}
+
+// Helper: distancia en km entre dos coordenadas
+function calcDistKm(lat1, lon1, lat2, lon2) {
+    if (!lat2 || !lon2) return 99999;
+    var R = 6371;
+    var dLat = (lat2-lat1) * Math.PI/180;
+    var dLon = (lon2-lon1) * Math.PI/180;
+    var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLon/2)*Math.sin(dLon/2);
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
 // =============================================
 // MASTER FETCH — Prioridad: APIs directas primero
 // =============================================

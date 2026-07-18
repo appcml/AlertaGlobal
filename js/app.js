@@ -494,7 +494,7 @@ function updateLocationUI() {
 function initLocation() {
     if (!navigator.geolocation) {
         updateStatus(false, 'GPS no disponible');
-        showDefaultLocation();
+        showNoGPSMessage();
         return;
     }
     var el = document.getElementById('currentLocationName');
@@ -502,45 +502,57 @@ function initLocation() {
     var el2 = document.getElementById('weatherLocationName');
     if (el2) el2.textContent = 'Detectando...';
 
-    navigator.geolocation.getCurrentPosition(
-        function(pos) {
-            deviceLocation.lat = pos.coords.latitude;
-            deviceLocation.lon = pos.coords.longitude;
-            deviceLocation.accuracy = pos.coords.accuracy;
-            LocationManager.reverseGeocode(deviceLocation.lat, deviceLocation.lon).then(function(geo) {
-                deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2)+', '+deviceLocation.lon.toFixed(2));
-                deviceLocation.country = geo.country || '';
-                updateLocationUI();
-                loadAlerts();
-                loadWeather(deviceLocation.lat, deviceLocation.lon);
-            });
-            // watch position for updates
-            if (geoWatchId === null) {
-                geoWatchId = navigator.geolocation.watchPosition(function(p) {
-                    if (Math.abs(p.coords.latitude - deviceLocation.lat) > 0.01 ||
-                        Math.abs(p.coords.longitude - deviceLocation.lon) > 0.01) {
-                        deviceLocation.lat = p.coords.latitude;
-                        deviceLocation.lon = p.coords.longitude;
-                        if (!focusLocation.lat) { updateLocationUI(); loadAlerts(); }
-                    }
-                }, null, { enableHighAccuracy: false, maximumAge: 60000 });
-            }
-        },
-        function(err) {
-            console.log('Geolocation error:', err.message);
-            showDefaultLocation();
-        },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    function onSuccess(pos) {
+        deviceLocation.lat = pos.coords.latitude;
+        deviceLocation.lon = pos.coords.longitude;
+        deviceLocation.accuracy = pos.coords.accuracy;
+        LocationManager.reverseGeocode(deviceLocation.lat, deviceLocation.lon).then(function(geo) {
+            deviceLocation.name = geo.city || (deviceLocation.lat.toFixed(2)+', '+deviceLocation.lon.toFixed(2));
+            deviceLocation.country = geo.country || '';
+            updateLocationUI();
+            loadAlerts();
+            loadWeather(deviceLocation.lat, deviceLocation.lon);
+        });
+        // watch position for updates
+        if (geoWatchId === null) {
+            geoWatchId = navigator.geolocation.watchPosition(function(p) {
+                if (Math.abs(p.coords.latitude - deviceLocation.lat) > 0.01 ||
+                    Math.abs(p.coords.longitude - deviceLocation.lon) > 0.01) {
+                    deviceLocation.lat = p.coords.latitude;
+                    deviceLocation.lon = p.coords.longitude;
+                    if (!focusLocation.lat) { updateLocationUI(); loadAlerts(); }
+                }
+            }, null, { enableHighAccuracy: true, maximumAge: 30000 });
+        }
+    }
+
+    function onError(err) {
+        console.log('Geolocation error (intento 1):', err.message);
+        // Reintento sin alta precisión
+        navigator.geolocation.getCurrentPosition(
+            onSuccess,
+            function(err2) {
+                console.log('Geolocation error (intento 2):', err2.message);
+                showNoGPSMessage();
+            },
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        );
+    }
+
+    // Primer intento: alta precisión
+    navigator.geolocation.getCurrentPosition(onSuccess, onError,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 }
 
-function showDefaultLocation() {
-    // Default: Santiago de Chile
-    deviceLocation = { lat: -33.4489, lon: -70.6693, name: 'Santiago', country: 'Chile', accuracy: null };
-    updateLocationUI();
+function showNoGPSMessage() {
+    var el = document.getElementById('currentLocationName');
+    if (el) el.textContent = 'Sin GPS — usa Buscar';
+    var el2 = document.getElementById('weatherLocationName');
+    if (el2) el2.textContent = 'Sin GPS — usa Buscar';
+    showToast('⚠️ No se pudo obtener tu ubicación. Usa 🔍 Buscar.');
+    // Carga alertas globales sin filtro de ubicación
     loadAlerts();
-    loadWeather(deviceLocation.lat, deviceLocation.lon);
-    showToast('📍 Ubicación por defecto: Santiago');
 }
 
 // ========== ALERTS ==========
@@ -1080,7 +1092,8 @@ function toggleCheck(el, label) {
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedTheme();
-    loadFocusLocation();
+    // NO restauramos focusLocation al iniciar — siempre usamos GPS real primero.
+    // El usuario puede volver a buscar manualmente si quiere otra ciudad.
     setLanguage(currentLang);
     document.addEventListener('click', function unlock() {
         var c = getAudio(); if (c && c.state === 'suspended') c.resume();

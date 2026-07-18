@@ -855,42 +855,73 @@ function loadAlerts() {
         externalAlerts = alerts || [];
         if (loading) loading.style.display = 'none';
 
-        // Detectar si el usuario está en Chile para priorizar fuentes locales
+        // ── FILTRO INTELIGENTE POR PROXIMIDAD ──
+        // Orden: localidad → comuna → provincia → país → global
         var userRegion = (typeof getRegionFromLocation === 'function')
             ? getRegionFromLocation(loc) : null;
+        var userInChile = userRegion !== null ||
+            (loc.country && /chile/i.test(loc.country));
+
+        // Radios por nivel de filtro
+        var RADIO_LOCAL    = 50;    // localidad (50km)
+        var RADIO_COMUNA   = 150;   // comuna (150km)
+        var RADIO_PROV     = 300;   // provincia (300km)
+        var RADIO_PAIS     = getUserRadiusKm() || 500; // país
+
+        function alertScore(a) {
+            // Puntaje: cuánto es local para el usuario
+            if (!loc.lat || a.lat == null) return 0;
+            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            if (d <= RADIO_LOCAL)  return 4; // localidad
+            if (d <= RADIO_COMUNA) return 3; // comuna
+            if (d <= RADIO_PROV)   return 2; // provincia
+            if (d <= RADIO_PAIS)   return 1; // país
+            return 0;
+        }
 
         var filtered = externalAlerts.filter(function(a) {
             if (!loc.lat) return true;
             var radius = getUserRadiusKm();
             if (radius === 0) return true;
 
-            // Alertas con coordenadas → filtrar por radio
+            // Alertas con coordenadas → filtrar por radio del usuario
             if (a.lat != null && a.lon != null) {
                 return isWithinRadius(a.lat, a.lon, loc.lat, loc.lon, radius);
             }
 
-            // Alertas SENAPRED/CONAF/SHOA sin coords → mostrar si usuario está en Chile
-            if (a.source && /SENAPRED|CONAF|SHOA|CSN/i.test(a.source)) {
-                if (userRegion) return true; // usuario en Chile → mostrar todas locales
-                // Si hay texto de región, intentar match
-                if (a.region_text && loc.name) {
-                    return loc.name.toLowerCase().indexOf(a.region_text.toLowerCase()) > -1;
-                }
+            // Alertas chilenas sin coords → solo si usuario está en Chile
+            if (/SENAPRED|CONAF|SHOA|CSN/i.test(a.source || '')) {
+                return userInChile;
             }
 
+            // Alertas globales sin coords → incluir siempre
             return true;
         });
 
-        // Ordenar: alertas locales Chile primero si el usuario está en Chile
-        if (userRegion) {
-            filtered.sort(function(a, b) {
-                var aLocal = /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(a.source) ? 1 : 0;
-                var bLocal = /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(b.source) ? 1 : 0;
-                if (bLocal !== aLocal) return bLocal - aLocal;
-                if (b.priority !== a.priority) return b.priority - a.priority;
-                return (b.time || 0) - (a.time || 0);
-            });
-        }
+        // Ordenar por: localidad primero → prioridad → tiempo
+        filtered.sort(function(a, b) {
+            // 1. Score local (más cercano primero)
+            var scoreA = alertScore(a);
+            var scoreB = alertScore(b);
+            if (scoreB !== scoreA) return scoreB - scoreA;
+            // 2. Fuentes locales del país del usuario
+            var aLocal = userInChile && /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(a.source || '') ? 1 : 0;
+            var bLocal = userInChile && /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(b.source || '') ? 1 : 0;
+            if (bLocal !== aLocal) return bLocal - aLocal;
+            // 3. Prioridad del evento
+            if (b.priority !== a.priority) return b.priority - a.priority;
+            // 4. Más reciente
+            return (b.time || 0) - (a.time || 0);
+        });
+
+        // Mostrar indicador de localidad en las cards
+        filtered.forEach(function(a) {
+            if (!loc.lat || a.lat == null) return;
+            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            if (d <= RADIO_LOCAL)       a._localLabel = '📍 En tu zona';
+            else if (d <= RADIO_COMUNA) a._localLabel = '🏘️ Cercano';
+            else if (d <= RADIO_PROV)   a._localLabel = '🌐 Tu provincia';
+        });
 
         if (!filtered.length) {
             if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()+' km')+'</small></div>';
@@ -928,11 +959,12 @@ function renderAlertCard(a, loc) {
     }
     var levelClass = a.priority >= 90 ? 'critical' : a.priority >= 70 ? 'high' : 'medium';
     var timeStr = a.time ? formatTime(a.time) : '';
+    var localLabel = a._localLabel ? '<span class="alert-local-label">'+a._localLabel+'</span>' : '';
     var shareBtn = '<button class="share-alert-btn" onclick="shareAlert('+JSON.stringify(a).replace(/"/g,"'")+')">📤</button>';
     return '<div class="alert-card '+levelClass+'" style="border-left-color:'+a.color+'">'
         +'<div class="alert-header">'
         +'<span class="alert-type" style="color:'+a.color+'">'+a.icon+' '+a.type+'</span>'
-        +'<div style="display:flex;align-items:center;gap:6px">'+dist+'<span class="alert-time">'+timeStr+'</span>'+shareBtn+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px">'+localLabel+dist+'<span class="alert-time">'+timeStr+'</span>'+shareBtn+'</div>'
         +'</div>'
         +'<div class="alert-title">'+a.title+'</div>'
         +(a.description ? '<div class="alert-desc">'+a.description+'</div>' : '')

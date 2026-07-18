@@ -883,12 +883,23 @@ function loadAlerts() {
     if (errEl) errEl.style.display = 'none';
 
     if (typeof loadExternalSources !== 'function') {
-        console.error('loadExternalSources no disponible — sources.js no cargó');
+        // Reintentar hasta 10 veces con 500ms entre intentos
+        var retries = (loadAlerts._srcRetry || 0);
+        if (retries < 10) {
+            loadAlerts._srcRetry = retries + 1;
+            alertsLoading = false;
+            if (loading) loading.style.display = 'flex';
+            setTimeout(loadAlerts, 500);
+            console.warn('sources.js aún no cargó, reintento', retries + 1);
+            return;
+        }
+        loadAlerts._srcRetry = 0;
         alertsLoading = false;
         if (loading) loading.style.display = 'none';
-        if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error cargando fuentes. Recarga la página.</p></div>';
+        if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error cargando fuentes. Recarga la página.</p><button onclick="location.reload()" style="margin-top:12px;padding:8px 16px;background:var(--accent);border:none;border-radius:8px;color:#000;font-weight:700;cursor:pointer">🔄 Recargar</button></div>';
         return;
     }
+    loadAlerts._srcRetry = 0;
 
     // Si tenemos coordenadas → escaneo directo por ubicación (más preciso)
     // Si no → fetch global con filtro posterior

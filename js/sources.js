@@ -282,15 +282,159 @@ function detectIcon(text) {
 }
 
 // =============================================
+// 🇨🇱 SENAPRED — Alertas oficiales Chile por región
+// Cell Broadcast hook para APK nativo
+// =============================================
+
+// Mapa de regiones Chile → código numérico SENAPRED
+var CHILE_REGIONES = {
+    // Por nombre de ciudad/lugar → región
+    'arica': 15, 'parinacota': 15,
+    'iquique': 1, 'tarapaca': 1, 'alto hospicio': 1,
+    'antofagasta': 2, 'calama': 2, 'tocopilla': 2,
+    'atacama': 3, 'copiapo': 3, 'vallenar': 3,
+    'coquimbo': 4, 'la serena': 4, 'ovalle': 4,
+    'valparaiso': 5, 'viña del mar': 5, 'quilpue': 5, 'san antonio': 5,
+    'metropolitana': 13, 'santiago': 13, 'providencia': 13, 'maipu': 13,
+    "o'higgins": 6, 'rancagua': 6, 'san fernando': 6,
+    'maule': 7, 'talca': 7, 'curico': 7, 'linares': 7, 'cauquenes': 7,
+    'nuble': 16, 'chillan': 16, 'san carlos': 16,
+    'biobio': 8, 'bio bio': 8, 'concepcion': 8, 'talcahuano': 8,
+    'los angeles': 8, 'arauco': 8, 'canete': 8, 'cañete': 8,
+    'lebu': 8, 'coronel': 8, 'lota': 8, 'tome': 8, 'tomé': 8,
+    'araucania': 9, 'araucanía': 9, 'temuco': 9, 'angol': 9,
+    'victoria': 9, 'nueva imperial': 9,
+    'los rios': 14, 'los ríos': 14, 'valdivia': 14,
+    'los lagos': 10, 'puerto montt': 10, 'osorno': 10, 'castro': 10,
+    'aysen': 11, 'aysén': 11, 'coyhaique': 11,
+    'magallanes': 12, 'punta arenas': 12
+};
+
+function getRegionFromLocation(loc) {
+    if (!loc || !loc.name) return null;
+    var name = (loc.name + ' ' + (loc.country || '')).toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, ''); // quitar tildes
+    for (var key in CHILE_REGIONES) {
+        if (name.indexOf(key) > -1) return CHILE_REGIONES[key];
+    }
+    return null;
+}
+
+// SENAPRED RSS — alertas nacionales + filtro regional
+function fetchSENAPRED() {
+    var urls = [
+        'https://www.senapred.cl/rss/alertas',
+        'https://senapred.cl/feed/alertas'
+    ];
+
+    function tryUrl(i) {
+        if (i >= urls.length) return Promise.resolve([]);
+        return fetchCors(urls[i], 10000)
+            .then(function(xml) {
+                if (!xml || xml.length < 100) return tryUrl(i + 1);
+                var items = parseRSS(xml);
+                if (!items.length) return tryUrl(i + 1);
+                return items.slice(0, 20).map(function(item) {
+                    var t = item.title || '';
+                    var d = item.description || '';
+                    var type = detectType(t + ' ' + d);
+                    var icon = detectIcon(t + ' ' + d);
+                    var color = '#FF3B30';
+                    var priority = 80;
+                    if (/tsunami/i.test(t + d))        { color = '#FF2D55'; priority = 99; }
+                    else if (/rojo|red/i.test(t + d)) { color = '#FF3B30'; priority = 90; }
+                    else if (/naranja|orange/i.test(t + d)) { color = '#FF9500'; priority = 75; }
+                    else if (/amarillo|yellow/i.test(t + d)) { color = '#FFC107'; priority = 60; }
+                    else if (/verde|green/i.test(t + d)) { color = '#00E676'; priority = 40; }
+                    var a = makeAlert('SENAPRED · Chile', type, icon, t, d,
+                        color, item.link || 'https://www.senapred.cl', item.pubDate, priority);
+                    // Extraer región del texto si está disponible
+                    var regMatch = (t + ' ' + d).match(/regi[oó]n\s+(?:del?\s+)?([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)/i);
+                    if (regMatch) a.region_text = regMatch[1].trim();
+                    return a;
+                }).filter(function(a) { return a.title && a.title.length > 3; });
+            })
+            .catch(function() { return tryUrl(i + 1); });
+    }
+    return tryUrl(0);
+}
+
+// CONAF — Incendios forestales Chile
+function fetchCONAF() {
+    return fetchCors('https://www.conaf.cl/incendios-forestales/incendios-en-chile/rss/', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            return parseRSS(xml).slice(0, 10).map(function(item) {
+                return makeAlert('CONAF · Chile', 'INCENDIO', '🔥',
+                    item.title || 'Incendio forestal',
+                    item.description || '',
+                    '#D84315', item.link || 'https://www.conaf.cl',
+                    item.pubDate, 80);
+            }).filter(function(a) { return a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
+// SHOA — Tsunamis Chile
+function fetchSHOA() {
+    return fetchCors('https://www.shoa.cl/php/rss.php', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            return parseRSS(xml).slice(0, 5).map(function(item) {
+                var isTsunami = /tsunami/i.test(item.title + item.description);
+                return makeAlert('SHOA · Chile', isTsunami ? 'TSUNAMI' : 'ALERTA COSTERA',
+                    isTsunami ? '🌊' : '⚠️',
+                    item.title || 'Alerta SHOA',
+                    item.description || '',
+                    isTsunami ? '#FF2D55' : '#FF9500',
+                    item.link || 'https://www.shoa.cl',
+                    item.pubDate, isTsunami ? 99 : 75);
+            }).filter(function(a) { return a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
+// ── HOOK CELL BROADCAST para APK nativo ──
+// Cuando se empaquete con Capacitor/Cordova, este hook
+// recibe las alertas SAE directamente desde la red celular
+// sin necesitar internet — igual que SENAPRED/SUBTEL
+var CellBroadcastHook = {
+    // En APK: registro del receiver en AndroidManifest.xml
+    // <uses-permission android:name="android.permission.RECEIVE_EMERGENCY_BROADCAST"/>
+    // <receiver android:name=".CellBroadcastReceiver">
+    //   <intent-filter android:priority="999">
+    //     <action android:name="android.provider.Telephony.SMS_CB_RECEIVED"/>
+    //   </intent-filter>
+    // </receiver>
+    init: function() {
+        if (window.CellBroadcast) {
+            // Nativo: escuchar alertas SAE de SENAPRED/SUBTEL
+            window.CellBroadcast.startListening(function(msg) {
+                console.log('📡 Cell Broadcast SAE recibido:', msg);
+                // Procesar y mostrar como alerta de máxima prioridad
+                if (typeof sendNotification === 'function') {
+                    sendNotification('🚨 ALERTA SAE', msg.body || msg.message, 'critical');
+                }
+            });
+        } else {
+            console.log('📡 Cell Broadcast: requiere APK nativo (Capacitor/Cordova)');
+        }
+    }
+};
+
+// =============================================
 // MASTER FETCH — Prioridad: APIs directas primero
 // =============================================
 function loadExternalSources(callback) {
     Promise.all([
         fetchUSGSChile(),      // DIRECTO — sin CORS
         fetchUSGSGlobal(),     // DIRECTO — sin CORS
-        fetchCSN(),            // CORS proxy — puede fallar
-        fetchGDACS(),          // CORS proxy
-        fetchNHC(),            // CORS proxy
+        fetchCSN(),            // CORS proxy
+        fetchSENAPRED(),       // CORS proxy — alertas oficiales Chile
+        fetchCONAF(),          // CORS proxy — incendios Chile
+        fetchSHOA(),           // CORS proxy — tsunamis Chile
+        fetchGDACS(),          // CORS proxy — alertas globales ONU
+        fetchNHC(),            // CORS proxy — huracanes
         fetchNASA(),           // DIRECTO
         fetchSpaceWeather()    // DIRECTO
     ]).then(function(results) {

@@ -12,6 +12,102 @@ var CORS_PROXIES = [
 var proxyIndex = 0;
 var proxyFails = {};
 
+// ============================================================
+// 🌐 TRADUCCIÓN AUTOMÁTICA DE ALERTAS AL IDIOMA DEL USUARIO
+// ============================================================
+function translateAlert(text, targetLang) {
+    if (!text || targetLang === 'en') return text;
+    var t = text;
+
+    // Tipos de eventos
+    var translations = {
+        'es': {
+            'earthquake': 'Terremoto', 'Earthquake': 'Terremoto',
+            'tsunami': 'Tsunami', 'Tsunami': 'Tsunami',
+            'tropical storm': 'Tormenta tropical', 'Tropical Storm': 'Tormenta tropical',
+            'hurricane': 'Huracán', 'Hurricane': 'Huracán',
+            'typhoon': 'Tifón', 'Typhoon': 'Tifón',
+            'cyclone': 'Ciclón', 'Cyclone': 'Ciclón',
+            'flood': 'Inundación', 'Flood': 'Inundación',
+            'wildfire': 'Incendio forestal', 'Wildfire': 'Incendio forestal',
+            'volcano': 'Volcán', 'Volcano': 'Volcán',
+            'eruption': 'Erupción', 'Eruption': 'Erupción',
+            'landslide': 'Deslizamiento', 'Landslide': 'Deslizamiento',
+            'drought': 'Sequía', 'Drought': 'Sequía',
+            'magnitude': 'Magnitud', 'Magnitude': 'Magnitud',
+            'depth': 'Profundidad', 'Depth': 'Profundidad',
+            'warning': 'Aviso', 'Warning': 'Aviso', 'WARNING': 'AVISO',
+            'watch': 'Vigilancia', 'Watch': 'Vigilancia', 'WATCH': 'VIGILANCIA',
+            'advisory': 'Alerta', 'Advisory': 'Alerta',
+            'alert': 'Alerta', 'Alert': 'Alerta',
+            'green': 'verde', 'Green': 'Verde',
+            'orange': 'naranja', 'Orange': 'Naranja',
+            'red': 'rojo', 'Red': 'Rojo',
+            'population affected': 'población afectada',
+            'Population affected': 'Población afectada',
+            'wind speed': 'velocidad del viento',
+            'Wind speed': 'Velocidad del viento',
+            'category': 'categoría', 'Category': 'Categoría',
+            'offshore': 'costa afuera', 'Offshore': 'Costa afuera',
+            'potentially affecting': 'potencialmente afectando',
+            'occurred in': 'ocurrió en',
+            'an earthquake occurred': 'ocurrió un terremoto',
+            'was active in': 'estuvo activo en',
+            'affects these countries': 'afecta estos países',
+            'ash cloud': 'nube de ceniza', 'Ash cloud': 'Nube de ceniza',
+            'aviation alert': 'alerta de aviación',
+            'emitting': 'emitiendo',
+            'ongoing': 'en curso', 'Ongoing': 'En curso',
+            'geomagnetic storm': 'tormenta geomagnética',
+            'Geomagnetic Storm': 'Tormenta geomagnética',
+            'solar radiation': 'radiación solar',
+            'moderate': 'moderado', 'Moderate': 'Moderado',
+            'minor': 'menor', 'Minor': 'Menor',
+            'severe': 'severo', 'Severe': 'Severo',
+            'extreme': 'extremo', 'Extreme': 'Extremo',
+            'immediate': 'inmediato', 'Immediate': 'Inmediato',
+            'expected': 'esperado', 'Expected': 'Esperado',
+            'predicted': 'predicho', 'Predicted': 'Predicho',
+            'level': 'nivel', 'Level': 'Nivel',
+            'storm': 'tormenta', 'Storm': 'Tormenta',
+            'precipitation': 'precipitaciones', 'Precipitation': 'Precipitaciones',
+            'rainfall': 'lluvia', 'Rainfall': 'Lluvia',
+            'wind': 'viento', 'Wind': 'Viento',
+            'snow': 'nieve', 'Snow': 'Nieve',
+            'ice': 'hielo', 'Ice': 'Hielo',
+            'fog': 'niebla', 'Fog': 'Niebla',
+            'heat': 'calor', 'Heat': 'Calor',
+            'cold': 'frío', 'Cold': 'Frío',
+            'fire': 'incendio', 'Fire': 'Incendio',
+            'ash': 'ceniza', 'Ash': 'Ceniza',
+            'active': 'activo', 'Active': 'Activo',
+            'north': 'norte', 'North': 'Norte',
+            'south': 'sur', 'South': 'Sur',
+            'east': 'este', 'East': 'Este',
+            'west': 'oeste', 'West': 'Oeste',
+            'sea': 'mar', 'Sea': 'Mar',
+            'ocean': 'océano', 'Ocean': 'Océano',
+            'coast': 'costa', 'Coast': 'Costa',
+            'island': 'isla', 'Island': 'Isla',
+            'km': 'km', 'miles': 'millas',
+            'unknown': 'desconocido'
+        }
+    };
+
+    var dict = translations[targetLang] || translations['es'];
+    Object.keys(dict).forEach(function(eng) {
+        var esp = dict[eng];
+        // Replace whole words only
+        t = t.split(eng).join(esp);
+    });
+    return t;
+}
+
+function getLang() {
+    try { return localStorage.getItem('ag_lang') || 'es'; } catch(e) { return 'es'; }
+}
+
+
 function fetchCors(url, timeout) {
     timeout = timeout || 8000;
     var maxTries = CORS_PROXIES.length;
@@ -238,6 +334,8 @@ function fetchGDACS() {
             if (/red alert/i.test(td))    priority = Math.max(priority, 90);
             if (/orange alert/i.test(td)) priority = Math.max(priority, 75);
 
+            var lang = getLang();
+            t = translateAlert(t, lang); d = translateAlert(d, lang);
             var a = makeAlert('GDACS · ONU', type, icon, t, d.substring(0,300),
                 color, link, pubDate, priority);
             if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
@@ -514,6 +612,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                                 mag >= 3 ? '#64B5F6' : '#636366';
                     var priority = mag >= 7 ? 99 : mag >= 6 ? 92 : mag >= 5 ? 82 :
                                    mag >= 4 ? 68 : mag >= 3 ? 45 : mag >= 2 ? 25 : 10;
+                    var lang = getLang();
+                    place = translateAlert(place, lang);
                     var riskLabel = mag >= 7 ? '🔴 PELIGROSO' :
                                     mag >= 6 ? '🟠 Fuerte' :
                                     mag >= 5 ? '🟡 Moderado-Fuerte' :
@@ -603,8 +703,9 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     var mag = p.mag || 0;
                     var dist = calcDistKm(lat, lon,
                         f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                    var region = translateAlert(p.flynn_region || p.auth || '', getLang());
                     var a = makeAlert('EMSC', 'SISMO', '🌍',
-                        'M' + mag.toFixed(1) + ' — ' + (p.flynn_region || p.auth || ''),
+                        'M' + mag.toFixed(1) + ' — ' + region,
                         'Prof: ' + (p.depth || 0) + 'km · A ' + dist + ' km',
                         mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' : '#FFC107',
                         'https://www.seismicportal.eu/eventdetails.html?id=' + p.unid,
@@ -871,8 +972,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     var eLon = g && g.coordinates ? g.coordinates[0] : null;
                     var dist = ev._dist || (eLat ? calcDistKm(lat, lon, eLat, eLon) : null);
                     var a = makeAlert('NASA EONET', type, icon,
-                        ev.title || 'Evento natural detectado por satélite',
-                        cat + (dist ? ' · A ' + dist + ' km' : ''),
+                        translateAlert(ev.title || 'Evento natural detectado por satélite', getLang()),
+                        translateAlert(cat, getLang()) + (dist ? ' · A ' + dist + ' km' : ''),
                         type === 'INCENDIO' ? '#D84315' :
                         type === 'VOLCÁN' ? '#FF6D00' : '#FF9500',
                         ev.sources && ev.sources[0] ? ev.sources[0].url : 'https://eonet.gsfc.nasa.gov',
@@ -1034,9 +1135,11 @@ function fetchVolcanoDiscovery() {
                 var priority = /eruption|lava|explosion|ash cloud|evacuac/i.test(t+d) ? 85 :
                                /unrest|alert|warning|tremor/i.test(t+d) ? 70 : 55;
                 var color = priority >= 85 ? '#FF6D00' : priority >= 70 ? '#FF9500' : '#FFC107';
+                var lang = getLang();
                 return makeAlert(
                     'VolcanoDiscovery', 'VOLCÁN', '🌋',
-                    t, d.replace(/<[^>]+>/g,'').substring(0, 250),
+                    translateAlert(t, lang),
+                    translateAlert(d.replace(/<[^>]+>/g,'').substring(0, 250), lang),
                     color, item.link || 'https://www.volcanodiscovery.com',
                     item.pubDate, priority
                 );

@@ -520,24 +520,40 @@ function initLocation() {
 
     function startWatch() {
         if (geoWatchId !== null) return;
-        // watchPosition: acepta cualquier mejora significativa de precisión
+        // enableHighAccuracy: false — permite usar WiFi/IP sin timeout en PC
         geoWatchId = navigator.geolocation.watchPosition(function(p) {
             var lat = p.coords.latitude;
             var lon = p.coords.longitude;
             var acc = p.coords.accuracy;
             var prevAcc = deviceLocation.accuracy || 99999;
-            // Actualizar si: primera vez, o precisión mejoró más del 30%, o nos movimos
             var mejoraPrecision = acc < prevAcc * 0.7;
-            var nosTuvimos = deviceLocation.lat &&
+            var nosMuvimos = deviceLocation.lat &&
                 (Math.abs(lat - deviceLocation.lat) > 0.005 ||
                  Math.abs(lon - deviceLocation.lon) > 0.005);
             var primeraVez = !deviceLocation.lat;
-            if (primeraVez || mejoraPrecision || nosTuvimos) {
+            if (primeraVez || mejoraPrecision || nosMuvimos) {
                 applyDeviceLocation(lat, lon, acc, 'watch ±' + Math.round(acc) + 'm');
             }
-        }, function(e) {
-            console.log('watchPosition error:', e.message);
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+        }, function(err) {
+            switch(err.code) {
+                case err.PERMISSION_DENIED:
+                    console.log('Ubicación: permiso denegado');
+                    showNoGPSMessage();
+                    break;
+                case err.POSITION_UNAVAILABLE:
+                    console.log('Ubicación: posición no disponible');
+                    break;
+                case err.TIMEOUT:
+                    console.log('Ubicación: timeout en watch, reintentando...');
+                    // Reintentar watch con baja precisión
+                    if (geoWatchId !== null) {
+                        navigator.geolocation.clearWatch(geoWatchId);
+                        geoWatchId = null;
+                    }
+                    setTimeout(startWatch, 3000);
+                    break;
+            }
+        }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
     }
 
     function onSuccess(pos) {
@@ -545,20 +561,36 @@ function initLocation() {
         var lon = pos.coords.longitude;
         var acc = pos.coords.accuracy;
         console.log('GPS recibido:', lat, lon, '±' + Math.round(acc) + 'm');
-        // Usar la ubicación inmediatamente, cualquier precisión es mejor que nada
         applyDeviceLocation(lat, lon, acc, 'first ±' + Math.round(acc) + 'm');
-        // watchPosition seguirá refinando si llega mejor señal
         startWatch();
     }
 
     function onError(err) {
-        console.log('Geolocation error:', err.message, '(code:', err.code + ')');
-        showNoGPSMessage();
+        switch(err.code) {
+            case err.PERMISSION_DENIED:
+                console.log('Geoloc: permiso denegado');
+                showNoGPSMessage();
+                break;
+            case err.POSITION_UNAVAILABLE:
+                console.log('Geoloc: posición no disponible, reintentando sin alta precisión...');
+                navigator.geolocation.getCurrentPosition(onSuccess, function() {
+                    showNoGPSMessage();
+                }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
+                break;
+            case err.TIMEOUT:
+                console.log('Geoloc: timeout, reintentando sin alta precisión...');
+                navigator.geolocation.getCurrentPosition(onSuccess, function() {
+                    showNoGPSMessage();
+                }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
+                break;
+            default:
+                showNoGPSMessage();
+        }
     }
 
-    // Alta precisión desde el inicio — el navegador combinará WiFi + celular + GPS
+    // Primer intento con alta precisión (GPS real en celular)
     navigator.geolocation.getCurrentPosition(onSuccess, onError,
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 }
 

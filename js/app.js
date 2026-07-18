@@ -605,11 +605,24 @@ function initLocation() {
     }
 
     // ── CAPA 3: IP geolocation — lanzar INMEDIATAMENTE en paralelo ──
-    // No espera permisos del navegador, funciona siempre
-    // Se cancela si llega algo más preciso antes
     geolocByIP(function(lat, lon, acc, label) {
         applyIfBetter(lat, lon, acc, label);
     });
+
+    // Si en 15s no detectamos nada → mostrar mensaje global
+    var geoTimeout = setTimeout(function() {
+        if (!deviceLocation.lat) {
+            showNoGPSMessage();
+        }
+    }, 15000);
+
+    // Cancelar timeout si se detecta ubicación
+    var origApply = applyDeviceLocation;
+    applyDeviceLocation = function(lat, lon, acc, label) {
+        clearTimeout(geoTimeout);
+        applyDeviceLocation = origApply;
+        origApply(lat, lon, acc, label);
+    };
 
     if (!navigator.geolocation) return;
 
@@ -792,10 +805,10 @@ var MeshNetwork = {
 
 function showNoGPSMessage() {
     var el = document.getElementById('currentLocationName');
-    if (el) el.textContent = 'Sin señal — usa Buscar';
+    if (el) el.textContent = '🌐 Global — usa Buscar para tu zona';
     var el2 = document.getElementById('weatherLocationName');
-    if (el2) el2.textContent = 'Sin señal — usa Buscar';
-    showToast('⚠️ No se pudo obtener tu ubicación. Usa 🔍 Buscar.');
+    if (el2) el2.textContent = '🌐 Global — usa Buscar';
+    showToast('🌐 Mostrando alertas globales. Usa 🔍 para tu ciudad.');
     loadAlerts();
 }
 
@@ -1356,6 +1369,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSOS();
     requestNotificationPermission();
     MeshNetwork.init();
+    // Cargar alertas globales de inmediato sin esperar ubicación
+    loadAlerts();
     initLocation();
     setInterval(loadAlerts, CONFIG.ALERTS_INTERVAL);
     setInterval(function() { var a = getActiveLocation(); if (a.lat) loadWeather(a.lat, a.lon); }, CONFIG.WEATHER_INTERVAL);

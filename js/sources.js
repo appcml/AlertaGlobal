@@ -335,7 +335,8 @@ function fetchGDACS() {
             if (/orange alert/i.test(td)) priority = Math.max(priority, 75);
 
             var lang = getLang();
-            t = translateAlert(t, lang); d = translateAlert(d, lang);
+            t = translateAlert(t, lang);
+            d = translateAlert(d.replace(/<[^>]+>/g,''), lang);
             var a = makeAlert('GDACS · ONU', type, icon, t, d.substring(0,300),
                 color, link, pubDate, priority);
             if (lat && lon && !isNaN(lat) && !isNaN(lon)) {
@@ -1031,13 +1032,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                                    severity === 'Severe'   ? 88 :
                                    severity === 'Moderate' ? 72 : 55;
                     // Traducir tipos comunes al español
-                    var typeES = event
-                        .replace(/wind/i,'Viento').replace(/rain/i,'Lluvia')
-                        .replace(/snow/i,'Nieve').replace(/storm/i,'Tormenta')
-                        .replace(/thunder/i,'Tormenta eléctrica')
-                        .replace(/flood/i,'Inundación').replace(/fog/i,'Niebla')
-                        .replace(/ice/i,'Hielo').replace(/avalanche/i,'Avalancha')
-                        .replace(/gale/i,'Viento fuerte').replace(/blizzard/i,'Ventisca');
+                    var lang = getLang();
+                    var typeES = translateAlert(event, lang);
                     var icon = /wind|gale/i.test(event) ? '💨' :
                                /rain|flood/i.test(event) ? '🌧️' :
                                /snow|blizzard/i.test(event) ? '❄️' :
@@ -1156,8 +1152,20 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     var alert = (p.alertlevel || p.level || '').toLowerCase();
                     var color = alert === 'red' ? '#FF3B30' : alert === 'orange' ? '#FF9500' : '#FFC107';
                     var priority = alert === 'red' ? 88 : alert === 'orange' ? 75 : 60;
-                    var a = makeAlert('GDACS · ONU', typeLabel, icon, title,
-                        (p.description || p.country || '').substring(0,200),
+                    var lang = getLang();
+                    // Build clean title in user language
+                    var cleanTitle = typeLabel + ' M' + 
+                        (p.magnitude ? p.magnitude.toFixed(1) : '') +
+                        (p.country ? ' — ' + p.country : '') +
+                        (p.alertlevel ? ' (' + 
+                            (p.alertlevel === 'Red' ? '🔴 Rojo' : 
+                             p.alertlevel === 'Orange' ? '🟠 Naranja' : '🟢 Verde') 
+                        + ')' : '');
+                    var cleanDesc = translateAlert(
+                        (p.description || p.htmldescription || '').replace(/<[^>]+>/g,'').substring(0,200), lang);
+                    var a = makeAlert('GDACS · ONU', typeLabel, icon, 
+                        cleanTitle || translateAlert(title, lang),
+                        cleanDesc || (p.country || ''),
                         color, p.url || 'https://www.gdacs.org', p.fromdate || '', priority);
                     if (f.geometry && f.geometry.coordinates) {
                         a.lat = f.geometry.coordinates[1];
@@ -1273,7 +1281,20 @@ function fetchPTWC() {
 // Incluye Villarrica, Calbuco, Hudson en Chile
 // ============================================================
 function fetchVolcanoDiscovery() {
-    return fetchCors('https://www.volcanodiscovery.com/news/volcano-news.rss', 8000)
+    // Try multiple URLs
+    var urls = [
+        'https://www.volcanodiscovery.com/volcanoes/rss-feed.xml',
+        'https://www.volcanodiscovery.com/erupting_volcanoes.rss',
+        'https://www.volcanodiscovery.com/news/volcano-news.rss'
+    ];
+    function tryUrl(i) {
+        if (i >= urls.length) return Promise.resolve([]);
+        return fetchCors(urls[i], 8000).then(function(xml) {
+            if (!xml || xml.length < 100) return tryUrl(i + 1);
+            return xml;
+        }).catch(function() { return tryUrl(i + 1); });
+    }
+    return tryUrl(0)
         .then(function(xml) {
             if (!xml || xml.length < 100) return [];
             return parseRSS(xml).slice(0, 15).map(function(item) {

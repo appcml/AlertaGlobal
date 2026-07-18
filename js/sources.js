@@ -6,8 +6,8 @@
 // CORS proxies — rotación con fallback real
 var CORS_PROXIES = [
     'https://api.allorigins.win/get?url=',
-    'https://thingproxy.freeboard.io/fetch/',
-    'https://api.codetabs.com/v1/proxy?quest='
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://corsproxy.io/?url='
 ];
 var proxyIndex = 0;
 var proxyFails = {};
@@ -36,10 +36,7 @@ function fetchCors(url, timeout) {
                     try { var j = JSON.parse(text); return j.contents || j.body || text; }
                     catch(e) { return text; }
                 }
-                if (proxy.indexOf('thingproxy') > -1) {
-                    try { var j = JSON.parse(text); return j.contents || text; }
-                    catch(e) { return text; }
-                }
+
                 return text;
             })
             .catch(function(e) {

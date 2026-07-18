@@ -479,27 +479,57 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                 return [];
             }),
 
-        // ── CLIMA Y ALERTAS METEOROLÓGICAS (OpenWeather) ──
-        fetch('https://api.openweathermap.org/data/2.5/onecall?lat=' + lat
-            + '&lon=' + lon
-            + '&appid=6fe6e0dcca264864dbd631bf620aad64'
-            + '&exclude=minutely,hourly&units=metric&lang=es')
+        // ── ALERTAS METEOROLÓGICAS (Open-Meteo — gratis, sin key) ──
+        // Detecta condiciones extremas por código meteorológico WMO
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat
+            + '&longitude=' + lon
+            + '&daily=weathercode,precipitation_sum,windspeed_10m_max'
+            + '&current_weather=true&timezone=auto&forecast_days=2')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (!data.alerts || !data.alerts.length) return [];
-                return data.alerts.map(function(alert) {
-                    var isExtreme = /extreme|rojo|red|emergenc/i.test(alert.event + alert.description);
-                    return makeAlert(
-                        'OpenWeather · ' + (alert.sender_name || 'SMN'),
-                        detectType(alert.event),
-                        detectIcon(alert.event),
-                        alert.event || 'Alerta meteorológica',
-                        (alert.description || '').substring(0, 200),
-                        isExtreme ? '#FF3B30' : '#FF9500',
-                        '', new Date(alert.start * 1000).toISOString(),
-                        isExtreme ? 85 : 70
-                    );
-                });
+                var alerts = [];
+                var cw = data.current_weather || {};
+                var code = cw.weathercode || 0;
+                var wind = cw.windspeed || 0;
+                // Códigos WMO de riesgo: https://open-meteo.com/en/docs
+                // 95-99: tormenta eléctrica, 71-77: nevada, 85-86: nieve intensa
+                if (code >= 95) {
+                    alerts.push(makeAlert('Open-Meteo', 'TORMENTA', '⛈️',
+                        code >= 99 ? 'Tormenta eléctrica con granizo' : 'Tormenta eléctrica',
+                        'Condición actual en tu ubicación',
+                        code >= 99 ? '#FF3B30' : '#FF9500',
+                        'https://open-meteo.com', new Date().toISOString(),
+                        code >= 99 ? 80 : 65));
+                } else if (code >= 71 && code <= 77) {
+                    alerts.push(makeAlert('Open-Meteo', 'NEVADA', '❄️',
+                        'Nevada activa en tu zona',
+                        'Windspeed: ' + wind + ' km/h',
+                        '#64B5F6', 'https://open-meteo.com',
+                        new Date().toISOString(), 60));
+                }
+                if (wind >= 60) {
+                    alerts.push(makeAlert('Open-Meteo', 'VIENTO FUERTE', '💨',
+                        'Vientos de ' + wind + ' km/h',
+                        'Velocidad actual del viento en tu ubicación',
+                        wind >= 90 ? '#FF3B30' : '#FF9500',
+                        'https://open-meteo.com', new Date().toISOString(),
+                        wind >= 90 ? 75 : 55));
+                }
+                // Revisar pronóstico próximas 48h
+                var daily = data.daily || {};
+                if (daily.weathercode) {
+                    daily.weathercode.forEach(function(wc, i) {
+                        if (wc >= 95) {
+                            var precip = daily.precipitation_sum ? daily.precipitation_sum[i] : 0;
+                            alerts.push(makeAlert('Open-Meteo', 'TORMENTA', '⛈️',
+                                'Tormenta eléctrica prevista para ' + (i === 0 ? 'hoy' : 'mañana'),
+                                'Precipitación estimada: ' + (precip||0).toFixed(1) + 'mm',
+                                '#FF9500', 'https://open-meteo.com',
+                                new Date().toISOString(), 58));
+                        }
+                    });
+                }
+                return alerts;
             })
             .catch(function() { return []; }),
 

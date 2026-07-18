@@ -955,24 +955,49 @@ function loadAlerts() {
             // Radio global → mostrar todo
             if (radius === 0) return true;
 
-            // Tiene coordenadas propias → filtrar por distancia real
+            // ── Alertas CON coordenadas → filtrar por distancia real ──
             if (a.lat != null && a.lon != null) {
                 var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
                 a.distKm = d;
                 return d <= radius;
             }
 
-            // Sin coordenadas — filtrar por fuente/contexto
+            // ── Alertas SIN coordenadas — incluir por tipo ──
+            var src = a.source || '';
+            var type = a.type || '';
+
             // Fuentes chilenas: solo si usuario está en Chile
-            if (/SENAPRED|CONAF|SHOA|CSN/i.test(a.source || '')) {
-                return userInChile;
-            }
+            if (/SENAPRED|CONAF|SHOA|CSN/i.test(src)) return userInChile;
 
-            // MET Norway: ya viene filtrada por coords desde la API → incluir
-            if (/MET Norway/i.test(a.source || '')) return true;
+            // MET Norway: ya filtrada por coords en la API → siempre incluir
+            if (/MET Norway/i.test(src)) return true;
 
-            // Otras sin coords (NHC huracanes, clima espacial): solo prioridad alta
-            return a.priority >= 85;
+            // Open-Meteo: clima de las coords exactas → siempre incluir
+            if (/Open-Meteo/i.test(src)) return true;
+
+            // NASA EONET: eventos globales por satélite → incluir si alta prioridad
+            if (/NASA EONET/i.test(src)) return a.priority >= 60;
+
+            // VolcanoDiscovery: volcanes globales → incluir si moderada prioridad
+            if (/VolcanoDiscovery/i.test(src)) return a.priority >= 55;
+
+            // PTWC: tsunamis Pacífico → siempre incluir (afecta costas lejanas)
+            if (/PTWC/i.test(src)) return true;
+
+            // NHC Huracanes: incluir si son importantes
+            if (/NHC/i.test(src)) return a.priority >= 70;
+
+            // ReliefWeb: desastres declarados → incluir si son urgentes
+            if (/ReliefWeb/i.test(src)) return a.priority >= 65;
+
+            // GDACS: incluir si tiene prioridad suficiente
+            if (/GDACS/i.test(src)) return a.priority >= 65;
+
+            // NOAA Clima Espacial: siempre incluir
+            if (/NOAA.*Espac|Space Weather/i.test(src)) return true;
+
+            // Resto sin coords: solo si prioridad alta
+            return a.priority >= 80;
         });
 
         // Ordenar: prioridad crítica primero, luego más reciente

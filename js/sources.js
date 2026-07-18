@@ -490,8 +490,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
         fetch('https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson'
             + '&latitude=' + lat + '&longitude=' + lon
             + '&maxradiuskm=' + (radiusKm || 500)
-            + '&minmagnitude=1.5&orderby=time&limit=50'
-            + '&starttime=' + new Date(Date.now() - 172800000).toISOString())
+            + '&minmagnitude=1.0&orderby=time&limit=100'
+            + '&starttime=' + new Date(Date.now() - 259200000).toISOString()) // 72h
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!data.features) return [];
@@ -501,13 +501,27 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     var depth = f.geometry.coordinates[2] || 0;
                     var dist = calcDistKm(lat, lon,
                         f.geometry.coordinates[1], f.geometry.coordinates[0]);
-                    var color = mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' :
-                                mag >= 4 ? '#FFC107' : '#0A84FF';
-                    var priority = mag >= 7 ? 99 : mag >= 6 ? 90 : mag >= 5 ? 80 :
-                                   mag >= 4 ? 70 : mag >= 3 ? 55 : 40;
+                    // Escala de riesgo sísmico:
+                    // M1-2: Micro — solo instrumentos
+                    // M2-3: Menor — raramente sentido
+                    // M3-4: Leve — sentido pero sin daños
+                    // M4-5: Moderado — daños leves posibles
+                    // M5-6: Moderado-Fuerte — daños menores a edificios
+                    // M6-7: Fuerte — daños serios
+                    // M7+:  Mayor/Gran — daños extensos, tsunami posible
+                    var color = mag >= 7 ? '#FF2D55' : mag >= 6 ? '#FF3B30' :
+                                mag >= 5 ? '#FF9500' : mag >= 4 ? '#FFC107' :
+                                mag >= 3 ? '#64B5F6' : '#636366';
+                    var priority = mag >= 7 ? 99 : mag >= 6 ? 92 : mag >= 5 ? 82 :
+                                   mag >= 4 ? 68 : mag >= 3 ? 45 : mag >= 2 ? 25 : 10;
+                    var riskLabel = mag >= 7 ? '🔴 PELIGROSO' :
+                                    mag >= 6 ? '🟠 Fuerte' :
+                                    mag >= 5 ? '🟡 Moderado-Fuerte' :
+                                    mag >= 4 ? '🟡 Moderado' :
+                                    mag >= 3 ? '🔵 Leve' : '⚫ Micro';
                     var a = makeAlert('USGS', 'SISMO', '🌍',
                         'M' + mag.toFixed(1) + ' — ' + place,
-                        'Prof: ' + depth.toFixed(0) + 'km · A ' + dist + ' km de ti',
+                        riskLabel + ' · Prof: ' + depth.toFixed(0) + 'km · A ' + dist + ' km de ti',
                         color, 'https://earthquake.usgs.gov/earthquakes/eventpage/' + f.id,
                         new Date(f.properties.time).toISOString(), priority);
                     a.lat = f.geometry.coordinates[1];
@@ -580,7 +594,7 @@ function scanByCoords(lat, lon, radiusKm, callback) {
         fetch('https://www.seismicportal.eu/fdsnws/event/1/query'
             + '?lat=' + lat + '&lon=' + lon
             + '&maxradius=' + radiusDeg.toFixed(1)
-            + '&minmag=3.0&format=json&limit=20&orderby=time')
+            + '&minmag=1.0&format=json&limit=20&orderby=time')
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!data.features) return [];
@@ -947,7 +961,7 @@ function fetchVAAC() { return Promise.resolve([]); }
 // ============================================================
 function fetchGFZ() {
     var url = 'https://geofon.gfz-potsdam.de/fdsnws/event/1/query?format=geojson'
-        + '&minmag=4.5&limit=30&orderby=time'
+        + '&minmag=2.0&limit=30&orderby=time'
         + '&starttime=' + new Date(Date.now() - 86400000).toISOString();
     return fetch(url)
         .then(function(r) { return r.json(); })

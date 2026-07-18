@@ -721,8 +721,14 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     if (data.location) {
                         a.lat = data.location.lat;
                         a.lon = data.location.lon;
-                        // Distancia real entre usuario y ubicación de la alerta
+                        // distKm = distancia entre usuario y ubicación consultada
+                        // Si el usuario buscó esta ciudad, la distancia es exacta
                         a.distKm = calcDistKm(lat, lon, data.location.lat, data.location.lon);
+                        // Agregar ciudad de la alerta en descripción
+                        var locName = data.location.name || '';
+                        if (locName && a.description && a.description.indexOf(locName) === -1) {
+                            a.description = '📍 ' + locName + ' — ' + a.description;
+                        }
                     }
                     return a;
                 });
@@ -806,38 +812,33 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!Array.isArray(data)) return [];
+                var now = Date.now();
                 return data.filter(function(d) {
                     var msg = d.message || '';
-                    // Solo alertas de tormenta real K5+ o radiación solar
-                    // Ignorar K-index 1-4 (solo son informativos)
-                    if (/K-index of [1-4]/i.test(msg) && !/K-index of [5-9]/i.test(msg)) return false;
-                    return /STORM LEVEL WARNING|WATCH|kp [5-9]|geomagnetic storm.*G[2-5]|solar radiation storm/i.test(msg);
+                    if (d.issue_time && (now - new Date(d.issue_time).getTime()) > 72*3600000) return false;
+                    if (/K-index of [1-4]/.test(msg) && !/K-index of [5-9]/.test(msg)) return false;
+                    return /WARNING|WATCH|geomagnetic storm|G[2-5]|solar radiation storm/.test(msg);
                 }).slice(0,2).map(function(d) {
                     var msg = d.message || '';
-                    var isStorm = /geomagnetic storm|G[2-5]|kp [5-9]/i.test(msg);
-                    var isSolarFlare = /solar radiation storm|proton event/i.test(msg);
-                    // Extraer solo texto útil — ignorar cabeceras técnicas
-                    var useful = msg
-                        .replace(/Space Weather Message Code:.*?\n/gi, '')
-                        .replace(/Serial Number:.*?\n/gi, '')
-                        .replace(/Issue Time:.*?\n/gi, '')
-                        .replace(/NOAA.*?Space Weather.*?\n/gi, '')
-                        .replace(/[A-Z]{4}\d{2}\s+[A-Z]{4}\s+\d+/g, '')
-                        .replace(/\n{2,}/g, ' ')
-                        .trim()
-                        .substring(0, 250);
-                    if (!useful || useful.length < 20) return null;
-                    var title = isStorm ? 'Tormenta geomagnética G' + (msg.match(/G([2-5])/)||['',''])[1] :
-                                isSolarFlare ? 'Tormenta de radiación solar' :
-                                'Alerta clima espacial activa';
+                    var isStorm = /geomagnetic storm|G[2-5]/.test(msg);
+                    var isSolar = /solar radiation|proton/.test(msg);
+                    var clean = msg.split('\n').filter(function(l) {
+                        l = l.trim();
+                        return l.length > 10 &&
+                            !l.match(/^Space Weather/) && !l.match(/^Serial/) &&
+                            !l.match(/^Issue Time/) && !l.match(/^[A-Z]{4}[0-9]{2}/);
+                    }).join(' ').replace(/\s+/g,' ').trim().substring(0,250);
+                    if (!clean || clean.length < 15) return null;
+                    var gLevel = (msg.match(/G([2-5])/) || ['',''])[1];
+                    var title = isStorm ? ('Tormenta geomagnética' + (gLevel ? ' G'+gLevel : '')) :
+                                isSolar ? 'Tormenta de radiacion solar' : 'Alerta clima espacial';
                     return makeAlert('NOAA · Clima Espacial', 'TORMENTA SOLAR', '🌞',
-                        title, useful,
-                        isStorm ? '#7B1FA2' : '#FF9500',
-                        'https://www.swpc.noaa.gov/', d.issue_time||'',
-                        isStorm ? 78 : 60);
+                        title, clean, isStorm ? '#7B1FA2' : '#FF9500',
+                        'https://www.swpc.noaa.gov/', d.issue_time || '', isStorm ? 78 : 60);
                 }).filter(Boolean);
             })
             .catch(function() { return []; }),
+
 
         // ── NASA EONET — Eventos naturales por satélite ──
         // Incendios, tormentas, volcanes, inundaciones detectados por NASA

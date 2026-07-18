@@ -570,97 +570,112 @@ function initLocation() {
     var el2 = document.getElementById('weatherLocationName');
     if (el2) el2.textContent = 'Detectando...';
 
-    // ── CAPA 4: mostrar última ubicación conocida SOLO como visual temporal ──
-    // No bloquea la detección real — se reemplaza en cuanto llega señal
+    // Mejor posición recibida hasta ahora
+    var bestAccuracy = 99999;
+
+    // Aplicar solo si es mejor que lo que ya tenemos
+    function applyIfBetter(lat, lon, acc, label) {
+        if (acc < bestAccuracy) {
+            bestAccuracy = acc;
+            applyDeviceLocation(lat, lon, acc, label);
+        }
+    }
+
+    // ── CAPA 4: última conocida — solo texto visual mientras cargamos ──
     var last = loadLastKnownLocation();
     if (last) {
-        // Solo actualizar el texto, NO cargar alertas todavía
-        var elLast = document.getElementById('currentLocationName');
-        if (elLast) elLast.textContent = '⏳ ' + last.name + '...';
-        var elLast2 = document.getElementById('weatherLocationName');
-        if (elLast2) elLast2.textContent = '⏳ ' + last.name + '...';
-        // deviceLocation queda null hasta que llegue señal real
+        var elL = document.getElementById('currentLocationName');
+        if (elL) elL.textContent = '⏳ ' + last.name + '...';
+        var elL2 = document.getElementById('weatherLocationName');
+        if (elL2) elL2.textContent = '⏳ ' + last.name + '...';
     }
 
-    if (!navigator.geolocation) {
-        // Sin API de geoloc → ir directo a capa 3 (IP)
-        geolocByIP();
-        return;
-    }
+    // ── CAPA 3: IP geolocation — lanzar INMEDIATAMENTE en paralelo ──
+    // No espera permisos del navegador, funciona siempre
+    // Se cancela si llega algo más preciso antes
+    geolocByIP(function(lat, lon, acc, label) {
+        applyIfBetter(lat, lon, acc, label);
+    });
+
+    if (!navigator.geolocation) return;
 
     // ── CAPA 1: Red móvil (Cell ID) + WiFi ──
-    // enableHighAccuracy: false → el navegador usa torres celulares + redes WiFi cercanas
-    // Es el método más rápido y no consume batería como el GPS
+    // enableHighAccuracy:false = navegador usa Cell ID + WiFi, sin GPS
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var acc = pos.coords.accuracy;
-            console.log('📶 Red móvil/WiFi:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
-            applyDeviceLocation(pos.coords.latitude, pos.coords.longitude, acc, 'Red/WiFi');
-            // Iniciar watch para mantener actualizado
+            console.log('📶 Red/WiFi:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
+            applyIfBetter(pos.coords.latitude, pos.coords.longitude, acc, 'Red/WiFi ±' + Math.round(acc) + 'm');
             startWatchPosition();
-            // ── CAPA 2: GPS en paralelo para refinar si está disponible ──
-            // Solo si la precisión de red es peor que 500m vale la pena el GPS
-            if (acc > 500) tryGPS();
+            // ── CAPA 2: GPS en paralelo si la red fue imprecisa (>500m) ──
+            if (acc > 500) tryGPS(applyIfBetter);
         },
         function(err) {
-            console.log('Red móvil/WiFi falló (code ' + err.code + '):', err.message);
+            console.log('Red/WiFi falló:', err.message);
             // ── CAPA 2: GPS ──
-            tryGPS();
+            tryGPS(applyIfBetter);
         },
         { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
     );
 }
 
-function tryGPS() {
-    if (!navigator.geolocation) { if (!deviceLocation.lat) geolocByIP(); return; }
+function tryGPS(applyIfBetter) {
+    if (!navigator.geolocation) return;
     console.log('🛰️ Intentando GPS...');
     navigator.geolocation.getCurrentPosition(
         function(pos) {
             var acc = pos.coords.accuracy;
             console.log('🛰️ GPS:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
-            // Solo aplicar GPS si mejoró la precisión actual
-            if (!deviceLocation.lat || acc < (deviceLocation.accuracy || 99999)) {
-                applyDeviceLocation(pos.coords.latitude, pos.coords.longitude, acc, 'GPS');
-            }
+            if (applyIfBetter) applyIfBetter(pos.coords.latitude, pos.coords.longitude, acc, 'GPS ±' + Math.round(acc) + 'm');
+            else applyDeviceLocation(pos.coords.latitude, pos.coords.longitude, acc, 'GPS');
             startWatchPosition();
         },
         function(err) {
             console.log('GPS falló (code ' + err.code + '):', err.message);
-            // ── CAPA 3: IP Geolocation ──
-            if (!deviceLocation.lat) geolocByIP();
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 }
 
-function geolocByIP() {
-    // Capa 3: geolocalización por IP — funciona sin permisos, sin GPS, sin señal móvil
-    // Usa la IP pública del dispositivo para estimar ciudad/región
-    fetch('https://ipapi.co/json/')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.latitude && d.longitude) {
-                console.log('📍 Geoloc por IP:', d.city, d.latitude, d.longitude);
-                applyDeviceLocation(d.latitude, d.longitude, 50000, 'IP');
-                showToast('📡 Ubicación por red: ' + (d.city || d.region || 'Aproximada'));
-            } else {
-                showNoGPSMessage();
-            }
-        })
-        .catch(function() {
-            // Si ipapi.co falla, intentar con ip-api.com
-            fetch('http://ip-api.com/json/?fields=lat,lon,city,regionName,country')
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    if (d && d.lat) {
-                        applyDeviceLocation(d.lat, d.lon, 50000, 'IP-fallback');
-                        showToast('📡 Ubicación por red: ' + (d.city || d.regionName || 'Aproximada'));
+function geolocByIP(callback) {
+    // Capa 3: IP geolocation — sin permisos, sin GPS, funciona siempre
+    // Precisión ~50km (nivel ciudad/región) — útil en PC o cuando falla todo lo demás
+    var apis = [
+        { url: 'https://ipapi.co/json/', parse: function(d) {
+            return d.latitude ? { lat: d.latitude, lon: d.longitude, city: d.city || d.region } : null;
+        }},
+        { url: 'https://ip-api.com/json/?fields=lat,lon,city,regionName,status', parse: function(d) {
+            return (d.status === 'success' && d.lat) ? { lat: d.lat, lon: d.lon, city: d.city || d.regionName } : null;
+        }},
+        { url: 'https://freeipapi.com/api/json', parse: function(d) {
+            return d.latitude ? { lat: d.latitude, lon: d.longitude, city: d.cityName || d.regionName } : null;
+        }}
+    ];
+
+    function tryApi(i) {
+        if (i >= apis.length) {
+            if (!deviceLocation.lat) showNoGPSMessage();
+            return;
+        }
+        fetch(apis[i].url)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var result = apis[i].parse(d);
+                if (result) {
+                    console.log('📡 IP geoloc [' + apis[i].url.split('/')[2] + ']:', result.city, result.lat, result.lon);
+                    if (callback) {
+                        callback(result.lat, result.lon, 50000, 'IP:' + (result.city || ''));
                     } else {
-                        showNoGPSMessage();
+                        applyDeviceLocation(result.lat, result.lon, 50000, 'IP');
                     }
-                })
-                .catch(function() { showNoGPSMessage(); });
-        });
+                    if (result.city) showToast('📡 Ubicación IP: ' + result.city);
+                } else {
+                    tryApi(i + 1);
+                }
+            })
+            .catch(function() { tryApi(i + 1); });
+    }
+    tryApi(0);
 }
 
 // ── HOOKS PARA APK NATIVO (WiFi Direct + Bluetooth) ──

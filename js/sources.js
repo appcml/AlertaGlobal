@@ -606,6 +606,75 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             return all;
         }).catch(function() { return []; }),
 
+        // ── MET Norway / Yr.no — Alertas meteorológicas globales ──
+        // La misma fuente que usa MSN El Tiempo y Yr.no
+        // Cubre alertas activas mundiales filtradas por coordenadas
+        fetch('https://api.met.no/weatherapi/metalerts/2.0/current.json?lat=' + lat + '&lon=' + lon,
+            { headers: { 'User-Agent': 'AlertaGlobal/1.0 github.com/appcml/AlertaGlobal' } })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                if (!data.features) return [];
+                return data.features.map(function(f) {
+                    var p = f.properties || {};
+                    var event = p.event || p.eventAwarenessName || 'Alerta meteorológica';
+                    var severity = p.severity || '';
+                    var certainty = p.certainty || '';
+                    var desc = p.description || p.consequences || '';
+                    var instruction = p.instruction || '';
+                    var color = severity === 'Extreme'  ? '#FF2D55' :
+                                severity === 'Severe'   ? '#FF3B30' :
+                                severity === 'Moderate' ? '#FF9500' : '#FFC107';
+                    var priority = severity === 'Extreme'  ? 97 :
+                                   severity === 'Severe'   ? 88 :
+                                   severity === 'Moderate' ? 72 : 55;
+                    // Traducir tipos comunes al español
+                    var typeES = event
+                        .replace(/wind/i,'Viento').replace(/rain/i,'Lluvia')
+                        .replace(/snow/i,'Nieve').replace(/storm/i,'Tormenta')
+                        .replace(/thunder/i,'Tormenta eléctrica')
+                        .replace(/flood/i,'Inundación').replace(/fog/i,'Niebla')
+                        .replace(/ice/i,'Hielo').replace(/avalanche/i,'Avalancha')
+                        .replace(/gale/i,'Viento fuerte').replace(/blizzard/i,'Ventisca');
+                    var icon = /wind|gale/i.test(event) ? '💨' :
+                               /rain|flood/i.test(event) ? '🌧️' :
+                               /snow|blizzard/i.test(event) ? '❄️' :
+                               /thunder|storm/i.test(event) ? '⛈️' :
+                               /fog/i.test(event) ? '🌫️' :
+                               /ice/i.test(event) ? '🧊' : '⚠️';
+                    var a = makeAlert(
+                        'MET Norway · Yr.no',
+                        typeES.toUpperCase(), icon,
+                        typeES + (severity ? ' — Nivel ' + severity : ''),
+                        (desc + (instruction ? ' ' + instruction : '')).substring(0, 300),
+                        color,
+                        'https://www.yr.no',
+                        p.onset || new Date().toISOString(),
+                        priority
+                    );
+                    // Extraer coords del polígono si existen
+                    if (f.geometry && f.geometry.coordinates) {
+                        try {
+                            var coords = f.geometry.type === 'Point'
+                                ? [f.geometry.coordinates]
+                                : f.geometry.coordinates[0];
+                            if (coords && coords[0]) {
+                                a.lat = coords[0][1];
+                                a.lon = coords[0][0];
+                                a.distKm = calcDistKm(lat, lon, a.lat, a.lon);
+                            }
+                        } catch(e) {}
+                    }
+                    return a;
+                }).filter(Boolean);
+            })
+            .catch(function(e) {
+                console.log('MET Norway error:', e.message);
+                return [];
+            }),
+
         // ── NOAA Clima Espacial ──
         fetch('https://services.swpc.noaa.gov/products/alerts.json')
             .then(function(r) { return r.json(); })
@@ -745,18 +814,175 @@ function calcDistKm(lat1, lon1, lat2, lon2) {
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 }
 
+
+// ============================================================
+// 🌊 PTWC — Pacific Tsunami Warning Center
+// Cubre TODO el Pacífico incluido Chile, Perú, Ecuador
+// ============================================================
+function fetchPTWC() {
+    return fetchCors('https://ptwc.weather.gov/cap/ptwc_cap_races.xml', 10000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            // PTWC usa formato CAP/XML
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(xml, 'text/xml');
+            var alerts = doc.querySelectorAll('alert');
+            var results = [];
+            alerts.forEach(function(alert) {
+                var msgType = (alert.querySelector('msgType') || {}).textContent || '';
+                if (!/Alert|Update/i.test(msgType)) return;
+                var title = (alert.querySelector('headline') || {}).textContent || 'Alerta Tsunami';
+                var desc  = (alert.querySelector('description') || {}).textContent || '';
+                var sent  = (alert.querySelector('sent') || {}).textContent || '';
+                var sev   = (alert.querySelector('severity') || {}).textContent || '';
+                var isTsunami = /tsunami/i.test(title + desc);
+                var color = sev === 'Extreme' ? '#FF2D55' : sev === 'Severe' ? '#FF3B30' : '#FF9500';
+                var priority = sev === 'Extreme' ? 99 : sev === 'Severe' ? 95 : 80;
+                results.push(makeAlert(
+                    'PTWC · NOAA', isTsunami ? 'TSUNAMI' : 'ALERTA COSTERA',
+                    isTsunami ? '🌊' : '⚠️',
+                    title, desc.substring(0, 300),
+                    color, 'https://ptwc.weather.gov', sent, priority
+                ));
+            });
+            // Si no hay CAP, intentar RSS de texto
+            if (!results.length) {
+                var items = parseRSS(xml);
+                items.slice(0,5).forEach(function(item) {
+                    var isTsunami = /tsunami/i.test((item.title||'') + (item.description||''));
+                    results.push(makeAlert(
+                        'PTWC · NOAA', isTsunami ? 'TSUNAMI' : 'ALERTA COSTERA',
+                        isTsunami ? '🌊' : '⚠️',
+                        item.title || 'Alerta PTWC',
+                        (item.description||'').substring(0,300),
+                        isTsunami ? '#FF2D55' : '#FF9500',
+                        item.link || 'https://ptwc.weather.gov',
+                        item.pubDate, isTsunami ? 99 : 80
+                    ));
+                });
+            }
+            return results;
+        })
+        .catch(function(e) {
+            console.log('PTWC error:', e && e.message);
+            return [];
+        });
+}
+
+// ============================================================
+// 🌋 VolcanoDiscovery RSS — Volcanes activos mundiales
+// Incluye Villarrica, Calbuco, Hudson en Chile
+// ============================================================
+function fetchVolcanoDiscovery() {
+    return fetchCors('https://www.volcanodiscovery.com/news/volcano-news.rss', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            return parseRSS(xml).slice(0, 15).map(function(item) {
+                var t = item.title || '', d = item.description || '';
+                // Calcular prioridad por keywords
+                var priority = /eruption|lava|explosion|ash cloud|evacuac/i.test(t+d) ? 85 :
+                               /unrest|alert|warning|tremor/i.test(t+d) ? 70 : 55;
+                var color = priority >= 85 ? '#FF6D00' : priority >= 70 ? '#FF9500' : '#FFC107';
+                return makeAlert(
+                    'VolcanoDiscovery', 'VOLCÁN', '🌋',
+                    t, d.replace(/<[^>]+>/g,'').substring(0, 250),
+                    color, item.link || 'https://www.volcanodiscovery.com',
+                    item.pubDate, priority
+                );
+            }).filter(function(a) { return a.title && a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
+// ============================================================
+// ✈️ VAAC Buenos Aires — Ceniza volcánica Sudamérica
+// Vigila volcanes de Chile, Argentina, Bolivia, Perú
+// Fuente oficial para aviación — avisos de ceniza
+// ============================================================
+function fetchVAAC() {
+    return fetchCors('https://www.smn.gob.ar/vaac/VAACBA/products/', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 50) return [];
+            // Si responde HTML con lista de archivos
+            var matches = xml.match(/VAA_\w+\.xml/g) || [];
+            if (!matches.length) return [];
+            // Fetch el más reciente
+            return fetchCors('https://www.smn.gob.ar/vaac/VAACBA/products/' + matches[matches.length-1], 8000)
+                .then(function(vaaXml) {
+                    if (!vaaXml) return [];
+                    var volcano = (vaaXml.match(/VOLCANO:\s*([^
+]+)/) || [])[1] || 'Volcán';
+                    var summit  = (vaaXml.match(/SUMMIT ELEV:\s*([^
+]+)/) || [])[1] || '';
+                    var cloud   = (vaaXml.match(/VA CLD:\s*([^
+]+)/) || [])[1] || '';
+                    if (!cloud || /NOT IDENTIF|NIL/i.test(cloud)) return [];
+                    return [makeAlert(
+                        'VAAC Buenos Aires', 'VOLCÁN', '🌋',
+                        'Ceniza volcánica: ' + volcano.trim(),
+                        'Nube de ceniza detectada. ' + (summit ? 'Cima: ' + summit.trim() + '. ' : '') + (cloud ? 'Extensión: ' + cloud.trim() : ''),
+                        '#FF6D00',
+                        'https://www.smn.gob.ar/vaac/VAACBA/products/',
+                        new Date().toISOString(), 88
+                    )];
+                })
+                .catch(function() { return []; });
+        })
+        .catch(function() { return []; });
+}
+
+// ============================================================
+// 🌍 GFZ Potsdam — Sismos globales M4.5+
+// Respaldo independiente de USGS y EMSC
+// Centro alemán de geociencias — datos propios
+// ============================================================
+function fetchGFZ() {
+    var url = 'https://geofon.gfz-potsdam.de/fdsnws/event/1/query?format=geojson'
+        + '&minmag=4.5&limit=30&orderby=time'
+        + '&starttime=' + new Date(Date.now() - 86400000).toISOString();
+    return fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.features) return [];
+            return data.features.map(function(f) {
+                var mag = f.properties.mag || 0;
+                var place = f.properties.place || f.properties.description || '';
+                var depth = f.geometry.coordinates[2] || 0;
+                var color = mag >= 7 ? '#FF2D55' : mag >= 6 ? '#FF3B30' : mag >= 5 ? '#FF9500' : '#FFC107';
+                var priority = mag >= 7 ? 95 : mag >= 6 ? 85 : mag >= 5 ? 72 : 55;
+                var a = makeAlert(
+                    'GFZ Potsdam', 'SISMO', '🌍',
+                    'M' + mag.toFixed(1) + ' — ' + place,
+                    'Prof: ' + depth.toFixed(0) + ' km',
+                    color,
+                    'https://geofon.gfz-potsdam.de/eqinfo/event.php?id=' + f.id,
+                    new Date(f.properties.time).toISOString(), priority
+                );
+                a.lat = f.geometry.coordinates[1];
+                a.lon = f.geometry.coordinates[0];
+                a.source_id = 'gfz_' + f.id;
+                return a;
+            });
+        })
+        .catch(function() { return []; });
+}
+
 // =============================================
 // MASTER FETCH — Prioridad: APIs directas primero
 // =============================================
 function loadExternalSources(callback) {
     Promise.all([
-        fetchUSGSChile(),      // USGS Chile M1.5+ últimas 48h
-        fetchUSGSChile24h(),   // USGS Chile M2.0+ últimas 24h (más reciente)
-        fetchUSGSGlobal(),     // USGS Global M4.5+
-        fetchSENAPRED(),       // SENAPRED alertas oficiales (cuando disponible)
-        fetchGDACS(),          // GDACS ONU — alertas globales
-        fetchNHC(),            // NHC NOAA — huracanes
-        fetchSpaceWeather()    // NOAA clima espacial
+        fetchUSGSChile(),       // USGS Chile M1.5+ 48h
+        fetchUSGSChile24h(),    // USGS Chile M2.0+ 24h
+        fetchUSGSGlobal(),      // USGS Global M4.5+
+        fetchGFZ(),             // GFZ Potsdam — respaldo sismos
+        fetchSENAPRED(),        // SENAPRED Chile (cuando disponible)
+        fetchPTWC(),            // PTWC — Tsunamis Pacífico
+        fetchVolcanoDiscovery(),// Volcanes activos globales
+        fetchVAAC(),            // Ceniza volcánica Sudamérica
+        fetchGDACS(),           // GDACS ONU
+        fetchNHC(),             // NHC NOAA — huracanes
+        fetchSpaceWeather()     // NOAA clima espacial
     ]).then(function(results) {
         var all = [];
         results.forEach(function(arr) { all = all.concat(arr || []); });

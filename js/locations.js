@@ -560,7 +560,7 @@ function startWatchPosition() {
                 setTimeout(startWatchPosition, 5000);
             }
         },
-        { enableHighAccuracy: false, timeout: Infinity, maximumAge: 30000 }
+        { enableHighAccuracy: false, timeout: Infinity, maximumAge: 10000 } // Cell ID + WiFi, bajo consumo
     );
 }
 
@@ -588,36 +588,48 @@ function initLocation() {
         return;
     }
 
-    // ── CAPA 1: WiFi / Red móvil (rápido, sin necesitar GPS) ──
+    // ── CAPA 1: Red móvil (Cell ID) + WiFi ──
+    // enableHighAccuracy: false → el navegador usa torres celulares + redes WiFi cercanas
+    // Es el método más rápido y no consume batería como el GPS
     navigator.geolocation.getCurrentPosition(
         function(pos) {
-            applyDeviceLocation(pos.coords.latitude, pos.coords.longitude,
-                pos.coords.accuracy, 'WiFi/Red');
+            var acc = pos.coords.accuracy;
+            console.log('📶 Red móvil/WiFi:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
+            applyDeviceLocation(pos.coords.latitude, pos.coords.longitude, acc, 'Red/WiFi');
+            // Iniciar watch para mantener actualizado
             startWatchPosition();
-            // Lanzar también intento GPS para refinar si está disponible
-            tryGPS();
+            // ── CAPA 2: GPS en paralelo para refinar si está disponible ──
+            // Solo si la precisión de red es peor que 500m vale la pena el GPS
+            if (acc > 500) tryGPS();
         },
-        function() {
+        function(err) {
+            console.log('Red móvil/WiFi falló (code ' + err.code + '):', err.message);
             // ── CAPA 2: GPS ──
             tryGPS();
         },
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
     );
 }
 
 function tryGPS() {
+    if (!navigator.geolocation) { if (!deviceLocation.lat) geolocByIP(); return; }
+    console.log('🛰️ Intentando GPS...');
     navigator.geolocation.getCurrentPosition(
         function(pos) {
-            applyDeviceLocation(pos.coords.latitude, pos.coords.longitude,
-                pos.coords.accuracy, 'GPS');
+            var acc = pos.coords.accuracy;
+            console.log('🛰️ GPS:', pos.coords.latitude, pos.coords.longitude, '±' + Math.round(acc) + 'm');
+            // Solo aplicar GPS si mejoró la precisión actual
+            if (!deviceLocation.lat || acc < (deviceLocation.accuracy || 99999)) {
+                applyDeviceLocation(pos.coords.latitude, pos.coords.longitude, acc, 'GPS');
+            }
             startWatchPosition();
         },
         function(err) {
             console.log('GPS falló (code ' + err.code + '):', err.message);
-            // ── CAPA 3: IP Geolocation (sin permisos del navegador) ──
+            // ── CAPA 3: IP Geolocation ──
             if (!deviceLocation.lat) geolocByIP();
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 }
 

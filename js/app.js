@@ -180,11 +180,22 @@ function showToast(msg) {
     setTimeout(function() { el.classList.remove('show'); }, 2500);
 }
 function formatTime(ts) {
-    var d = Date.now()-ts;
-    if (d < 60000) return 'Hace menos de 1 min';
-    if (d < 3600000) return 'Hace '+Math.floor(d/60000)+' min';
-    if (d < 86400000) return 'Hace '+Math.floor(d/3600000)+'h';
-    return new Date(ts).toLocaleString('es-CL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    if (!ts) return '';
+    var t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
+    if (isNaN(t)) return ts;
+    var d = Date.now() - t;
+    var dt = new Date(t);
+    var day   = String(dt.getDate()).padStart(2,'0');
+    var month = String(dt.getMonth()+1).padStart(2,'0');
+    var year  = dt.getFullYear();
+    var hour  = String(dt.getHours()).padStart(2,'0');
+    var min   = String(dt.getMinutes()).padStart(2,'0');
+    var dateStr = day+'/'+month+'/'+year+' '+hour+':'+min;
+    if (d < 60000)     return 'Hace menos de 1 min · '+dateStr;
+    if (d < 3600000)   return 'Hace '+Math.floor(d/60000)+' min · '+dateStr;
+    if (d < 86400000)  return 'Hace '+Math.floor(d/3600000)+'h · '+dateStr;
+    if (d < 172800000) return 'Ayer · '+dateStr;
+    return dateStr;
 }
 function calcDistance(lat1, lon1, lat2, lon2) {
     var R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
@@ -964,20 +975,18 @@ function loadAlerts() {
             return a.priority >= 85;
         });
 
-        // Ordenar por: localidad primero → prioridad → tiempo
+        // Ordenar: prioridad crítica primero, luego más reciente
         filtered.sort(function(a, b) {
-            // 1. Score local (más cercano primero)
-            var scoreA = alertScore(a);
-            var scoreB = alertScore(b);
-            if (scoreB !== scoreA) return scoreB - scoreA;
-            // 2. Fuentes locales del país del usuario
-            var aLocal = userInChile && /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(a.source || '') ? 1 : 0;
-            var bLocal = userInChile && /SENAPRED|CONAF|SHOA|CSN|USGS.*Chile/i.test(b.source || '') ? 1 : 0;
-            if (bLocal !== aLocal) return bLocal - aLocal;
-            // 3. Prioridad del evento
-            if (b.priority !== a.priority) return b.priority - a.priority;
-            // 4. Más reciente
-            return (b.time || 0) - (a.time || 0);
+            // 1. Emergencias críticas siempre arriba (tsunami, M7+)
+            var aCrit = a.priority >= 90 ? 1 : 0;
+            var bCrit = b.priority >= 90 ? 1 : 0;
+            if (bCrit !== aCrit) return bCrit - aCrit;
+            // 2. Más reciente primero
+            var tA = a.time ? new Date(a.time).getTime() : 0;
+            var tB = b.time ? new Date(b.time).getTime() : 0;
+            if (tB !== tA) return tB - tA;
+            // 3. Mayor magnitud/prioridad como desempate
+            return b.priority - a.priority;
         });
 
         // Mostrar indicador de localidad en las cards

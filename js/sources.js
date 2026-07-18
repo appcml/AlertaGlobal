@@ -795,35 +795,40 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             })
             .catch(function() { return []; }),
 
-        // ── ReliefWeb ONU — Desastres activos globales ──
-        fetch('https://api.reliefweb.int/v1/disasters?appname=alertaglobal&limit=10'
-            + '&filter[operator]=AND'
-            + '&filter[conditions][0][field]=status&filter[conditions][0][value]=ongoing'
-            + '&fields[include][]=name&fields[include][]=glide'
-            + '&fields[include][]=type&fields[include][]=country'
-            + '&fields[include][]=date&fields[include][]=url')
+        // ── GDACS API — Eventos activos filtrados por proximidad ──
+        fetch('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH'
+            + '?eventlist=EQ,TC,FL,VO,WF,DR'
+            + '&alertlevel=green;orange;red'
+            + '&fromDate=' + new Date(Date.now()-604800000).toISOString().split('T')[0]
+            + '&toDate=' + new Date().toISOString().split('T')[0]
+            + '&bbox=' + (lon-10) + ',' + (lat-10) + ',' + (lon+10) + ',' + (lat+10))
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (!data.data) return [];
-                return data.data.slice(0,8).map(function(ev) {
-                    var f = ev.fields || {};
-                    var types = f.type || [];
-                    var typeName = types[0] && types[0].name || 'DESASTRE';
-                    var country = f.country && f.country[0] ? f.country[0].name : '';
-                    var icon = /earthquake|sismo/i.test(typeName) ? '🌍' :
-                               /flood/i.test(typeName) ? '🌊' :
-                               /storm|cyclone|typhoon/i.test(typeName) ? '🌀' :
-                               /volcano/i.test(typeName) ? '🌋' :
-                               /fire/i.test(typeName) ? '🔥' : '⚠️';
-                    return makeAlert(
-                        'ReliefWeb · ONU', typeName.toUpperCase(), icon,
-                        f.name || typeName,
-                        country ? 'País: ' + country : '',
-                        '#FF9500',
-                        f.url || 'https://reliefweb.int',
-                        f.date && f.date.created || '',
-                        70);
-                });
+                var features = data.features || (data.items ? data.items : []);
+                if (!features.length) return [];
+                return features.slice(0,10).map(function(f) {
+                    var p = f.properties || f;
+                    var title = p.name || p.eventname || p.title || 'Evento';
+                    var type = (p.eventtype || p.type || '').toUpperCase();
+                    var icon = type === 'EQ' ? '🌍' : type === 'TC' ? '🌀' :
+                               type === 'FL' ? '🌊' : type === 'VO' ? '🌋' :
+                               type === 'WF' ? '🔥' : '⚠️';
+                    var typeLabel = type === 'EQ' ? 'SISMO' : type === 'TC' ? 'CICLÓN' :
+                                   type === 'FL' ? 'INUNDACIÓN' : type === 'VO' ? 'VOLCÁN' :
+                                   type === 'WF' ? 'INCENDIO' : 'EVENTO';
+                    var alert = (p.alertlevel || p.level || '').toLowerCase();
+                    var color = alert === 'red' ? '#FF3B30' : alert === 'orange' ? '#FF9500' : '#FFC107';
+                    var priority = alert === 'red' ? 88 : alert === 'orange' ? 75 : 60;
+                    var a = makeAlert('GDACS · ONU', typeLabel, icon, title,
+                        (p.description || p.country || '').substring(0,200),
+                        color, p.url || 'https://www.gdacs.org', p.fromdate || '', priority);
+                    if (f.geometry && f.geometry.coordinates) {
+                        a.lat = f.geometry.coordinates[1];
+                        a.lon = f.geometry.coordinates[0];
+                        a.distKm = calcDistKm(lat, lon, a.lat, a.lon);
+                    }
+                    return a;
+                }).filter(Boolean);
             })
             .catch(function() { return []; })
 

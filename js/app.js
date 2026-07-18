@@ -925,16 +925,32 @@ function loadAlerts() {
             return 0;
         }
 
-        // scanByCoords ya filtra por radio — solo filtrar alertas sin coords
+        var radius = getUserRadiusKm() || 500;
+
         var filtered = externalAlerts.filter(function(a) {
-            // Si ya tiene distancia calculada por scanByCoords → incluir
-            if (a.distKm != null) return true;
-            // Sin coords: incluir solo si es alta prioridad
-            if (a.priority >= 70) return true;
-            // Alertas locales sin coords
-            if (/SENAPRED|CONAF|SHOA|CSN/i.test(a.source || '') && userInChile) return true;
+            // Sin ubicación del usuario → mostrar todo
             if (!loc.lat) return true;
-            return false;
+            // Radio global → mostrar todo
+            if (radius === 0) return true;
+
+            // Tiene coordenadas propias → filtrar por distancia real
+            if (a.lat != null && a.lon != null) {
+                var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+                a.distKm = d;
+                return d <= radius;
+            }
+
+            // Sin coordenadas — filtrar por fuente/contexto
+            // Fuentes chilenas: solo si usuario está en Chile
+            if (/SENAPRED|CONAF|SHOA|CSN/i.test(a.source || '')) {
+                return userInChile;
+            }
+
+            // MET Norway: ya viene filtrada por coords desde la API → incluir
+            if (/MET Norway/i.test(a.source || '')) return true;
+
+            // Otras sin coords (NHC huracanes, clima espacial): solo prioridad alta
+            return a.priority >= 85;
         });
 
         // Ordenar por: localidad primero → prioridad → tiempo

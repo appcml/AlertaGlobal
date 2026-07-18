@@ -541,16 +541,40 @@ function applyDeviceLocation(lat, lon, acc, label) {
     deviceLocation.lon = lon;
     deviceLocation.accuracy = acc;
     console.log('📍 Ubicación [' + label + ']:', lat.toFixed(4), lon.toFixed(4), '±' + Math.round(acc) + 'm');
-    LocationManager.reverseGeocode(lat, lon).then(function(geo) {
-        deviceLocation.name = geo.city || (lat.toFixed(2) + ', ' + lon.toFixed(2));
-        deviceLocation.country = geo.country || '';
-        saveLastKnownLocation(lat, lon, deviceLocation.name, deviceLocation.country);
-        updateLocationUI();
-        if (!focusLocation.lat) {
-            loadAlerts();
-            loadWeather(lat, lon);
-        }
-    });
+
+    // Actualizar UI inmediatamente con coordenadas mientras llega el nombre
+    updateLocationUI();
+    if (!focusLocation.lat) {
+        loadAlerts();
+        loadWeather(lat, lon);
+    }
+
+    // Reverse geocode para obtener nombre de ciudad
+    if (typeof LocationManager !== 'undefined' && LocationManager.reverseGeocode) {
+        LocationManager.reverseGeocode(lat, lon).then(function(geo) {
+            deviceLocation.name = geo.city || (lat.toFixed(2) + ', ' + lon.toFixed(2));
+            deviceLocation.country = geo.country || '';
+            saveLastKnownLocation(lat, lon, deviceLocation.name, deviceLocation.country);
+            updateLocationUI();
+        }).catch(function() {
+            deviceLocation.name = lat.toFixed(2) + ', ' + lon.toFixed(2);
+            updateLocationUI();
+        });
+    } else {
+        // LocationManager aún no cargó — usar BigDataCloud directamente
+        fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude='+lat+'&longitude='+lon+'&localityLanguage=es')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                deviceLocation.name = d.city || d.locality || d.principalSubdivision || (lat.toFixed(2)+', '+lon.toFixed(2));
+                deviceLocation.country = d.countryName || '';
+                saveLastKnownLocation(lat, lon, deviceLocation.name, deviceLocation.country);
+                updateLocationUI();
+            })
+            .catch(function() {
+                deviceLocation.name = lat.toFixed(2) + ', ' + lon.toFixed(2);
+                updateLocationUI();
+            });
+    }
 }
 
 function startWatchPosition() {

@@ -40,9 +40,13 @@ jobs:
       # Decodificar keystore desde secret base64
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/mis-juegos.keystore
-          echo "✅ Keystore decodificado OK"
-          ls -la android/app/mis-juegos.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 -d > android/app/mis-juegos.keystore
+          if [ -s android/app/mis-juegos.keystore ]; then
+            echo "✅ Keystore OK — $(wc -c < android/app/mis-juegos.keystore) bytes"
+          else
+            echo "❌ Keystore vacío"
+            exit 1
+          fi
 
       # Copiar archivos web al APK
       - name: Copiar web assets

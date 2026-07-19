@@ -9,12 +9,12 @@ on:
       - 'css/**'
       - 'index.html'
       - '.github/workflows/build-apk.yml'
-  workflow_dispatch:  # Permite ejecutar manualmente
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Build & Sign APK
+    name: Build & Sign APK Release
 
     steps:
       - name: Checkout código
@@ -37,8 +37,15 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # Copiar archivos web al directorio assets del APK
-      - name: Copiar web assets al APK
+      # Decodificar keystore desde secret base64
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/mis-juegos.keystore
+          echo "✅ Keystore decodificado OK"
+          ls -la android/app/mis-juegos.keystore
+
+      # Copiar archivos web al APK
+      - name: Copiar web assets
         run: |
           mkdir -p android/app/src/main/assets/www
           cp index.html android/app/src/main/assets/www/
@@ -46,20 +53,19 @@ jobs:
           cp -r js android/app/src/main/assets/www/
           cp -r img android/app/src/main/assets/www/ 2>/dev/null || true
           cp manifest.json android/app/src/main/assets/www/ 2>/dev/null || true
-          echo "Assets copiados:"
-          ls android/app/src/main/assets/www/
+          echo "✅ Assets copiados:"
+          find android/app/src/main/assets/www -type f
 
-      # Permisos para gradlew
-      - name: Dar permisos a gradlew
+      - name: Permisos gradlew
         run: chmod +x android/gradlew
 
-      # Build APK de debug (para pruebas rápidas)
-      - name: Build APK Debug
+      # Build APK Debug
+      - name: Build Debug APK
         working-directory: android
         run: ./gradlew assembleDebug --stacktrace
 
-      # Build APK Release (firmado)
-      - name: Build APK Release
+      # Build APK Release firmado
+      - name: Build Release APK
         working-directory: android
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -67,60 +73,68 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
-      # Subir APK Debug como artifact
+      # Renombrar APKs con versión
+      - name: Renombrar APKs
+        run: |
+          VERSION=$(grep 'versionName' android/app/build.gradle.kts | grep -o '".*"' | tr -d '"')
+          BUILD=${{ github.run_number }}
+          mv android/app/build/outputs/apk/debug/app-debug.apk \
+             android/app/build/outputs/apk/debug/AlertaGlobal-v${VERSION}-debug.apk || true
+          mv android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/AlertaGlobal-v${VERSION}-release.apk || true
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD=$BUILD" >> $GITHUB_ENV
+
       - name: Upload APK Debug
         uses: actions/upload-artifact@v4
         with:
-          name: AlertaGlobal-debug
+          name: AlertaGlobal-debug-${{ env.VERSION }}
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # Subir APK Release como artifact
       - name: Upload APK Release
         uses: actions/upload-artifact@v4
         with:
-          name: AlertaGlobal-release
+          name: AlertaGlobal-release-${{ env.VERSION }}
           path: android/app/build/outputs/apk/release/*.apk
           retention-days: 90
 
-      # Crear GitHub Release automático
-      - name: Get version
-        id: version
-        run: |
-          VERSION=$(grep 'versionName' android/app/build.gradle.kts | grep -o '".*"' | tr -d '"')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
+      # Crear GitHub Release con APK adjunto
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
-          name: "AlertaGlobal v${{ steps.version.outputs.version }}"
+          tag_name: v${{ env.VERSION }}-build${{ env.BUILD }}
+          name: "🌍 AlertaGlobal v${{ env.VERSION }}"
           body: |
-            ## 🌍 AlertaGlobal APK
+            ## 🌍 AlertaGlobal v${{ env.VERSION }}
+            **Build #${{ env.BUILD }}** — ${{ github.event.head_commit.message }}
 
-            Aplicación de alertas de desastres naturales en tiempo real.
+            ### 📥 Instalación
+            1. Descarga `AlertaGlobal-v${{ env.VERSION }}-release.apk`
+            2. Android: **Ajustes → Seguridad → Instalar apps desconocidas → Permitir**
+            3. Abre el APK descargado e instala
 
-            ### Instalación
-            1. Descarga `AlertaGlobal-release.apk`
-            2. En tu Android: Ajustes → Seguridad → Fuentes desconocidas → Activar
-            3. Instala el APK descargado
+            ### ✅ Qué incluye esta versión
+            - Alertas en tiempo real: sismos, volcanes, tsunamis, incendios, clima
+            - Geolocalización GPS + red móvil + WiFi (sin depender solo del GPS)
+            - Alertas SAE de SENAPRED vía Cell Broadcast (sin internet)
+            - Monitoreo en background con notificaciones push
+            - IA contextual (Cic_IA) para análisis de alertas
+            - Soporte offline con caché local
+            - Mapa interactivo con todos los eventos
 
-            ### Qué incluye
-            - Monitoreo en tiempo real: sismos, volcanes, tsunamis, incendios, clima
-            - Geolocalización por GPS + red móvil + WiFi
-            - Alertas SAE de SENAPRED (Cell Broadcast)
-            - Soporte offline con datos en caché
-            - IA para análisis contextual (Cic_IA)
-
-            ### Fuentes de datos
-            USGS · EMSC · GFZ · NASA FIRMS · NASA EONET
-            WeatherAPI · MET Norway · Open-Meteo
+            ### 📡 Fuentes de datos
+            USGS · EMSC · GFZ Potsdam · GeoNet NZ
+            NASA FIRMS · NASA EONET · Smithsonian GVP
+            WeatherAPI · MET Norway · Open-Meteo · OpenAQ
             GDACS ONU · NHC NOAA · PTWC · SENAPRED
+
+            ### ⚠️ Permisos requeridos
+            - Ubicación (GPS + red) — para alertas locales
+            - Notificaciones — para alertas push
+            - Cell Broadcast — para SAE de SENAPRED
           files: |
             android/app/build/outputs/apk/release/*.apk
-            android/app/build/outputs/apk/debug/*.apk
           draft: false
           prerelease: false
         env:

@@ -16,7 +16,29 @@ var proxyFails = {};
 // 🌐 TRADUCCIÓN AUTOMÁTICA DE ALERTAS AL IDIOMA DEL USUARIO
 // ============================================================
 function translateAlert(text, targetLang) {
-    if (!text || targetLang === 'en') return text;
+    if (!text) return text;
+    // Detect non-latin scripts (Russian, Japanese, Arabic, Chinese, etc.)
+    // and use WeatherAPI common terms mapping
+    var hasCyrillic = /[\u0400-\u04FF]/.test(text);
+    var hasArabic   = /[\u0600-\u06FF]/.test(text);
+    var hasCJK      = /[\u3040-\u9FFF]/.test(text);
+    if (hasCyrillic || hasArabic || hasCJK) {
+        // Can't translate Cyrillic/CJK word by word
+        // Return a generic description based on known patterns
+        if (/температур|темп/i.test(text))    return '🌡️ Alerta de temperatura';
+        if (/осадк|дождь|снег/i.test(text))   return '🌧️ Alerta de precipitaciones';
+        if (/ветер|шторм/i.test(text))         return '💨 Alerta de viento/tormenta';
+        if (/жара|тепло/i.test(text))          return '🥵 Alerta de calor';
+        if (/мороз|холод/i.test(text))         return '🥶 Alerta de frío';
+        if (/наводнен|затоплен/i.test(text))   return '🌊 Alerta de inundación';
+        if (/пожар/i.test(text))               return '🔥 Alerta de incendio';
+        if (/землетряс/i.test(text))           return '🌍 Alerta sísmica';
+        // Generic fallback for unknown Cyrillic
+        if (hasCyrillic) return '⚠️ Alerta meteorológica activa';
+        if (hasCJK)      return '⚠️ Alerta activa';
+        if (hasArabic)   return '⚠️ تنبيه نشط';
+    }
+    if (targetLang === 'en') return text;
     var t = text;
 
     // Tipos de eventos
@@ -1081,10 +1103,12 @@ function scanByCoords(lat, lon, radiusKm, callback) {
         // ── WeatherAPI.com — Alertas meteorológicas oficiales por país ──
         // 1,000,000 requests/mes gratis — incluye alertas de DMC, SENAPRED vía CAP
         // Cubre lluvias intensas, vientos, tormentas, nevadas, tsunamis, etc.
-        fetch('https://api.weatherapi.com/v1/forecast.json'
+        (function() {
+        var wLang = (typeof currentLang !== 'undefined') ? currentLang : 'es';
+        return fetch('https://api.weatherapi.com/v1/forecast.json'
             + '?key=0abe21f18afb4a8f863183050261807'
             + '&q=' + lat + ',' + lon
-            + '&days=1&alerts=yes&lang=es')
+            + '&days=1&alerts=yes&lang=' + wLang)
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (!data.alerts || !data.alerts.alert || !data.alerts.alert.length) return [];
@@ -1108,11 +1132,12 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                                /cold|frío|frost/i.test(event) ? '🥶' :
                                /fire|incendio/i.test(event) ? '🔥' : '⚠️';
                     var desc = (al.desc || al.instruction || '').substring(0, 300);
+                    var uLang = (typeof currentLang !== 'undefined') ? currentLang : 'es';
                     var a = makeAlert(
                         'WeatherAPI · ' + (data.location ? data.location.country : ''),
-                        event.toUpperCase(), icon,
-                        event + (sev ? ' — ' + sev.charAt(0).toUpperCase() + sev.slice(1) : ''),
-                        desc,
+                        translateAlert(event.toUpperCase(), uLang), icon,
+                        translateAlert(event, uLang) + (sev ? ' — ' + translateAlert(sev, uLang) : ''),
+                        translateAlert(desc, uLang),
                         color,
                         'https://www.weatherapi.com',
                         // Si la fecha efectiva es futura, usar fecha actual
@@ -1143,7 +1168,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
             .catch(function(e) {
                 console.log('WeatherAPI error:', e.message);
                 return [];
-            }),
+            });
+        })(),
 
         // ── MET Norway / Yr.no — Alertas meteorológicas globales ──
         // La misma fuente que usa MSN El Tiempo y Yr.no
@@ -1172,6 +1198,8 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                     // Traducir tipos comunes al español
                     var lang = getLang();
                     var typeES = translateAlert(event, lang);
+                    // Translate description too
+                    desc = translateAlert(desc, lang);
                     var icon = /wind|gale/i.test(event) ? '💨' :
                                /rain|flood/i.test(event) ? '🌧️' :
                                /snow|blizzard/i.test(event) ? '❄️' :

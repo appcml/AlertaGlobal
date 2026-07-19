@@ -477,6 +477,7 @@ function selectLocation(loc) {
     saveFocusLocation();
     updateLocationUI();
     closePopups();
+    if (typeof resetAICache === 'function') resetAICache();
     loadAlerts();
     loadWeather(loc.lat, loc.lon);
     showToast('📍 '+loc.name);
@@ -1047,9 +1048,16 @@ function loadAlerts() {
 
         if (list) list.innerHTML = filtered.map(function(a) { return renderAlertCard(a, loc); }).join('');
         updateMapMarkers(filtered);
-        // Also show global events on map (beyond user radius)
         updateMapGlobal(externalAlerts);
         refreshSmartTips();
+
+        // ── Análisis IA — solo si hay eventos y hay ubicación ──
+        if (filtered.length > 0 && typeof analyzeAlerts === 'function') {
+            var lang = (typeof currentLang !== 'undefined') ? currentLang : 'es';
+            analyzeAlerts(filtered, loc, lang, function(result) {
+                if (result) console.log('🤖 Análisis IA completado:', result.nivelRiesgo);
+            });
+        }
     });
 }
 

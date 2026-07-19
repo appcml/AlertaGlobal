@@ -738,6 +738,144 @@ function fetchSmithsonianVolcano() {
         .catch(function() { return []; });
 }
 
+
+// ============================================================
+// 💨 OpenAQ — Calidad del aire en tiempo real
+// Red global de sensores, CORS nativo, sin key
+// AQI > 150 = Insalubre, > 200 = Muy insalubre, > 300 = Peligroso
+// ============================================================
+function fetchAirQuality(lat, lon) {
+    // OpenAQ v3 API — sensores cercanos al usuario
+    var url = 'https://api.openaq.org/v3/locations?coordinates='
+        + lat + ',' + lon + '&radius=100000&limit=5&order_by=distance';
+    
+    return fetch(url, { headers: { 'X-API-Key': '' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.results || !data.results.length) return [];
+            var alerts = [];
+            data.results.forEach(function(loc) {
+                if (!loc.parameters) return;
+                loc.parameters.forEach(function(param) {
+                    if (param.parameter !== 'pm25' && param.parameter !== 'pm10' &&
+                        param.parameter !== 'o3' && param.parameter !== 'no2') return;
+                    var val = param.lastValue || 0;
+                    var unit = param.unit || 'µg/m³';
+                    // Calcular AQI básico para PM2.5
+                    var aqi = param.parameter === 'pm25' ? Math.round(val * 4) : 
+                              param.parameter === 'pm10' ? Math.round(val * 2) : 0;
+                    if (aqi < 100) return; // Solo alertar si es insalubre
+                    var level = aqi >= 300 ? 'PELIGROSO' : aqi >= 200 ? 'Muy insalubre' :
+                                aqi >= 150 ? 'Insalubre' : 'Insalubre para grupos sensibles';
+                    var color = aqi >= 300 ? '#7B1FA2' : aqi >= 200 ? '#FF3B30' :
+                                aqi >= 150 ? '#FF9500' : '#FFC107';
+                    var priority = aqi >= 300 ? 85 : aqi >= 200 ? 75 : aqi >= 150 ? 60 : 45;
+                    var dist = loc.distance ? Math.round(loc.distance/1000) : null;
+                    alerts.push(makeAlert(
+                        'OpenAQ · ' + (loc.country || ''),
+                        'CALIDAD DEL AIRE', '💨',
+                        'Calidad del aire: ' + level,
+                        param.parameter.toUpperCase() + ': ' + val.toFixed(1) + ' ' + unit +
+                        ' · AQI ~' + aqi + (dist ? ' · A ' + dist + ' km' : '') +
+                        ' · Estación: ' + (loc.name || ''),
+                        color,
+                        'https://openaq.org',
+                        param.lastUpdated || new Date().toISOString(),
+                        priority
+                    ));
+                    if (dist != null) {
+                        alerts[alerts.length-1].lat = loc.coordinates && loc.coordinates.latitude;
+                        alerts[alerts.length-1].lon = loc.coordinates && loc.coordinates.longitude;
+                        alerts[alerts.length-1].distKm = dist;
+                    }
+                });
+            });
+            return alerts;
+        })
+        .catch(function(e) {
+            console.log('OpenAQ error:', e.message);
+            return [];
+        });
+}
+
+// ============================================================
+// 🌊 NOAA Tides — Marejadas y alertas costeras
+// Solo para zonas costeras — radio < 200km de costa
+// ============================================================
+function fetchNOAATides(lat, lon) {
+    // NOAA CO-OPS API — alertas de nivel del mar
+    var url = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter'
+        + '?date=today&range=24&product=predictions&datum=MLLW'
+        + '&time_zone=gmt&interval=h&units=metric&application=alertaglobal&format=json'
+        + '&lat=' + lat + '&lon=' + lon;
+    
+    // Usar estaciones cercanas via metadata
+    var stationsUrl = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json'
+        + '?type=tidepredictions&units=metric';
+    
+    return fetch(stationsUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.stations) return [];
+            // Encontrar estación más cercana
+            var nearest = null, minDist = 999999;
+            (data.stations || []).forEach(function(st) {
+                var d = calcDistKm(lat, lon, parseFloat(st.lat), parseFloat(st.lng));
+                if (d < minDist) { minDist = d; nearest = st; }
+            });
+            if (!nearest || minDist > 300) return []; // Solo si estación < 300km
+            // Fetch predicciones de la estación
+            return fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter'
+                + '?date=today&range=24&product=water_level&datum=MLLW'
+                + '&time_zone=gmt&units=metric&application=alertaglobal&format=json'
+                + '&station=' + nearest.id)
+                .then(function(r) { return r.json(); })
+                .then(function(tideData) {
+                    if (!tideData.data) return [];
+                    // Detectar niveles anormalmente altos
+                    var maxLevel = Math.max.apply(null, tideData.data.map(function(d) {
+                        return parseFloat(d.v) || 0;
+                    }));
+                    if (maxLevel < 2) return []; // Solo alertar si nivel > 2m sobre MLLW
+                    return [makeAlert(
+                        'NOAA Tides', 'MAREJADA', '🌊',
+                        'Nivel del mar elevado — ' + maxLevel.toFixed(2) + 'm',
+                        'Estación: ' + nearest.name + ' · A ' + Math.round(minDist) + ' km · Máximo últimas 24h',
+                        maxLevel > 3 ? '#FF3B30' : '#FF9500',
+                        'https://tidesandcurrents.noaa.gov/waterlevels.html?id=' + nearest.id,
+                        new Date().toISOString(),
+                        maxLevel > 3 ? 80 : 65
+                    )];
+                });
+        })
+        .catch(function() { return []; });
+}
+
+// ============================================================
+// 🏜️ NOAA Drought Monitor — Sequías
+// Actualización semanal, cubre América
+// ============================================================
+function fetchDrought(lat, lon) {
+    // NOAA/USDA Drought Monitor RSS
+    return fetchCors('https://droughtmonitor.unl.edu/DmData/GISData.aspx?mode=table&aoi=state', 8000)
+        .then(function(xml) {
+            if (!xml || xml.length < 100) return [];
+            var items = parseRSS(xml);
+            return items.slice(0,3).map(function(item) {
+                var t = translateAlert(item.title || '', getLang());
+                var d = translateAlert((item.description || '').substring(0,200), getLang());
+                return makeAlert(
+                    'NOAA Drought Monitor', 'SEQUÍA', '🏜️',
+                    t || 'Alerta de sequía activa',
+                    d, '#FF9500',
+                    item.link || 'https://droughtmonitor.unl.edu',
+                    item.pubDate, 55
+                );
+            }).filter(function(a) { return a.title.length > 3; });
+        })
+        .catch(function() { return []; });
+}
+
 // ============================================================
 // 🎯 ESCANEO POR COORDENADAS — El núcleo de la app
 // Recibe lat/lon del usuario y consulta TODAS las fuentes
@@ -1118,6 +1256,12 @@ function scanByCoords(lat, lon, radiusKm, callback) {
                 });
             })
             .catch(function() { return []; }),
+
+        // ── Calidad del aire ──
+        fetchAirQuality(lat, lon),
+
+        // ── Marejadas costeras ──
+        fetchNOAATides(lat, lon),
 
         // ── NASA FIRMS — Incendios activos por satélite ──
         fetchNASAFIRMS(lat, lon, radiusKm),

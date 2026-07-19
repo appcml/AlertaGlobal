@@ -1407,62 +1407,105 @@ function initMap() {
     }
     mapInitialized = true;
     updateMapMarkers(externalAlerts);
+    startMapAutoRefresh();
+}
+
+function getMapIcon(alert) {
+    // Icono según tipo de evento — clima, sismos, incendios, etc.
+    var type = (alert.type || '').toLowerCase();
+    var src  = (alert.source || '').toLowerCase();
+    var title = (alert.title || '').toLowerCase();
+    var color = alert.color || '#FF9500';
+    var size  = alert.priority >= 90 ? 28 : alert.priority >= 70 ? 22 : 16;
+    var pulse = alert.priority >= 90 ?
+        'animation:pulse 1.5s infinite;' : '';
+
+    // Seleccionar emoji según tipo
+    var emoji = alert.icon || '⚠️';
+
+    // Iconos especiales por condición climática
+    if (/lluvia|rain|precip/i.test(type + title))      emoji = '🌧️';
+    if (/tormenta|storm|thunder/i.test(type + title))  emoji = '⛈️';
+    if (/viento|wind|gale/i.test(type + title))        emoji = '💨';
+    if (/nieve|snow|blizzard/i.test(type + title))     emoji = '❄️';
+    if (/niebla|fog/i.test(type + title))              emoji = '🌫️';
+    if (/calor|heat/i.test(type + title))              emoji = '🥵';
+    if (/frío|cold|frost/i.test(type + title))         emoji = '🥶';
+    if (/sismo|earthquake/i.test(type + title))        emoji = '🌍';
+    if (/tsunami/i.test(type + title))                 emoji = '🌊';
+    if (/volcán|volcano|erupc/i.test(type + title))    emoji = '🌋';
+    if (/incendio|fire|wildfire/i.test(type + title))  emoji = '🔥';
+    if (/inundac|flood/i.test(type + title))           emoji = '🌊';
+    if (/huracán|hurricane|ciclón|cyclone/i.test(type + title)) emoji = '🌀';
+    if (/aire|air quality|aqi/i.test(type + title))    emoji = '💨';
+    if (/marejada|tide/i.test(type + title))           emoji = '🌊';
+    if (/sequía|drought/i.test(type + title))          emoji = '🏜️';
+
+    return L.divIcon({
+        className: '',
+        html: '<div style="background:'+color+';border:2px solid rgba(255,255,255,0.9);'
+            +'border-radius:50%;width:'+size+'px;height:'+size+'px;'
+            +'display:flex;align-items:center;justify-content:center;'
+            +'font-size:'+(size-8)+'px;'+pulse
+            +'box-shadow:0 2px 8px '+color+'80;cursor:pointer;">'
+            +emoji+'</div>',
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+        popupAnchor: [0, -size/2]
+    });
 }
 
 function updateMapMarkers(alerts) {
     if (!mapInitialized || !leafletMap) return;
 
-    // Remove old alert markers (keep user marker)
+    // Limpiar marcadores anteriores
     mapMarkers.forEach(function(m) { leafletMap.removeLayer(m); });
     mapMarkers = [];
 
-    // Update user position and AUTO-CENTER map
+    // Actualizar posición usuario y AUTO-CENTRAR
     var loc = getActiveLocation();
     if (loc.lat) {
         if (userMarker) {
             userMarker.setLatLng([loc.lat, loc.lon]);
         } else {
             userMarker = L.marker([loc.lat, loc.lon], { icon: createUserIcon() })
-                .addTo(leafletMap).bindPopup('📍 Tu ubicación');
+                .addTo(leafletMap).bindPopup('<b>📍 Tu ubicación</b><br>' + (loc.name || ''));
         }
-        // Auto-center map on new location
-        leafletMap.setView([loc.lat, loc.lon], leafletMap.getZoom() || 5, { animate: true });
+        // Auto-centrar en nueva ubicación
+        leafletMap.setView([loc.lat, loc.lon], leafletMap.getZoom() || 6, { animate: true });
     }
 
-    // Add ALL alert markers — global view regardless of user radius
-    // Map always shows the full picture of what's happening worldwide
+    // Mostrar TODOS los eventos en el mapa con sus iconos correctos
     alerts.forEach(function(a) {
         if (a.lat == null || a.lon == null) return;
         var color = a.color || '#FF9500';
-        var size = a.priority >= 90 ? 22 : a.priority >= 70 ? 18 : 14;
-        var pulse = a.priority >= 90 ? 
-            'box-shadow:0 0 0 4px '+color+'60,0 0 12px '+color+';animation:pulse 1.5s infinite;' : 
-            'box-shadow:0 0 8px '+color+'80;';
-        var icon = L.divIcon({
-            className: 'custom-alert-marker',
-            html: '<div style="background:'+color+';border:2px solid white;border-radius:50%;'
-                +'width:'+size+'px;height:'+size+'px;'+pulse
-                +'display:flex;align-items:center;justify-content:center;font-size:'+(size-6)+'px;">'
-                +a.icon+'</div>',
-            iconSize: [size, size],
-            iconAnchor: [size/2, size/2]
-        });
-        var distStr = a.distKm != null ? ' · 📏 ' + a.distKm + ' km' : '';
-        var popup = '<div style="min-width:180px">'
-            +'<b style="color:'+color+'">'+a.icon+' '+a.type+'</b><br>'
-            +'<b>'+a.title+'</b>'
-            +(a.description ? '<br><small style="color:#888">'+a.description.substring(0,120)+'</small>' : '')
-            +'<br><small>📡 '+a.source+distStr+'</small>'
+        var distStr = a.distKm != null ? '<br><small>📏 ' + a.distKm + ' km de ti</small>' : '';
+        var timeStr = a.time ? '<br><small>🕐 ' + formatTime(a.time) + '</small>' : '';
+        var popup = '<div style="min-width:200px;font-family:sans-serif">'
+            +'<div style="color:'+color+';font-weight:700;font-size:13px">'
+            +(a.icon||'')+ ' ' + (a.type||'') + '</div>'
+            +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
+            +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
+                +a.description.substring(0,150)+'</div>' : '')
+            +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
+            +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
             +'</div>';
-        var marker = L.marker([a.lat, a.lon], { icon: icon }).addTo(leafletMap).bindPopup(popup);
+        var marker = L.marker([a.lat, a.lon], { icon: getMapIcon(a) })
+            .addTo(leafletMap)
+            .bindPopup(popup, { maxWidth: 250 });
         mapMarkers.push(marker);
     });
+}
 
-    // Si hay muchos eventos, ajustar zoom para verlos todos
-    if (mapMarkers.length > 0 && loc.lat) {
-        // No hacer zoom out automático — solo centrar en usuario
-        // El usuario puede hacer zoom out para ver el mundo
-    }
+// Auto-refresh del mapa cada 2 minutos
+var mapRefreshInterval = null;
+function startMapAutoRefresh() {
+    if (mapRefreshInterval) clearInterval(mapRefreshInterval);
+    mapRefreshInterval = setInterval(function() {
+        if (mapInitialized && leafletMap) {
+            updateMapMarkers(externalAlerts);
+        }
+    }, 120000);
 }
 
 // Show ALL global events on map regardless of user radius

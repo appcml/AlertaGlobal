@@ -475,6 +475,14 @@ function openSearch() {
 function selectLocation(loc) {
     focusLocation = { lat: loc.lat, lon: loc.lon, name: loc.name, country: loc.country||'' };
     saveFocusLocation();
+    // Guardar en localStorage para restaurar al reabrir la app
+    try {
+        localStorage.setItem('ag_last_selected', JSON.stringify({
+            lat: loc.lat, lon: loc.lon,
+            name: loc.name, country: loc.country||'',
+            ts: Date.now()
+        }));
+    } catch(e) {}
     updateLocationUI();
     closePopups();
     if (typeof resetAICache === 'function') resetAICache();
@@ -519,6 +527,66 @@ function updateLocationUI() {
         var b = document.getElementById(id);
         if (b) b.textContent = focusLocation.lat ? '⭐' : '☆';
     });
+}
+
+// ========== RESTAURAR ÚLTIMA UBICACIÓN ==========
+function showLocationRestoreDialog(lastLoc) {
+    // Crear banner de restauración
+    var banner = document.createElement('div');
+    banner.id = 'locationRestoreBanner';
+    banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);'
+        + 'background:var(--surface2);border:1px solid var(--card-border);border-radius:16px;'
+        + 'padding:14px 16px;z-index:9990;width:90%;max-width:400px;'
+        + 'box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+    banner.innerHTML = '<div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:6px">'
+        + '📍 ¿Continuar en ' + lastLoc.name + '?'
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">'
+        + 'Tu última ubicación revisada. ¿Deseas continuar aquí o actualizar tu ubicación real?'
+        + '</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="restoreLastLocation()" style="flex:1;background:var(--accent);'
+        + 'border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;color:#000;font-size:13px">'
+        + '✅ Continuar aquí'
+        + '</button>'
+        + '<button onclick="updateRealLocation()" style="flex:1;background:var(--surface);'
+        + 'border:1px solid var(--card-border);border-radius:10px;padding:10px;'
+        + 'font-weight:700;cursor:pointer;color:var(--text);font-size:13px">'
+        + '📡 Mi ubicación real'
+        + '</button>'
+        + '</div>';
+    document.body.appendChild(banner);
+
+    // Auto-cerrar después de 15 segundos y usar ubicación real
+    setTimeout(function() {
+        if (document.getElementById('locationRestoreBanner')) {
+            updateRealLocation();
+        }
+    }, 15000);
+}
+
+function restoreLastLocation() {
+    var banner = document.getElementById('locationRestoreBanner');
+    if (banner) banner.remove();
+    try {
+        var lastSel = JSON.parse(localStorage.getItem('ag_last_selected'));
+        if (lastSel && lastSel.lat) {
+            selectLocation(lastSel);
+            showToast('📍 Continuando en ' + lastSel.name);
+        }
+    } catch(e) {}
+}
+
+function updateRealLocation() {
+    var banner = document.getElementById('locationRestoreBanner');
+    if (banner) banner.remove();
+    try {
+        localStorage.removeItem('ag_last_selected');
+        localStorage.removeItem('ag_focus');
+    } catch(e) {}
+    focusLocation = { lat: null, lon: null, name: '', country: '' };
+    initLocation();
+    showToast('📡 Detectando tu ubicación real...');
 }
 
 // ========== GEOLOCATION ==========

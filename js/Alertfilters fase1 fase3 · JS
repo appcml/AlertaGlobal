@@ -1,0 +1,250 @@
+// ========================================================
+// AlertFilters-FASE1-FASE3.js
+// Módulo de filtros inteligentes para alertas críticas
+// Coloca este contenido ANTES de la función loadAlerts() en app.js
+// ========================================================
+
+/**
+ * Categorizar alerta según tipo y gravedad
+ */
+function categorizeAlert(alert) {
+    const type = (alert.type || '').toUpperCase();
+    const mag = alert.magnitude || 0;
+    
+    // MAPA DE CATEGORÍAS
+    const categoryMap = {
+        'SISMO': {
+            category: 'earthquake',
+            isCritical: mag >= 4.5,
+            urgency: Math.min(100, mag * 15),
+            icon: '🔴'
+        },
+        'TSUNAMI': {
+            category: 'tsunami',
+            isCritical: true,
+            urgency: 100,
+            icon: '🌊'
+        },
+        'HURACÁN': {
+            category: 'hurricane',
+            isCritical: true,
+            urgency: 90,
+            icon: '🌀'
+        },
+        'CICLÓN': {
+            category: 'hurricane',
+            isCritical: true,
+            urgency: 90,
+            icon: '🌀'
+        },
+        'TIFÓN': {
+            category: 'hurricane',
+            isCritical: true,
+            urgency: 90,
+            icon: '🌀'
+        },
+        'TORNADO': {
+            category: 'tornado',
+            isCritical: true,
+            urgency: 95,
+            icon: '🌪️'
+        },
+        'TORMENTA': {
+            category: 'storm',
+            isCritical: mag >= 80,
+            urgency: Math.max(60, mag || 70),
+            icon: '⛈️'
+        },
+        'VOLCÁN': {
+            category: 'volcano',
+            isCritical: true,
+            urgency: 85,
+            icon: '🌋'
+        },
+        'INUNDACIÓN': {
+            category: 'flood',
+            isCritical: true,
+            urgency: 75,
+            icon: '💧'
+        },
+        'DESLIZAMIENTO': {
+            category: 'landslide',
+            isCritical: true,
+            urgency: 70,
+            icon: '🏔️'
+        },
+        'ALERTA CLIMÁTICA': {
+            category: 'storm',
+            isCritical: false,
+            urgency: 50,
+            icon: '🌡️'
+        },
+        'CALOR EXTREMO': {
+            category: 'heat',
+            isCritical: false,
+            urgency: 40,
+            icon: '🔥'
+        },
+        'INCENDIO': {
+            category: 'fire',
+            isCritical: true,
+            urgency: 80,
+            icon: '🔥'
+        }
+    };
+    
+    const category = categoryMap[type] || {
+        category: 'other',
+        isCritical: false,
+        urgency: alert.priority || 50,
+        icon: '⚠️'
+    };
+    
+    return {
+        ...category,
+        originalType: type
+    };
+}
+
+/**
+ * Filtrar alertas según criterios definidos
+ */
+function filterAlertsByCriteria(alerts, filters) {
+    if (!filters) {
+        filters = window.alertFilters || {
+            types: ['earthquake', 'tsunami', 'hurricane', 'tornado', 'storm', 'volcano', 'flood', 'landslide'],
+            minMagnitude: 3.0,
+            radius: 500,
+            hours: 24
+        };
+    }
+    
+    return alerts.filter(alert => {
+        // Categorizar
+        const alertCat = categorizeAlert(alert);
+        
+        // Filtro 1: Tipo de alerta
+        if (!filters.types.includes(alertCat.category)) {
+            return false;
+        }
+        
+        // Filtro 2: Magnitud mínima (solo para sismos)
+        if (alertCat.originalType === 'SISMO' || alertCat.category === 'earthquake') {
+            if ((alert.magnitude || 0) < filters.minMagnitude) {
+                return false;
+            }
+        }
+        
+        // Filtro 3: Distancia
+        if (alert.distKm && alert.distKm > filters.radius) {
+            return false;
+        }
+        
+        // Filtro 4: Tiempo
+        if (alert.time) {
+            const alertTime = new Date(alert.time).getTime();
+            const now = Date.now();
+            const hoursOld = (now - alertTime) / (1000 * 60 * 60);
+            if (hoursOld > filters.hours) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+}
+
+/**
+ * Ordenar alertas por urgencia (CRÍTICAS PRIMERO)
+ */
+function sortByUrgency(alerts) {
+    return alerts.sort((a, b) => {
+        const catA = categorizeAlert(a);
+        const catB = categorizeAlert(b);
+        
+        // Primero: TSUNAMIS (máxima urgencia)
+        if (catA.category === 'tsunami' && catB.category !== 'tsunami') return -1;
+        if (catB.category === 'tsunami' && catA.category !== 'tsunami') return 1;
+        
+        // Segundo: HURACANES
+        if (catA.category === 'hurricane' && catB.category !== 'hurricane') return -1;
+        if (catB.category === 'hurricane' && catA.category !== 'hurricane') return 1;
+        
+        // Tercero: TORNADOS
+        if (catA.category === 'tornado' && catB.category !== 'tornado') return -1;
+        if (catB.category === 'tornado' && catA.category !== 'tornado') return 1;
+        
+        // Cuarto: SISMOS RECIENTES DE ALTA MAGNITUD
+        if (catA.category === 'earthquake' && catB.category === 'earthquake') {
+            const magDiff = (b.magnitude || 0) - (a.magnitude || 0);
+            if (magDiff !== 0) return magDiff;
+        }
+        
+        // Por defecto: por urgencia
+        return catB.urgency - catA.urgency;
+    });
+}
+
+/**
+ * Renderizar alerta con categorización visual
+ */
+function renderAlertItem(alert) {
+    const alertCat = categorizeAlert(alert);
+    const mag = alert.magnitude ? alert.magnitude.toFixed(1) : 'N/A';
+    const dist = alert.distKm ? `${alert.distKm} km` : 'Ubicación N/A';
+    const time = alert.time ? new Date(alert.time).toLocaleString('es-CL') : 'Hace poco';
+    
+    // Clase CSS para crítico/advertencia
+    const criticalClass = alertCat.isCritical ? 'critical' : 'warning';
+    
+    // Barra de urgencia visual
+    const urgencyBar = `
+        <div style="width: 100%; height: 3px; background: #444; margin-top: 8px; border-radius: 2px; overflow: hidden;">
+            <div style="width: ${alertCat.urgency}%; height: 100%; background: ${alertCat.urgency > 80 ? '#ff4444' : alertCat.urgency > 60 ? '#ffaa00' : '#44aa44'}; transition: width 0.3s;"></div>
+        </div>
+    `;
+    
+    return `
+        <div class="alert-item ${criticalClass}" onclick="showAlertDetail(event)">
+            <div class="alert-header">
+                <span class="alert-icon">${alertCat.icon}</span>
+                <div class="alert-info">
+                    <div class="alert-title">${alert.title || alert.type}</div>
+                    <div class="alert-source" style="font-size: 11px; color: #888;">
+                        📡 ${alert.source} | ⏱ ${time}
+                    </div>
+                </div>
+                <span class="alert-magnitude" style="background: ${alertCat.urgency > 80 ? '#ff4444' : alertCat.urgency > 60 ? '#ffaa00' : '#44aa44'};">
+                    ${alert.magnitude ? `M${mag}` : 'Alerta'}
+                </span>
+            </div>
+            <div class="alert-description">${alert.description || 'Sin descripción'}</div>
+            <div class="alert-details" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; font-size: 12px; color: #aaa;">
+                <div>📍 ${dist}</div>
+                <div>🎯 Urgencia: ${Math.round(alertCat.urgency)}%</div>
+            </div>
+            ${urgencyBar}
+        </div>
+    `;
+}
+
+/**
+ * Mostrar detalles de alerta
+ */
+function showAlertDetail(event) {
+    const alertItem = event.currentTarget;
+    const details = alertItem.querySelector('.alert-details');
+    
+    if (details.style.display === 'none' || details.style.display === '') {
+        details.style.display = 'grid';
+    } else {
+        details.style.display = 'none';
+    }
+}
+
+// ========== EXPORTAR FUNCIONES ==========
+window.categorizeAlert = categorizeAlert;
+window.filterAlertsByCriteria = filterAlertsByCriteria;
+window.sortByUrgency = sortByUrgency;
+window.renderAlertItem = renderAlertItem;
+window.showAlertDetail = showAlertDetail;

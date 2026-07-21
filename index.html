@@ -15,136 +15,61 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/styles.css?v=1784395434">
     <style>
-        /* ========== FILTROS CRÍTICOS CSS ========== */
-        .critical-filters {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            padding: 12px;
-            margin: 8px;
-            border-radius: 8px;
-            border-left: 4px solid #ff4444;
-            box-shadow: 0 2px 8px rgba(255, 68, 68, 0.2);
-        }
-        
-        .critical-filters h3 {
-            color: #ff4444;
-            font-size: 14px;
-            margin: 0 0 10px 0;
+        /* ========== FILTROS MINIMALISTAS ========== */
+        .mini-filters {
+            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+            padding: 8px 12px;
             display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .filter-group {
-            margin-bottom: 12px;
-        }
-        
-        .filter-group label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-            cursor: pointer;
-            color: #ccc;
-            font-size: 13px;
-            user-select: none;
-        }
-        
-        .filter-group label input[type="checkbox"] {
-            cursor: pointer;
-            width: 16px;
-            height: 16px;
-            accent-color: #ff6666;
-        }
-        
-        .filter-group select,
-        .filter-group input[type="range"] {
-            padding: 6px 8px;
-            border-radius: 4px;
-            border: 1px solid #444;
-            background: #222;
-            color: #fff;
-            font-size: 12px;
-        }
-        
-        .filter-group select:focus,
-        .filter-group input[type="range"]:focus {
-            outline: none;
-            border-color: #ff6666;
-            box-shadow: 0 0 4px rgba(255, 102, 102, 0.3);
-        }
-        
-        .radius-display {
-            display: flex;
-            justify-content: space-between;
             align-items: center;
             gap: 10px;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #ff6666;
         }
         
-        .radius-display input[type="range"] {
-            flex: 1;
-        }
-        
-        .radius-value {
-            background: #ff6666;
-            color: #000;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            min-width: 60px;
-            text-align: center;
-            font-size: 11px;
-        }
-        
-        .filter-buttons {
+        .mini-filters label {
             display: flex;
-            gap: 8px;
-            margin-top: 10px;
+            align-items: center;
+            gap: 6px;
+            color: #ccc;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
         }
         
-        .filter-buttons button {
-            flex: 1;
-            padding: 8px;
+        .mini-filters select {
+            padding: 4px 6px;
+            border-radius: 3px;
             border: 1px solid #444;
             background: #222;
             color: #fff;
-            border-radius: 4px;
+            font-size: 11px;
             cursor: pointer;
-            font-size: 12px;
-            transition: all 0.3s;
         }
         
-        .filter-buttons button:hover {
+        .mini-filters button {
+            padding: 4px 10px;
+            border: 1px solid #444;
+            background: #222;
+            color: #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        
+        .mini-filters button:hover {
             background: #333;
             border-color: #ff6666;
             color: #ff6666;
         }
         
-        .filter-buttons button.active {
+        .alert-count-badge {
             background: #ff6666;
             color: #000;
+            padding: 2px 6px;
+            border-radius: 10px;
             font-weight: bold;
-            border-color: #ff4444;
-        }
-        
-        /* ALERTAS CRÍTICAS HIGHLIGHT */
-        .alert-item.critical {
-            border-left: 4px solid #ff4444;
-            background: rgba(255, 68, 68, 0.1);
-        }
-        
-        .alert-item.warning {
-            border-left: 4px solid #ffaa00;
-            background: rgba(255, 170, 0, 0.05);
-        }
-        
-        .alert-count {
-            background: #ff4444;
-            color: #fff;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-left: 8px;
+            font-size: 10px;
         }
     </style>
 </head>
@@ -185,68 +110,41 @@
                 <button class="location-btn" id="btnMyLocation" title="Detectar mi ubicación actual">📍 <span id="currentLocationName">Detectar mi ubicación</span></button>
                 <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
                 <button class="location-btn fav-btn" id="btnStarAlert" title="Guardar en favoritos">☆</button>
-
-                <!-- Radio selector: muestra radio actual y abre popup -->
                 <button class="location-btn" id="btnRadius" title="Radio de alertas">📏 <span id="radiusLabel">500 km</span></button>
             </div>
 
-            <!-- ========== FILTROS CRÍTICOS FASE 1+3 ========== -->
-            <div class="critical-filters">
-                <h3>⚠️ FILTROS DE ALERTAS CRÍTICAS <span class="alert-count" id="alertCount">0</span></h3>
+            <!-- ========== FILTROS MINIMALISTAS (OPCIÓN 1) ========== -->
+            <div class="mini-filters">
+                <label>🎯 Filtros:</label>
                 
-                <!-- Tipo de alertas -->
-                <div class="filter-group">
-                    <label><input type="checkbox" class="alert-filter" value="earthquake" checked> 🔴 Terremotos (M≥3.0)</label>
-                    <label><input type="checkbox" class="alert-filter" value="tsunami" checked> 🌊 Tsunamis</label>
-                    <label><input type="checkbox" class="alert-filter" value="hurricane" checked> 🌀 Huracanes/Ciclones</label>
-                    <label><input type="checkbox" class="alert-filter" value="tornado" checked> 🌪️ Tornados</label>
-                    <label><input type="checkbox" class="alert-filter" value="storm" checked> ⛈️ Tormentas Severas</label>
-                    <label><input type="checkbox" class="alert-filter" value="volcano" checked> 🌋 Erupciones</label>
-                    <label><input type="checkbox" class="alert-filter" value="flood" checked> 💧 Inundaciones</label>
-                    <label><input type="checkbox" class="alert-filter" value="landslide" checked> 🏔️ Deslizamientos</label>
-                </div>
+                <label>
+                    Tipo:
+                    <select id="filterType">
+                        <option value="todos">Todos</option>
+                        <option value="earthquake">🔴 Sismos</option>
+                        <option value="tsunami">🌊 Tsunamis</option>
+                        <option value="hurricane">🌀 Huracanes</option>
+                        <option value="volcano">🌋 Volcanes</option>
+                        <option value="storm">⛈️ Tormentas</option>
+                        <option value="flood">💧 Inundaciones</option>
+                    </select>
+                </label>
                 
-                <!-- Magnitud mínima -->
-                <div class="filter-group">
-                    <label>📏 Magnitud mínima:
-                        <select id="magnitudeFilter">
-                            <option value="2">≥ 2.0</option>
-                            <option value="3" selected>≥ 3.0</option>
-                            <option value="4">≥ 4.0</option>
-                            <option value="5">≥ 5.0</option>
-                            <option value="6">≥ 6.0</option>
-                        </select>
-                    </label>
-                </div>
+                <label>
+                    Magnitud:
+                    <select id="filterMagnitude">
+                        <option value="0">Todas</option>
+                        <option value="2">≥ 2.0</option>
+                        <option value="3" selected>≥ 3.0</option>
+                        <option value="4">≥ 4.0</option>
+                        <option value="5">≥ 5.0</option>
+                    </select>
+                </label>
                 
-                <!-- Radio de búsqueda -->
-                <div class="filter-group">
-                    <label>📍 Radio de búsqueda:
-                        <div class="radius-display">
-                            <input type="range" id="distanceFilter" value="500" min="50" max="2000" step="50">
-                            <span class="radius-value" id="distanceValue">500 km</span>
-                        </div>
-                    </label>
-                </div>
+                <button id="btnApplyFilters">✓ Aplicar</button>
+                <button id="btnResetFilters">↻ Reset</button>
                 
-                <!-- Rango de tiempo -->
-                <div class="filter-group">
-                    <label>🕐 Últimas:
-                        <select id="timeFilter">
-                            <option value="6">6 horas</option>
-                            <option value="24" selected>24 horas</option>
-                            <option value="48">48 horas</option>
-                            <option value="168">7 días</option>
-                            <option value="720">30 días</option>
-                        </select>
-                    </label>
-                </div>
-                
-                <!-- Botones de acción -->
-                <div class="filter-buttons">
-                    <button id="applyFilters">✓ Aplicar Filtros</button>
-                    <button id="resetFilters">↻ Restablecer</button>
-                </div>
+                <span class="alert-count-badge" id="alertCount">0</span>
             </div>
 
             <div class="loading" id="alertsLoading"><div class="spinner"></div><p>Cargando alertas...</p></div>
@@ -272,10 +170,14 @@
                 <div class="weather-temp" id="wTemp"></div>
                 <div class="weather-desc" id="wDesc"></div>
                 <div class="weather-details">
+                    <div class="weather-detail"><span class="detail-icon">🌡️</span><span class="detail-label">Temperatura</span><span class="detail-value" id="wTemp2"></span></div>
                     <div class="weather-detail"><span class="detail-icon">💧</span><span class="detail-label">Humedad</span><span class="detail-value" id="wHumidity"></span></div>
                     <div class="weather-detail"><span class="detail-icon">💨</span><span class="detail-label">Viento</span><span class="detail-value" id="wWind"></span></div>
                     <div class="weather-detail"><span class="detail-icon">🌡️</span><span class="detail-label">Sensación</span><span class="detail-value" id="wFeels"></span></div>
                     <div class="weather-detail"><span class="detail-icon">📊</span><span class="detail-label">Presión</span><span class="detail-value" id="wPressure"></span></div>
+                    <div class="weather-detail"><span class="detail-icon">☁️</span><span class="detail-label">Nubosidad</span><span class="detail-value" id="wClouds"></span></div>
+                    <div class="weather-detail"><span class="detail-icon">🌫️</span><span class="detail-label">AQI</span><span class="detail-value" id="wAQI"></span></div>
+                    <div class="weather-detail"><span class="detail-icon">👁️</span><span class="detail-label">Visibilidad</span><span class="detail-value" id="wVisibility"></span></div>
                 </div>
                 <div class="weather-recommendation" id="wRecommendation"></div>
             </div>
@@ -330,7 +232,7 @@
         <div class="modal-content">
             <button class="modal-close">&times;</button>
             <h2 style="color: var(--accent);">🔍 Buscar Localidad</h2>
-            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción, Nueva York...">
+            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
             <div id="searchResults" style="margin-top: 16px;"></div>
         </div>
     </div>
@@ -343,21 +245,9 @@
                 <button class="radius-option" data-radius="50">50 km</button>
                 <button class="radius-option" data-radius="100">100 km</button>
                 <button class="radius-option" data-radius="250">250 km</button>
-                <button class="radius-option" data-radius="500" style="background:#ff6666;">500 km (Actual)</button>
+                <button class="radius-option" data-radius="500" style="background:#ff6666;">500 km</button>
                 <button class="radius-option" data-radius="1000">1000 km</button>
                 <button class="radius-option" data-radius="2000">Global</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="sharePopup">
-        <div class="modal-content">
-            <button class="modal-close">&times;</button>
-            <h2 style="color: var(--accent);">📤 Compartir Alerta</h2>
-            <textarea id="shareContent" readonly style="width:100%;height:100px;margin:16px 0;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;"></textarea>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <button id="btnCopyShare" style="padding:12px;background:#ff6666;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📋 Copiar</button>
-                <button id="btnOpenShare" style="padding:12px;background:#6699ff;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🔗 Compartir</button>
             </div>
         </div>
     </div>
@@ -372,83 +262,43 @@
     <script src="js/app.js?v=1784395434"></script>
 
     <script>
-        // ========== FILTROS CRÍTICOS FASE 1+3 ==========
-        // Configuración de filtros por defecto
-        window.alertFilters = {
-            types: ['earthquake', 'tsunami', 'hurricane', 'tornado', 'storm', 'volcano', 'flood', 'landslide'],
-            minMagnitude: 3.0,
-            radius: 500,
-            hours: 24
+        // ========== FILTROS MINIMALISTAS ========== 
+        window.currentFilters = {
+            type: 'todos',
+            magnitude: 3
         };
 
-        // Event listeners para filtros
-        document.querySelectorAll('.alert-filter').forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                const type = this.value;
-                if (this.checked) {
-                    if (!window.alertFilters.types.includes(type)) {
-                        window.alertFilters.types.push(type);
-                    }
-                } else {
-                    window.alertFilters.types = window.alertFilters.types.filter(t => t !== type);
-                }
-            });
+        document.getElementById('filterType').addEventListener('change', function() {
+            window.currentFilters.type = this.value;
         });
 
-        // Magnitud
-        document.getElementById('magnitudeFilter').addEventListener('change', function() {
-            window.alertFilters.minMagnitude = parseFloat(this.value);
+        document.getElementById('filterMagnitude').addEventListener('change', function() {
+            window.currentFilters.magnitude = parseInt(this.value);
         });
 
-        // Distancia
-        document.getElementById('distanceFilter').addEventListener('input', function() {
-            window.alertFilters.radius = parseInt(this.value);
-            document.getElementById('distanceValue').textContent = this.value + ' km';
-        });
-
-        // Tiempo
-        document.getElementById('timeFilter').addEventListener('change', function() {
-            window.alertFilters.hours = parseInt(this.value);
-        });
-
-        // Aplicar filtros
-        document.getElementById('applyFilters').addEventListener('click', function() {
-            // Disparar nuevo escaneo con filtros
+        document.getElementById('btnApplyFilters').addEventListener('click', function() {
             if (typeof loadAlerts === 'function') {
                 loadAlerts();
             }
         });
 
-        // Restablecer filtros
-        document.getElementById('resetFilters').addEventListener('click', function() {
-            document.querySelectorAll('.alert-filter').forEach(cb => cb.checked = true);
-            document.getElementById('magnitudeFilter').value = '3';
-            document.getElementById('distanceFilter').value = '500';
-            document.getElementById('timeFilter').value = '24';
-            document.getElementById('distanceValue').textContent = '500 km';
-            
-            window.alertFilters = {
-                types: ['earthquake', 'tsunami', 'hurricane', 'tornado', 'storm', 'volcano', 'flood', 'landslide'],
-                minMagnitude: 3.0,
-                radius: 500,
-                hours: 24
-            };
-            
+        document.getElementById('btnResetFilters').addEventListener('click', function() {
+            document.getElementById('filterType').value = 'todos';
+            document.getElementById('filterMagnitude').value = '3';
+            window.currentFilters = { type: 'todos', magnitude: 3 };
             if (typeof loadAlerts === 'function') {
                 loadAlerts();
             }
         });
 
-        // Actualizar contador de alertas
+        // Actualizar contador
         function updateAlertCount() {
-            const alerts = document.querySelectorAll('.alert-item');
-            document.getElementById('alertCount').textContent = alerts.length;
+            const count = document.querySelectorAll('.alert-item').length;
+            document.getElementById('alertCount').textContent = count;
         }
 
-        // Observer para contar alertas cuando cambian
         const observer = new MutationObserver(updateAlertCount);
-        const alertList = document.getElementById('alertList');
-        observer.observe(alertList, { childList: true });
+        observer.observe(document.getElementById('alertList'), { childList: true });
     </script>
 
 </body>

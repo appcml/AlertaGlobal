@@ -1290,8 +1290,7 @@ function loadExternalSourcesData() {
 function shareAlert(alertData) {
     var text = '🚨 ALERTA: '+alertData.title+'\n'+
         (alertData.description||'')+'\n'+
-        '📡 Fuente: '+alertData.source+'\n'+
-        '🌍 Alerta Global: https://appcml.github.io/AlertaGlobal/';
+        '📡 Fuente: '+alertData.source;
     currentShareData = text;
     var content = document.getElementById('shareContent');
     if (content) content.textContent = text;

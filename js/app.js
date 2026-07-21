@@ -31,6 +31,139 @@ var mapMarkers = [];
 
 var currentShareData = null;
 
+// ========== SMART ZOOM FILTERING (ARREGLADO) ==========
+/**
+ * Filtrado inteligente por ZOOM LEVEL
+ * - Zoom bajo (0-6): Solo alertas críticas mundiales
+ * - Zoom medio (7-10): Alertas cercanas + críticas globales
+ * - Zoom alto (11+): Todas las alertas cercanas a la localidad
+ */
+function updateMapMarkersSmartZoom(allAlerts, userLocation) {
+    if (!mapInitialized || !leafletMap || !allAlerts) return;
+
+    // Limpiar marcadores anteriores
+    mapMarkers.forEach(function(m) { leafletMap.removeLayer(m); });
+    mapMarkers = [];
+
+    // Actualizar posición usuario
+    if (userLocation && userLocation.lat) {
+        if (userMarker) {
+            userMarker.setLatLng([userLocation.lat, userLocation.lon]);
+        } else {
+            userMarker = L.marker([userLocation.lat, userLocation.lon], { icon: createUserIcon() })
+                .addTo(leafletMap).bindPopup('<b>📍 Tu ubicación</b><br>' + (userLocation.name || ''));
+        }
+        leafletMap.setView([userLocation.lat, userLocation.lon], leafletMap.getZoom() || 6, { animate: true });
+    }
+
+    // Obtener nivel de zoom actual
+    var currentZoom = leafletMap.getZoom();
+    var radiusKm = getUserRadiusKm();
+    
+    // LÓGICA DE FILTRADO POR ZOOM
+    var filteredAlerts = [];
+    
+    if (currentZoom <= 6) {
+        // ZOOM BAJO: Mostrar SOLO alertas MÁS IMPORTANTES a nivel mundial
+        filteredAlerts = allAlerts.filter(function(a) {
+            return (a.priority >= 80) || (a.type && a.type.includes('SISMO') && a.magnitude >= 5) 
+                   || (a.type && (a.type.includes('VOLCÁN') || a.type.includes('ERUPCIÓN')));
+        });
+    } else if (currentZoom <= 10) {
+        // ZOOM MEDIO: Alertas cercanas + alertas globales importantes
+        if (userLocation && userLocation.lat) {
+            filteredAlerts = allAlerts.filter(function(a) {
+                var isNearby = isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, radiusKm);
+                var isImportant = (a.priority >= 70) || (a.magnitude && a.magnitude >= 4.5);
+                return isNearby || isImportant;
+            });
+        } else {
+            filteredAlerts = allAlerts.filter(function(a) {
+                return (a.priority >= 70) || (a.magnitude && a.magnitude >= 4.5);
+            });
+        }
+    } else {
+        // ZOOM ALTO (11+): Mostrar TODAS las alertas cercanas
+        if (userLocation && userLocation.lat) {
+            filteredAlerts = allAlerts.filter(function(a) {
+                return isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, radiusKm);
+            });
+        } else {
+            filteredAlerts = allAlerts;
+        }
+    }
+
+    // Dibujar marcadores filtrados
+    filteredAlerts.forEach(function(a) {
+        if (a.lat == null || a.lon == null) return;
+        
+        var color = a.color || '#FF9500';
+        var distStr = a.distKm != null ? '<br><small>📏 ' + a.distKm + ' km de ti</small>' : '';
+        var timeStr = a.time ? '<br><small>🕐 ' + formatTime(a.time) + '</small>' : '';
+        
+        var popup = '<div style="min-width:200px;font-family:sans-serif">'
+            +'<div style="color:'+color+';font-weight:700;font-size:13px">'
+            +(a.icon||'')+ ' ' + (a.type||'') + '</div>'
+            +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
+            +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
+                +a.description.substring(0,150)+'</div>' : '')
+            +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
+            +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
+            +'</div>';
+        
+        var marker = L.marker([a.lat, a.lon], { icon: getMapIcon(a) })
+            .addTo(leafletMap)
+            .bindPopup(popup, { maxWidth: 250 });
+        mapMarkers.push(marker);
+    });
+    
+    // Mostrar indicador de filtrado
+    var indicator = document.getElementById('filterIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'filterIndicator';
+        indicator.style.cssText = 'position:absolute;bottom:20px;right:20px;background:#1a1a1a;color:#0f0;'
+            +'padding:10px 15px;border-radius:8px;font-size:12px;z-index:1000;border:1px solid #0f0;font-family:monospace;';
+        document.body.appendChild(indicator);
+    }
+    
+    var zoomLabel = '';
+    if (currentZoom <= 6) zoomLabel = 'GLOBAL (críticas)';
+    else if (currentZoom <= 10) zoomLabel = 'REGIONAL';
+    else zoomLabel = 'DETALLE';
+    
+    indicator.innerHTML = 'Zoom: ' + zoomLabel + '<br>' + filteredAlerts.length + ' de ' + allAlerts.length + ' alertas';
+}
+
+function setupMapZoomListener() {
+    if (!leafletMap) return;
+    leafletMap.on('zoomend', function() {
+        var userLoc = getActiveLocation();
+        updateMapMarkersSmartZoom(externalAlerts, userLoc);
+    });
+}
+
+function startMapAutoRefreshFixed() {
+    if (mapRefreshInterval) clearInterval(mapRefreshInterval);
+    mapRefreshInterval = setInterval(function() {
+        if (mapInitialized && leafletMap && externalAlerts) {
+            var userLoc = getActiveLocation();
+            updateMapMarkersSmartZoom(externalAlerts, userLoc);
+        }
+    }, 120000);
+}
+
+function updateMapGlobalFixed(allAlerts) {
+    if (!mapInitialized || !leafletMap) return;
+    var currentZoom = leafletMap.getZoom();
+    if (currentZoom <= 6) {
+        var globalAlerts = allAlerts.filter(function(a) {
+            return (a.priority >= 80) || (a.magnitude && a.magnitude >= 5);
+        });
+        console.log('🌍 Alertas globales visibles:', globalAlerts.length);
+    }
+}
+
 // ======= Helpers =======
 function setUserRadiusKm(km) {
     CONFIG.USER_RADIUS_KM = km;
@@ -1523,64 +1656,21 @@ function getMapIcon(alert) {
     });
 }
 
+
+// ========== ACTUALIZADO: updateMapMarkers con filtrado inteligente ==========
 function updateMapMarkers(alerts) {
-    if (!mapInitialized || !leafletMap) return;
-
-    // Limpiar marcadores anteriores
-    mapMarkers.forEach(function(m) { leafletMap.removeLayer(m); });
-    mapMarkers = [];
-
-    // Actualizar posición usuario y AUTO-CENTRAR
-    var loc = getActiveLocation();
-    if (loc.lat) {
-        if (userMarker) {
-            userMarker.setLatLng([loc.lat, loc.lon]);
-        } else {
-            userMarker = L.marker([loc.lat, loc.lon], { icon: createUserIcon() })
-                .addTo(leafletMap).bindPopup('<b>📍 Tu ubicación</b><br>' + (loc.name || ''));
-        }
-        // Auto-centrar en nueva ubicación
-        leafletMap.setView([loc.lat, loc.lon], leafletMap.getZoom() || 6, { animate: true });
-    }
-
-    // Mostrar TODOS los eventos en el mapa con sus iconos correctos
-    alerts.forEach(function(a) {
-        if (a.lat == null || a.lon == null) return;
-        var color = a.color || '#FF9500';
-        var distStr = a.distKm != null ? '<br><small>📏 ' + a.distKm + ' km de ti</small>' : '';
-        var timeStr = a.time ? '<br><small>🕐 ' + formatTime(a.time) + '</small>' : '';
-        var popup = '<div style="min-width:200px;font-family:sans-serif">'
-            +'<div style="color:'+color+';font-weight:700;font-size:13px">'
-            +(a.icon||'')+ ' ' + (a.type||'') + '</div>'
-            +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
-            +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
-                +a.description.substring(0,150)+'</div>' : '')
-            +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
-            +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
-            +'</div>';
-        var marker = L.marker([a.lat, a.lon], { icon: getMapIcon(a) })
-            .addTo(leafletMap)
-            .bindPopup(popup, { maxWidth: 250 });
-        mapMarkers.push(marker);
-    });
+    updateMapMarkersSmartZoom(alerts, getActiveLocation());
 }
 
-// Auto-refresh del mapa cada 2 minutos
+// Auto-refresh del mapa cada 2 minutos (CORREGIDO)
 var mapRefreshInterval = null;
 function startMapAutoRefresh() {
-    if (mapRefreshInterval) clearInterval(mapRefreshInterval);
-    mapRefreshInterval = setInterval(function() {
-        if (mapInitialized && leafletMap) {
-            updateMapMarkers(externalAlerts);
-        }
-    }, 120000);
+    startMapAutoRefreshFixed();
 }
 
-// Show ALL global events on map regardless of user radius
+// Manejo de eventos globales (CORREGIDO)
 function updateMapGlobal(allAlerts) {
-    if (!mapInitialized || !leafletMap) return;
-    // Already handled in updateMapMarkers — this is a placeholder
-    // for future: show world events at low zoom
+    updateMapGlobalFixed(allAlerts);
 }
 
 // ========== SOS TOOLS ==========

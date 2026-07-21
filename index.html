@@ -71,6 +71,38 @@
             font-weight: bold;
             font-size: 10px;
         }
+
+        /* ========== BOTÓN COMPARTIR ========== */
+        .alert-item {
+            position: relative;
+        }
+
+        .btn-share {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #222;
+            border: 1px solid #444;
+            color: #ccc;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+
+        .alert-item:hover .btn-share {
+            opacity: 1;
+            background: #ff6666;
+            border-color: #ff6666;
+            color: #000;
+        }
+
+        .btn-share:hover {
+            background: #ff4444;
+            border-color: #ff4444;
+        }
     </style>
 </head>
 <body>
@@ -300,6 +332,34 @@
 
         const observer = new MutationObserver(updateAlertCount);
         observer.observe(document.getElementById('alertList'), { childList: true });
+
+        // ========== FUNCIÓN COMPARTIR EN RRSS ==========
+        function shareAlert(title, description, location, distance) {
+            const text = `🚨 ALERTA: ${title}\n${description}\n📍 ${location} (${distance})`;
+            
+            // Copiar al portapapeles
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Alerta copiada al portapapeles. Puedes compartirla en RRSS.');
+            }).catch(() => {
+                // Fallback si no funciona clipboard
+                const encoded = encodeURIComponent(text);
+                window.open(`https://twitter.com/intent/tweet?text=${encoded}`, '_blank');
+            });
+        }
+
+        // Interceptar clicks en botón de compartir
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('btn-share')) {
+                e.stopPropagation();
+                const alert = e.target.closest('.alert-item');
+                const title = alert.querySelector('.alert-title')?.textContent || 'Alerta';
+                const desc = alert.querySelector('.alert-description')?.textContent || '';
+                const location = alert.querySelector('.alert-location')?.textContent || 'Ubicación desconocida';
+                const distance = alert.querySelector('.alert-distance')?.textContent || '';
+                
+                shareAlert(title, desc, location, distance);
+            }
+        });
     </script>
 
 </body>

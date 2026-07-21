@@ -82,7 +82,7 @@ function searchLocation(query) {
  */
 async function getEarthquakesData(latitude, longitude, radiusKm = 500) {
     try {
-        const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=100&minmagnitude=2.0`;
+        const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=150&minmagnitude=1.5`;
         const response = await fetch(url);
         const data = await response.json();
         
@@ -383,9 +383,8 @@ async function loadAlertsForLocation(locationName, radiusKm = 500) {
 async function loadGlobalAlerts() {
     console.log("🌍 Cargando alertas globales...");
     
-    // Centro del mundo aprox
     const [earthquakes, gdacs, volcanoes] = await Promise.all([
-        getEarthquakesData(0, 0, 20000), // radio grande
+        getEarthquakesData(0, 0, 20000),
         getGDACSData(0, 0, 20000),
         getVolcanoesData(0, 0, 20000)
     ]);
@@ -394,9 +393,9 @@ async function loadGlobalAlerts() {
         ...earthquakes,
         ...gdacs,
         ...volcanoes
-    ].filter(a => a.priority >= 70) // Solo las importantes
+    ].filter(a => a.priority >= 50) // Bajado de 70 a 50 para mostrar más alertas
      .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-     .slice(0, 50); // Top 50
+     .slice(0, 100); // Aumentado de 50 a 100
 }
 
 // ========== EXPORTAR FUNCIONES ==========
@@ -405,26 +404,15 @@ window.searchLocation = searchLocation;
 window.loadAlertsForLocation = loadAlertsForLocation;
 window.loadGlobalAlerts = loadGlobalAlerts;
 
-// ========== FUNCIÓN WRAPPER PARA APP.JS ==========
-/**
- * Cargar todas las alertas globales con callback
- * Función requerida por app.js para funcionar correctamente
- * Se llama cuando no hay coordenadas de geolocalización disponibles
- */
+// WRAPPER requerido por app.js
 window.loadExternalSources = function(callback) {
-    console.log("📡 Iniciando carga de fuentes externas...");
-    
     loadGlobalAlerts()
         .then(function(alerts) {
             console.log("✅ Alertas globales cargadas:", alerts.length);
-            if (callback && typeof callback === 'function') {
-                callback(alerts);
-            }
+            if (callback) callback(alerts);
         })
         .catch(function(error) {
-            console.error("❌ Error cargando fuentes externas:", error);
-            if (callback && typeof callback === 'function') {
-                callback([]); // Pasar array vacío en caso de error
-            }
+            console.error("❌ Error:", error);
+            if (callback) callback([]);
         });
 };

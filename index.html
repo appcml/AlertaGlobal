@@ -102,6 +102,11 @@
         #langPopup, #favoritesPopup, #sosPopup, #themePopup {
             display: none;
         }
+        @keyframes pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+            70%  { box-shadow: 0 0 0 10px rgba(255,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
+        }
     </style>
 </head>
 <body>
@@ -296,6 +301,7 @@
     <script src="js/locations.js?v=1784395434"></script>
     <script src="js/AlertFiltering_FIX.js"></script>
     <script src="js/app.js?v=1784395434"></script>
+    <script src="js/map-layers.js?v=1784395434"></script>
 
     <script>
         // FILTROS

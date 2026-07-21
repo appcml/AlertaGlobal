@@ -14,6 +14,139 @@
     <!-- LEAFLET CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/styles.css?v=1784395434">
+    <style>
+        /* ========== FILTROS CRÍTICOS CSS ========== */
+        .critical-filters {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 12px;
+            margin: 8px;
+            border-radius: 8px;
+            border-left: 4px solid #ff4444;
+            box-shadow: 0 2px 8px rgba(255, 68, 68, 0.2);
+        }
+        
+        .critical-filters h3 {
+            color: #ff4444;
+            font-size: 14px;
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-group {
+            margin-bottom: 12px;
+        }
+        
+        .filter-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            color: #ccc;
+            font-size: 13px;
+            user-select: none;
+        }
+        
+        .filter-group label input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: #ff6666;
+        }
+        
+        .filter-group select,
+        .filter-group input[type="range"] {
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #222;
+            color: #fff;
+            font-size: 12px;
+        }
+        
+        .filter-group select:focus,
+        .filter-group input[type="range"]:focus {
+            outline: none;
+            border-color: #ff6666;
+            box-shadow: 0 0 4px rgba(255, 102, 102, 0.3);
+        }
+        
+        .radius-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .radius-display input[type="range"] {
+            flex: 1;
+        }
+        
+        .radius-value {
+            background: #ff6666;
+            color: #000;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            min-width: 60px;
+            text-align: center;
+            font-size: 11px;
+        }
+        
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .filter-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #444;
+            background: #222;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .filter-buttons button:hover {
+            background: #333;
+            border-color: #ff6666;
+            color: #ff6666;
+        }
+        
+        .filter-buttons button.active {
+            background: #ff6666;
+            color: #000;
+            font-weight: bold;
+            border-color: #ff4444;
+        }
+        
+        /* ALERTAS CRÍTICAS HIGHLIGHT */
+        .alert-item.critical {
+            border-left: 4px solid #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+        }
+        
+        .alert-item.warning {
+            border-left: 4px solid #ffaa00;
+            background: rgba(255, 170, 0, 0.05);
+        }
+        
+        .alert-count {
+            background: #ff4444;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+    </style>
 </head>
 <body>
 
@@ -56,6 +189,66 @@
                 <!-- Radio selector: muestra radio actual y abre popup -->
                 <button class="location-btn" id="btnRadius" title="Radio de alertas">📏 <span id="radiusLabel">500 km</span></button>
             </div>
+
+            <!-- ========== FILTROS CRÍTICOS FASE 1+3 ========== -->
+            <div class="critical-filters">
+                <h3>⚠️ FILTROS DE ALERTAS CRÍTICAS <span class="alert-count" id="alertCount">0</span></h3>
+                
+                <!-- Tipo de alertas -->
+                <div class="filter-group">
+                    <label><input type="checkbox" class="alert-filter" value="earthquake" checked> 🔴 Terremotos (M≥3.0)</label>
+                    <label><input type="checkbox" class="alert-filter" value="tsunami" checked> 🌊 Tsunamis</label>
+                    <label><input type="checkbox" class="alert-filter" value="hurricane" checked> 🌀 Huracanes/Ciclones</label>
+                    <label><input type="checkbox" class="alert-filter" value="tornado" checked> 🌪️ Tornados</label>
+                    <label><input type="checkbox" class="alert-filter" value="storm" checked> ⛈️ Tormentas Severas</label>
+                    <label><input type="checkbox" class="alert-filter" value="volcano" checked> 🌋 Erupciones</label>
+                    <label><input type="checkbox" class="alert-filter" value="flood" checked> 💧 Inundaciones</label>
+                    <label><input type="checkbox" class="alert-filter" value="landslide" checked> 🏔️ Deslizamientos</label>
+                </div>
+                
+                <!-- Magnitud mínima -->
+                <div class="filter-group">
+                    <label>📏 Magnitud mínima:
+                        <select id="magnitudeFilter">
+                            <option value="2">≥ 2.0</option>
+                            <option value="3" selected>≥ 3.0</option>
+                            <option value="4">≥ 4.0</option>
+                            <option value="5">≥ 5.0</option>
+                            <option value="6">≥ 6.0</option>
+                        </select>
+                    </label>
+                </div>
+                
+                <!-- Radio de búsqueda -->
+                <div class="filter-group">
+                    <label>📍 Radio de búsqueda:
+                        <div class="radius-display">
+                            <input type="range" id="distanceFilter" value="500" min="50" max="2000" step="50">
+                            <span class="radius-value" id="distanceValue">500 km</span>
+                        </div>
+                    </label>
+                </div>
+                
+                <!-- Rango de tiempo -->
+                <div class="filter-group">
+                    <label>🕐 Últimas:
+                        <select id="timeFilter">
+                            <option value="6">6 horas</option>
+                            <option value="24" selected>24 horas</option>
+                            <option value="48">48 horas</option>
+                            <option value="168">7 días</option>
+                            <option value="720">30 días</option>
+                        </select>
+                    </label>
+                </div>
+                
+                <!-- Botones de acción -->
+                <div class="filter-buttons">
+                    <button id="applyFilters">✓ Aplicar Filtros</button>
+                    <button id="resetFilters">↻ Restablecer</button>
+                </div>
+            </div>
+
             <div class="loading" id="alertsLoading"><div class="spinner"></div><p>Cargando alertas...</p></div>
             <div class="alert-list" id="alertList"></div>
             <div class="error-msg" id="alertsError" style="display:none"></div>
@@ -98,214 +291,165 @@
                 </div>
             </div>
             <div class="sos-grid">
-                <button class="sos-tool" id="sosFlashlight" onclick="toggleFlashSOS()">
-                    <span class="sos-tool-icon">🔦</span>
-                    <span class="sos-tool-label">Linterna SOS</span>
-                    <span class="sos-tool-desc">Código Morse SOS</span>
-                </button>
-                <button class="sos-tool" id="sosWhistle" onclick="playWhistle()">
-                    <span class="sos-tool-icon">🔊</span>
-                    <span class="sos-tool-label">Silbato Rescate</span>
-                    <span class="sos-tool-desc">Alta frecuencia</span>
-                </button>
-                <button class="sos-tool" id="sosPanic" onclick="sendPanicSMS()">
-                    <span class="sos-tool-icon">🆘</span>
-                    <span class="sos-tool-label">Botón Pánico</span>
-                    <span class="sos-tool-desc">Enviar GPS por SMS</span>
-                </button>
-                <button class="sos-tool" id="sosFirstAid" onclick="showFirstAid()">
-                    <span class="sos-tool-icon">🩹</span>
-                    <span class="sos-tool-label">Primeros Auxilios</span>
-                    <span class="sos-tool-desc">Guía rápida</span>
-                </button>
-                <button class="sos-tool" id="sosNumbers" onclick="showEmergencyNumbers()">
-                    <span class="sos-tool-icon">📞</span>
-                    <span class="sos-tool-label">Emergencias</span>
-                    <span class="sos-tool-desc">Números de ayuda</span>
-                </button>
-                <button class="sos-tool" id="sosChecklist" onclick="showChecklist()">
-                    <span class="sos-tool-icon">🎒</span>
-                    <span class="sos-tool-label">Mochila 72h</span>
-                    <span class="sos-tool-desc">Lista de preparación</span>
-                </button>
+                <div class="sos-card">
+                    <div class="sos-icon">📞</div>
+                    <div class="sos-title">Emergency Contacts</div>
+                    <div class="sos-desc">Quick access to emergency numbers</div>
+                    <button class="sos-btn" id="btnEmergencyContacts">View</button>
+                </div>
+                <div class="sos-card">
+                    <div class="sos-icon">📍</div>
+                    <div class="sos-title">Share Location</div>
+                    <div class="sos-desc">Send your location to trusted contacts</div>
+                    <button class="sos-btn" id="btnShareLocation">Share</button>
+                </div>
+                <div class="sos-card">
+                    <div class="sos-icon">💬</div>
+                    <div class="sos-title">Report Incident</div>
+                    <div class="sos-desc">Send emergency reports from your area</div>
+                    <button class="sos-btn" id="btnReport">Report</button>
+                </div>
+                <div class="sos-card">
+                    <div class="sos-icon">💉</div>
+                    <div class="sos-title">First Aid</div>
+                    <div class="sos-desc">Quick access to first aid guides</div>
+                    <button class="sos-btn" id="btnFirstAid">Read</button>
+                </div>
             </div>
-            <div class="sos-detail-panel" id="sosDetailPanel" style="display:none"></div>
         </section>
 
         <!-- TIPS -->
         <section class="tab-panel" id="panel-tips">
-            <div class="tips-list" id="tipsList"></div>
+            <div class="tips-container" id="tipsContainer"></div>
         </section>
 
     </main>
 
-    <footer class="ad-banner"><span>📢 AdMob</span></footer>
-    <div class="toast" id="toast"></div>
-
-    <!-- POPUP: BÚSQUEDA -->
-    <div class="popup-overlay" id="searchPopup" style="display:none">
-        <div class="popup">
-            <h3>🔍 Buscar ubicación</h3>
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Ciudad, país..." autocomplete="off">
-                <button id="searchBtn">🔍</button>
-            </div>
-            <div class="search-results" id="searchResults"></div>
-            <button class="popup-close" id="closeSearch">✕</button>
+    <!-- POPUPS -->
+    <div class="modal" id="searchPopup">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 style="color: var(--accent);">🔍 Buscar Localidad</h2>
+            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción, Nueva York...">
+            <div id="searchResults" style="margin-top: 16px;"></div>
         </div>
     </div>
 
-    <!-- POPUP: RADIO (selector) -->
-    <div class="popup-overlay" id="radiusPopup" style="display:none">
-        <div class="popup">
-            <h3>📏 Radio de alertas</h3>
-            <div style="padding:8px 0;">
-                <label for="radiusSelect">Selecciona radio:</label>
-                <select id="radiusSelect" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;">
-                    <option value="50">50 km</option>
-                    <option value="200">200 km</option>
-                    <option value="500">500 km</option>
-                    <option value="1000">1000 km</option>
-                    <option value="0">Global (sin filtro)</option>
-                </select>
-            </div>
-            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
-                <button id="saveRadiusBtn" class="btn-small" style="background:var(--accent);color:#000;padding:8px 12px;border-radius:8px;border:none;cursor:pointer">Guardar</button>
-                <button class="popup-close" id="closeRadius" style="background:none;border:none;color:var(--text-muted);cursor:pointer">Cancelar</button>
+    <div class="modal" id="radiusPopup">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 style="color: var(--accent);">📏 Radio de Alertas</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
+                <button class="radius-option" data-radius="50">50 km</button>
+                <button class="radius-option" data-radius="100">100 km</button>
+                <button class="radius-option" data-radius="250">250 km</button>
+                <button class="radius-option" data-radius="500" style="background:#ff6666;">500 km (Actual)</button>
+                <button class="radius-option" data-radius="1000">1000 km</button>
+                <button class="radius-option" data-radius="2000">Global</button>
             </div>
         </div>
     </div>
 
-    <!-- POPUP: FAVORITOS -->
-    <div class="popup-overlay" id="favoritesPopup" style="display:none">
-        <div class="popup">
-            <h3>⭐ Ubicaciones favoritas</h3>
-            <div id="favoritesList"></div>
-            <p id="favoritesEmpty" style="text-align:center;color:#666;padding:20px;display:none">No tienes favoritos guardados.<br>Toca ☆ para guardar.</p>
-            <button class="popup-close" id="closeFavorites">✕</button>
-        </div>
-    </div>
-
-    <!-- POPUP: COMPARTIR -->
-    <div class="popup-overlay" id="sharePopup" style="display:none">
-        <div class="popup">
-            <h3>📤 Compartir alerta</h3>
-            <div id="shareContent" style="background:#1a1a1a;border-radius:10px;padding:14px;font-size:13px;margin-bottom:16px;line-height:1.5;color:#ccc"></div>
-            <div class="share-grid">
-                <button class="share-btn whatsapp" id="shareWhatsapp"><span class="share-icon">💬</span> WhatsApp</button>
-                <button class="share-btn twitter" id="shareTwitter"><span class="share-icon">🐦</span> Twitter/X</button>
-                <button class="share-btn facebook" id="shareFacebook"><span class="share-icon">📘</span> Facebook</button>
-                <button class="share-btn telegram" id="shareTelegram"><span class="share-icon">✈️</span> Telegram</button>
-                <button class="share-btn copy" id="shareCopy"><span class="share-icon">📋</span> Copiar</button>
-                <button class="share-btn native" id="shareNative" style="display:none"><span class="share-icon">📤</span> Compartir</button>
+    <div class="modal" id="sharePopup">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 style="color: var(--accent);">📤 Compartir Alerta</h2>
+            <textarea id="shareContent" readonly style="width:100%;height:100px;margin:16px 0;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;"></textarea>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button id="btnCopyShare" style="padding:12px;background:#ff6666;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📋 Copiar</button>
+                <button id="btnOpenShare" style="padding:12px;background:#6699ff;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🔗 Compartir</button>
             </div>
-            <button class="popup-close" id="closeShare">✕</button>
         </div>
     </div>
 
-    <!-- POPUP: IDIOMA -->
-    <div class="popup-overlay" id="langPopup" style="display:none">
-        <div class="popup">
-            <h3>🌐 Idioma / Language</h3>
-            <div class="lang-grid">
-                <button class="lang-btn" data-lang="es">🇪🇸 Español</button>
-                <button class="lang-btn" data-lang="en">🇺🇸 English</button>
-                <button class="lang-btn" data-lang="pt">🇧🇷 Português</button>
-                <button class="lang-btn" data-lang="fr">🇫🇷 Français</button>
-                <button class="lang-btn" data-lang="de">🇩🇪 Deutsch</button>
-                <button class="lang-btn" data-lang="ja">🇯🇵 日本語</button>
-                <button class="lang-btn" data-lang="zh">🇨🇳 中文</button>
-                <button class="lang-btn" data-lang="ko">🇰🇷 한국어</button>
-            </div>
-            <button class="popup-close" id="closeLang">✕</button>
-        </div>
-    </div>
-
-    <!-- POPUP: TEMAS -->
-    <div class="popup-overlay" id="themePopup" style="display:none">
-        <div class="popup">
-            <h3>🎨 Tema Visual</h3>
-            <div class="theme-grid">
-                <button class="theme-option" data-theme="dark" onclick="setTheme('dark')">
-                    <span class="theme-preview dark-preview"></span>
-                    <span>🌑 Oscuro OLED</span>
-                </button>
-                <button class="theme-option" data-theme="midnight" onclick="setTheme('midnight')">
-                    <span class="theme-preview midnight-preview"></span>
-                    <span>🌌 Medianoche</span>
-                </button>
-                <button class="theme-option" data-theme="emerald" onclick="setTheme('emerald')">
-                    <span class="theme-preview emerald-preview"></span>
-                    <span>💚 Esmeralda</span>
-                </button>
-                <button class="theme-option" data-theme="volcano" onclick="setTheme('volcano')">
-                    <span class="theme-preview volcano-preview"></span>
-                    <span>🌋 Volcán</span>
-                </button>
-                <button class="theme-option" data-theme="ocean" onclick="setTheme('ocean')">
-                    <span class="theme-preview ocean-preview"></span>
-                    <span>🌊 Océano</span>
-                </button>
-                <button class="theme-option" data-theme="light" onclick="setTheme('light')">
-                    <span class="theme-preview light-preview"></span>
-                    <span>☀️ Claro</span>
-                </button>
-            </div>
-            <button class="popup-close" id="closeTheme">✕</button>
-        </div>
-    </div>
-
-    <!-- POPUP: SOS DETAIL -->
-    <div class="popup-overlay" id="sosPopup" style="display:none">
-        <div class="popup sos-popup">
-            <div id="sosPopupContent"></div>
-            <button class="popup-close" id="closeSos">✕</button>
-        </div>
-    </div>
-
-    <!-- EMERGENCY FULLSCREEN -->
-    <div class="emergency-screen" id="emergencyScreen" style="display:none">
-        <div class="emergency-content" id="emergencyContent"></div>
-    </div>
-
-    <!-- LEAFLET JS -->
+    <!-- SCRIPTS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="js/ai.js?v=1784420200"></script>
     <script src="js/i18n.js?v=1784395434"></script>
     <script src="js/sources.js?v=1784395434"></script>
     <script src="js/locations.js?v=1784395434"></script>
     <script src="js/AlertFiltering_FIX.js"></script>
-<script src="js/app.js?v=1784395434"></script>
+    <script src="js/app.js?v=1784395434"></script>
 
-    <!-- Small initializer for the radius popup UI (safe if app.js already wires it too) -->
     <script>
-        // sync UI label & popup with stored value
-        document.addEventListener('DOMContentLoaded', function() {
-            try {
-                var lbl = document.getElementById('radiusLabel');
-                var sel = document.getElementById('radiusSelect');
-                var popup = document.getElementById('radiusPopup');
-                if (lbl) lbl.textContent = (localStorage.getItem('ag_radius_km') === '0') ? 'Global' : (localStorage.getItem('ag_radius_km') || '500') + ' km';
-                if (sel) sel.value = String(localStorage.getItem('ag_radius_km') || '500');
-                var btn = document.getElementById('btnRadius');
-                if (btn) btn.addEventListener('click', function() { if (popup) popup.style.display='flex'; });
+        // ========== FILTROS CRÍTICOS FASE 1+3 ==========
+        // Configuración de filtros por defecto
+        window.alertFilters = {
+            types: ['earthquake', 'tsunami', 'hurricane', 'tornado', 'storm', 'volcano', 'flood', 'landslide'],
+            minMagnitude: 3.0,
+            radius: 500,
+            hours: 24
+        };
 
-                var closeBtn = document.getElementById('closeRadius');
-                if (closeBtn) closeBtn.addEventListener('click', function(){ if (popup) popup.style.display='none'; });
-
-                var saveBtn = document.getElementById('saveRadiusBtn');
-                if (saveBtn) saveBtn.addEventListener('click', function(){
-                    var v = document.getElementById('radiusSelect').value;
-                    try { localStorage.setItem('ag_radius_km', String(v)); } catch(e){}
-                    if (lbl) lbl.textContent = (v==='0') ? 'Global' : v + ' km';
-                    if (popup) popup.style.display='none';
-                    // trigger reload of alerts using the app's API if available
-                    if (typeof setUserRadiusKm === 'function') setUserRadiusKm(parseInt(v,10));
-                    if (typeof loadAlerts === 'function') { try{ loadAlerts(); } catch(e){} }
-                    if (typeof showToast === 'function') showToast('📏 Radio actualizado: '+ (v==='0'?'Global':v+' km'));
-                });
-            } catch(e){}
+        // Event listeners para filtros
+        document.querySelectorAll('.alert-filter').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const type = this.value;
+                if (this.checked) {
+                    if (!window.alertFilters.types.includes(type)) {
+                        window.alertFilters.types.push(type);
+                    }
+                } else {
+                    window.alertFilters.types = window.alertFilters.types.filter(t => t !== type);
+                }
+            });
         });
+
+        // Magnitud
+        document.getElementById('magnitudeFilter').addEventListener('change', function() {
+            window.alertFilters.minMagnitude = parseFloat(this.value);
+        });
+
+        // Distancia
+        document.getElementById('distanceFilter').addEventListener('input', function() {
+            window.alertFilters.radius = parseInt(this.value);
+            document.getElementById('distanceValue').textContent = this.value + ' km';
+        });
+
+        // Tiempo
+        document.getElementById('timeFilter').addEventListener('change', function() {
+            window.alertFilters.hours = parseInt(this.value);
+        });
+
+        // Aplicar filtros
+        document.getElementById('applyFilters').addEventListener('click', function() {
+            // Disparar nuevo escaneo con filtros
+            if (typeof loadAlerts === 'function') {
+                loadAlerts();
+            }
+        });
+
+        // Restablecer filtros
+        document.getElementById('resetFilters').addEventListener('click', function() {
+            document.querySelectorAll('.alert-filter').forEach(cb => cb.checked = true);
+            document.getElementById('magnitudeFilter').value = '3';
+            document.getElementById('distanceFilter').value = '500';
+            document.getElementById('timeFilter').value = '24';
+            document.getElementById('distanceValue').textContent = '500 km';
+            
+            window.alertFilters = {
+                types: ['earthquake', 'tsunami', 'hurricane', 'tornado', 'storm', 'volcano', 'flood', 'landslide'],
+                minMagnitude: 3.0,
+                radius: 500,
+                hours: 24
+            };
+            
+            if (typeof loadAlerts === 'function') {
+                loadAlerts();
+            }
+        });
+
+        // Actualizar contador de alertas
+        function updateAlertCount() {
+            const alerts = document.querySelectorAll('.alert-item');
+            document.getElementById('alertCount').textContent = alerts.length;
+        }
+
+        // Observer para contar alertas cuando cambian
+        const observer = new MutationObserver(updateAlertCount);
+        const alertList = document.getElementById('alertList');
+        observer.observe(alertList, { childList: true });
     </script>
+
 </body>
 </html>

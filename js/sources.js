@@ -404,3 +404,27 @@ window.LocationDatabase = LocationDatabase;
 window.searchLocation = searchLocation;
 window.loadAlertsForLocation = loadAlertsForLocation;
 window.loadGlobalAlerts = loadGlobalAlerts;
+
+// ========== FUNCIÓN WRAPPER PARA APP.JS ==========
+/**
+ * Cargar todas las alertas globales con callback
+ * Función requerida por app.js para funcionar correctamente
+ * Se llama cuando no hay coordenadas de geolocalización disponibles
+ */
+window.loadExternalSources = function(callback) {
+    console.log("📡 Iniciando carga de fuentes externas...");
+    
+    loadGlobalAlerts()
+        .then(function(alerts) {
+            console.log("✅ Alertas globales cargadas:", alerts.length);
+            if (callback && typeof callback === 'function') {
+                callback(alerts);
+            }
+        })
+        .catch(function(error) {
+            console.error("❌ Error cargando fuentes externas:", error);
+            if (callback && typeof callback === 'function') {
+                callback([]); // Pasar array vacío en caso de error
+            }
+        });
+};

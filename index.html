@@ -151,6 +151,16 @@
             <div class="alert-list" id="alertList"></div>
             <div class="error-msg" id="alertsError" style="display:none"></div>
         </section>
+        
+        <!-- POPUPS - MOVED HERE TO AVOID DUPLICATION -->
+        <div class="modal" id="searchPopup">
+            <div class="modal-content">
+                <button class="modal-close">&times;</button>
+                <h2 style="color: var(--accent);">🔍 Buscar Localidad</h2>
+                <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
+                <div id="searchResults" style="margin-top: 16px;"></div>
+            </div>
+        </div>
 
         <!-- MAPA -->
         <section class="tab-panel" id="panel-mapa">
@@ -227,16 +237,7 @@
 
     </main>
 
-    <!-- POPUPS -->
-    <div class="modal" id="searchPopup">
-        <div class="modal-content">
-            <button class="modal-close">&times;</button>
-            <h2 style="color: var(--accent);">🔍 Buscar Localidad</h2>
-            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
-            <div id="searchResults" style="margin-top: 16px;"></div>
-        </div>
-    </div>
-
+    <!-- RADIUS POPUP -->
     <div class="modal" id="radiusPopup">
         <div class="modal-content">
             <button class="modal-close">&times;</button>

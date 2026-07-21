@@ -1,34 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.alertaglobal">
-
     <!-- Red e Internet -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-
     <!-- Geolocalización — GPS + Red móvil + WiFi -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
     <!-- Notificaciones y servicio en background -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-
     <!-- SAE Cell Broadcast — alertas SENAPRED/SUBTEL sin internet -->
     <uses-permission android:name="android.permission.RECEIVE_EMERGENCY_BROADCAST" />
-
     <!-- WiFi Direct — red mesh offline entre dispositivos -->
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-
     <!-- Vibración para alertas críticas -->
     <uses-permission android:name="android.permission.VIBRATE" />
-
     <application
         android:name=".AlertaGlobalApp"
         android:allowBackup="true"
@@ -38,12 +31,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AlertaGlobal"
         android:usesCleartextTraffic="true">
-
-        <!-- AdMob -->
+        <!-- Google AdMob - Test ID (reemplazar con tu ID real en producción) -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX" />
-
+            android:value="ca-app-pub-3940256099942544~3347511713" />
         <!-- Activity principal -->
         <activity
             android:name=".MainActivity"
@@ -56,14 +47,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <!-- Servicio de monitoreo en background -->
         <service
             android:name=".service.AlertMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
-
         <!-- Receptor SAE Cell Broadcast (alertas SENAPRED) -->
         <receiver
             android:name=".receiver.CellBroadcastReceiver"
@@ -75,7 +64,6 @@
                 <action android:name="android.provider.Telephony.SMS_EMERGENCY_CB_RECEIVED" />
             </intent-filter>
         </receiver>
-
         <!-- Receptor arranque automático -->
         <receiver
             android:name=".receiver.BootReceiver"
@@ -86,6 +74,5 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-
     </application>
 </manifest>

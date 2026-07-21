@@ -11,11 +11,9 @@
     <title>Alerta Global</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
-    <!-- LEAFLET CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/styles.css?v=1784395434">
     <style>
-        /* ========== FILTROS MINIMALISTAS ========== */
         .mini-filters {
             background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
             padding: 8px 12px;
@@ -25,17 +23,14 @@
             flex-wrap: wrap;
             border-bottom: 2px solid #ff6666;
         }
-        
         .mini-filters label {
             display: flex;
             align-items: center;
             gap: 6px;
             color: #ccc;
             font-size: 12px;
-            cursor: pointer;
             white-space: nowrap;
         }
-        
         .mini-filters select {
             padding: 4px 6px;
             border-radius: 3px;
@@ -45,7 +40,6 @@
             font-size: 11px;
             cursor: pointer;
         }
-        
         .mini-filters button {
             padding: 4px 10px;
             border: 1px solid #444;
@@ -54,77 +48,64 @@
             border-radius: 3px;
             cursor: pointer;
             font-size: 11px;
-            margin-left: auto;
         }
-        
         .mini-filters button:hover {
-            background: #333;
             border-color: #ff6666;
             color: #ff6666;
         }
-        
         .alert-count-badge {
             background: #ff6666;
             color: #000;
-            padding: 2px 6px;
+            padding: 2px 8px;
             border-radius: 10px;
             font-weight: bold;
-            font-size: 10px;
+            font-size: 11px;
+            margin-left: auto;
         }
-
-        /* ========== BOTÓN COMPARTIR ========== */
         .alert-item {
             position: relative;
         }
-
         .btn-share {
             position: absolute;
-            top: 8px;
+            bottom: 8px;
             right: 8px;
             background: #222;
             border: 1px solid #444;
             color: #ccc;
-            padding: 4px 8px;
+            padding: 3px 8px;
             border-radius: 3px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             opacity: 0;
-            transition: all 0.2s;
+            transition: opacity 0.2s;
         }
-
         .alert-item:hover .btn-share {
             opacity: 1;
+        }
+        .btn-share:hover {
             background: #ff6666;
             border-color: #ff6666;
             color: #000;
-        }
-
-        .btn-share:hover {
-            background: #ff4444;
-            border-color: #ff4444;
         }
     </style>
 </head>
 <body>
 
-    <!-- STATUS INDICATOR -->
     <div class="status-indicator" id="statusIndicator">
         <span class="status-dot safe"></span>
         <span class="status-text" id="statusText">Entorno Seguro</span>
     </div>
 
-    <!-- TOOLBAR -->
     <header class="toolbar">
         <div class="toolbar-title">🌍 Alerta Global</div>
         <div class="toolbar-actions">
-            <button class="toolbar-btn" id="btnFavorites" title="Favoritos">⭐</button>
-            <button class="toolbar-btn" id="btnTheme" title="Tema">🎨</button>
-            <button class="toolbar-btn" id="btnLang" title="Idioma">🌐</button>
-            <button class="toolbar-btn" id="btnRefresh" title="Actualizar">🔄</button>
+            <button class="toolbar-btn" id="btnFavorites">⭐</button>
+            <button class="toolbar-btn" id="btnTheme">🎨</button>
+            <button class="toolbar-btn" id="btnLang">🌐</button>
+            <button class="toolbar-btn" id="btnRefresh">🔄</button>
         </div>
     </header>
 
-    <!-- TABS -->
     <nav class="tabs">
         <button class="tab active" data-tab="alertas">🚨 <span data-i18n="tab_alerts">Alertas</span></button>
         <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
@@ -133,24 +114,21 @@
         <button class="tab" data-tab="tips">💡 Tips</button>
     </nav>
 
-    <!-- CONTENT -->
     <main class="content">
 
         <!-- ALERTAS -->
         <section class="tab-panel active" id="panel-alertas">
             <div class="location-bar">
-                <button class="location-btn" id="btnMyLocation" title="Detectar mi ubicación actual">📍 <span id="currentLocationName">Detectar mi ubicación</span></button>
+                <button class="location-btn" id="btnMyLocation">📍 <span id="currentLocationName">Detectar mi ubicación</span></button>
                 <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
-                <button class="location-btn fav-btn" id="btnStarAlert" title="Guardar en favoritos">☆</button>
-                <button class="location-btn" id="btnRadius" title="Radio de alertas">📏 <span id="radiusLabel">500 km</span></button>
+                <button class="location-btn fav-btn" id="btnStarAlert">☆</button>
+                <button class="location-btn" id="btnRadius">📏 <span id="radiusLabel">500 km</span></button>
             </div>
 
-            <!-- ========== FILTROS MINIMALISTAS (OPCIÓN 1) ========== -->
+            <!-- FILTROS MINIMALISTAS EN UNA LÍNEA -->
             <div class="mini-filters">
                 <label>🎯 Filtros:</label>
-                
-                <label>
-                    Tipo:
+                <label>Tipo:
                     <select id="filterType">
                         <option value="todos">Todos</option>
                         <option value="earthquake">🔴 Sismos</option>
@@ -161,9 +139,7 @@
                         <option value="flood">💧 Inundaciones</option>
                     </select>
                 </label>
-                
-                <label>
-                    Magnitud:
+                <label>Magnitud:
                     <select id="filterMagnitude">
                         <option value="0">Todas</option>
                         <option value="2">≥ 2.0</option>
@@ -172,10 +148,8 @@
                         <option value="5">≥ 5.0</option>
                     </select>
                 </label>
-                
                 <button id="btnApplyFilters">✓ Aplicar</button>
                 <button id="btnResetFilters">↻ Reset</button>
-                
                 <span class="alert-count-badge" id="alertCount">0</span>
             </div>
 
@@ -183,16 +157,6 @@
             <div class="alert-list" id="alertList"></div>
             <div class="error-msg" id="alertsError" style="display:none"></div>
         </section>
-        
-        <!-- POPUPS - MOVED HERE TO AVOID DUPLICATION -->
-        <div class="modal" id="searchPopup">
-            <div class="modal-content">
-                <button class="modal-close">&times;</button>
-                <h2 style="color: var(--accent);">🔍 Buscar Localidad</h2>
-                <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
-                <div id="searchResults" style="margin-top: 16px;"></div>
-            </div>
-        </div>
 
         <!-- MAPA -->
         <section class="tab-panel" id="panel-mapa">
@@ -202,9 +166,9 @@
         <!-- CLIMA -->
         <section class="tab-panel" id="panel-clima">
             <div class="location-bar">
-                <button class="location-btn" id="btnWeatherLocation" title="Detectar mi ubicación actual">📍 <span id="weatherLocationName">Detectar mi ubicación</span></button>
+                <button class="location-btn" id="btnWeatherLocation">📍 <span id="weatherLocationName">Detectar mi ubicación</span></button>
                 <button class="location-btn" id="btnWeatherSearch">🔍 Buscar</button>
-                <button class="location-btn fav-btn" id="btnStarWeather" title="Guardar en favoritos">☆</button>
+                <button class="location-btn fav-btn" id="btnStarWeather">☆</button>
             </div>
             <div class="loading" id="weatherLoading"><div class="spinner"></div><p>Obteniendo ubicación...</p></div>
             <div class="weather-container" id="weatherContainer" style="display:none">
@@ -212,7 +176,6 @@
                 <div class="weather-temp" id="wTemp"></div>
                 <div class="weather-desc" id="wDesc"></div>
                 <div class="weather-details">
-                    <div class="weather-detail"><span class="detail-icon">🌡️</span><span class="detail-label">Temperatura</span><span class="detail-value" id="wTemp2"></span></div>
                     <div class="weather-detail"><span class="detail-icon">💧</span><span class="detail-label">Humedad</span><span class="detail-value" id="wHumidity"></span></div>
                     <div class="weather-detail"><span class="detail-icon">💨</span><span class="detail-label">Viento</span><span class="detail-value" id="wWind"></span></div>
                     <div class="weather-detail"><span class="detail-icon">🌡️</span><span class="detail-label">Sensación</span><span class="detail-value" id="wFeels"></span></div>
@@ -269,11 +232,20 @@
 
     </main>
 
-    <!-- RADIUS POPUP -->
+    <!-- POPUPS -->
+    <div class="modal" id="searchPopup">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 style="color:var(--accent);">🔍 Buscar Localidad</h2>
+            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
+            <div id="searchResults" style="margin-top:16px;"></div>
+        </div>
+    </div>
+
     <div class="modal" id="radiusPopup">
         <div class="modal-content">
             <button class="modal-close">&times;</button>
-            <h2 style="color: var(--accent);">📏 Radio de Alertas</h2>
+            <h2 style="color:var(--accent);">📏 Radio de Alertas</h2>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
                 <button class="radius-option" data-radius="50">50 km</button>
                 <button class="radius-option" data-radius="100">100 km</button>
@@ -281,6 +253,22 @@
                 <button class="radius-option" data-radius="500" style="background:#ff6666;">500 km</button>
                 <button class="radius-option" data-radius="1000">1000 km</button>
                 <button class="radius-option" data-radius="2000">Global</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="sharePopup">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 style="color:var(--accent);">📤 Compartir Alerta</h2>
+            <textarea id="shareContent" readonly style="width:100%;height:100px;margin:16px 0;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;resize:none;"></textarea>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button id="btnCopyShare" style="padding:12px;background:#ff6666;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📋 Copiar</button>
+                <button id="btnWhatsApp" style="padding:12px;background:#25D366;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">💬 WhatsApp</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                <button id="btnTwitter" style="padding:12px;background:#1DA1F2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🐦 Twitter/X</button>
+                <button id="btnTelegram" style="padding:12px;background:#0088cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">✈️ Telegram</button>
             </div>
         </div>
     </div>
@@ -295,69 +283,65 @@
     <script src="js/app.js?v=1784395434"></script>
 
     <script>
-        // ========== FILTROS MINIMALISTAS ========== 
-        window.currentFilters = {
-            type: 'todos',
-            magnitude: 3
-        };
+        // FILTROS
+        window.currentFilters = { type: 'todos', magnitude: 3 };
 
         document.getElementById('filterType').addEventListener('change', function() {
             window.currentFilters.type = this.value;
         });
-
         document.getElementById('filterMagnitude').addEventListener('change', function() {
             window.currentFilters.magnitude = parseInt(this.value);
         });
-
         document.getElementById('btnApplyFilters').addEventListener('click', function() {
-            if (typeof loadAlerts === 'function') {
-                loadAlerts();
-            }
+            if (typeof loadAlerts === 'function') loadAlerts();
         });
-
         document.getElementById('btnResetFilters').addEventListener('click', function() {
             document.getElementById('filterType').value = 'todos';
             document.getElementById('filterMagnitude').value = '3';
             window.currentFilters = { type: 'todos', magnitude: 3 };
-            if (typeof loadAlerts === 'function') {
-                loadAlerts();
-            }
+            if (typeof loadAlerts === 'function') loadAlerts();
         });
 
-        // Actualizar contador
-        function updateAlertCount() {
-            const count = document.querySelectorAll('.alert-item').length;
-            document.getElementById('alertCount').textContent = count;
-        }
-
-        const observer = new MutationObserver(updateAlertCount);
+        // CONTADOR
+        const observer = new MutationObserver(function() {
+            document.getElementById('alertCount').textContent = document.querySelectorAll('.alert-item').length;
+        });
         observer.observe(document.getElementById('alertList'), { childList: true });
 
-        // ========== FUNCIÓN COMPARTIR EN RRSS ==========
-        function shareAlert(title, description, location, distance) {
-            const text = `🚨 ALERTA: ${title}\n${description}\n📍 ${location} (${distance})`;
-            
-            // Copiar al portapapeles
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Alerta copiada al portapapeles. Puedes compartirla en RRSS.');
-            }).catch(() => {
-                // Fallback si no funciona clipboard
-                const encoded = encodeURIComponent(text);
-                window.open(`https://twitter.com/intent/tweet?text=${encoded}`, '_blank');
-            });
-        }
+        // COMPARTIR
+        var currentShareText = '';
 
-        // Interceptar clicks en botón de compartir
+        window.openSharePopup = function(title, description, location, distance) {
+            currentShareText = '🚨 ALERTA: ' + title + '\n' + description + '\n📍 ' + location + ' (' + distance + ')';
+            document.getElementById('shareContent').value = currentShareText;
+            document.getElementById('sharePopup').style.display = 'flex';
+        };
+
+        document.getElementById('btnCopyShare').addEventListener('click', function() {
+            navigator.clipboard.writeText(currentShareText).then(function() {
+                alert('¡Copiado al portapapeles!');
+            });
+        });
+        document.getElementById('btnWhatsApp').addEventListener('click', function() {
+            window.open('https://wa.me/?text=' + encodeURIComponent(currentShareText), '_blank');
+        });
+        document.getElementById('btnTwitter').addEventListener('click', function() {
+            window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(currentShareText), '_blank');
+        });
+        document.getElementById('btnTelegram').addEventListener('click', function() {
+            window.open('https://t.me/share/url?text=' + encodeURIComponent(currentShareText), '_blank');
+        });
+
+        // CLICK EN BOTÓN COMPARTIR DE CADA ALERTA
         document.addEventListener('click', function(e) {
             if (e.target.classList.contains('btn-share')) {
                 e.stopPropagation();
-                const alert = e.target.closest('.alert-item');
-                const title = alert.querySelector('.alert-title')?.textContent || 'Alerta';
-                const desc = alert.querySelector('.alert-description')?.textContent || '';
-                const location = alert.querySelector('.alert-location')?.textContent || 'Ubicación desconocida';
-                const distance = alert.querySelector('.alert-distance')?.textContent || '';
-                
-                shareAlert(title, desc, location, distance);
+                var item = e.target.closest('.alert-item');
+                var title = (item.querySelector('.alert-title') || {}).textContent || 'Alerta';
+                var desc = (item.querySelector('.alert-description') || {}).textContent || '';
+                var loc = (item.querySelector('#currentLocationName') || {}).textContent || '';
+                var dist = (item.querySelector('[class*="dist"]') || {}).textContent || '';
+                window.openSharePopup(title, desc, loc, dist);
             }
         });
     </script>

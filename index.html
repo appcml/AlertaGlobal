@@ -526,7 +526,50 @@
                 window.openSharePopup(title, desc, loc, dist);
             }
         });
-    </script>
+        // ── RADIO DE ALERTAS — conectar botones al sistema ──
+        (function() {
+            var radiusPopup = document.getElementById('radiusPopup');
+            var radiusLabel = document.getElementById('radiusLabel');
+            var btnRadius   = document.getElementById('btnRadius');
 
-</body>
-</html>
+            // Cargar radio guardado
+            var savedRadius = parseInt(localStorage.getItem('ag_radius_km')) || 500;
+            if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = savedRadius;
+            if (radiusLabel) radiusLabel.textContent = savedRadius === 0 ? 'Global' : savedRadius + ' km';
+
+            // Marcar botón activo
+            function updateActiveBtn(val) {
+                document.querySelectorAll('.radius-option').forEach(function(b) {
+                    var r = parseInt(b.dataset.radius);
+                    b.style.background = (r === val || (val === 0 && b.dataset.radius === '2000')) ? '#ff6666' : '';
+                    b.style.color = (r === val || (val === 0 && b.dataset.radius === '2000')) ? '#000' : '';
+                });
+            }
+            updateActiveBtn(savedRadius);
+
+            // Click en cada botón de radio
+            document.querySelectorAll('.radius-option').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var val = parseInt(this.dataset.radius);
+                    var km  = val === 2000 ? 0 : val; // 2000 = Global = 0
+                    localStorage.setItem('ag_radius_km', String(km));
+                    if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = km;
+                    if (typeof setUserRadiusKm === 'function') setUserRadiusKm(km);
+                    if (radiusLabel) radiusLabel.textContent = km === 0 ? 'Global' : km + ' km';
+                    updateActiveBtn(km === 0 ? 2000 : km);
+                    if (radiusPopup) radiusPopup.style.display = 'none';
+                    if (typeof loadAlerts === 'function') loadAlerts();
+                });
+            });
+
+            // Abrir/cerrar popup
+            if (btnRadius && radiusPopup) {
+                btnRadius.addEventListener('click', function() {
+                    radiusPopup.style.display = 'flex';
+                });
+            }
+            var closeR = radiusPopup && radiusPopup.querySelector('.modal-close');
+            if (closeR) closeR.addEventListener('click', function() { radiusPopup.style.display = 'none'; });
+            if (radiusPopup) radiusPopup.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+        })();
+    </script>

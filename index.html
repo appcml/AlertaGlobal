@@ -293,6 +293,49 @@
         </div>
     </div>
 
+    <!-- POPUP FAVORITOS -->
+    <div class="modal" id="favoritesPopup">
+        <div class="modal-content">
+            <button class="modal-close" id="closeFavorites">&times;</button>
+            <h2 style="color:var(--accent);">⭐ Ubicaciones Favoritas</h2>
+            <div id="favoritesList" style="margin-top:16px;max-height:300px;overflow-y:auto;"></div>
+            <div id="favoritesEmpty" style="color:#888;text-align:center;padding:24px;display:none;">Sin ubicaciones guardadas</div>
+        </div>
+    </div>
+
+    <!-- POPUP TÉRMINOS -->
+    <div class="modal" id="termsPopup" style="display:flex;">
+        <div class="modal-content" style="max-width:480px;max-height:80vh;overflow-y:auto;">
+            <h2 style="color:var(--accent);margin-bottom:12px;">🌍 Alerta Global — Versión Beta</h2>
+            <div style="background:#ff666622;border:1px solid #ff6666;border-radius:6px;padding:10px;margin-bottom:16px;font-size:13px;color:#ff9999;">
+                ⚠️ Esta es una versión <b>BETA v1.0</b>. Algunas funciones pueden no estar disponibles o presentar errores.
+            </div>
+            <h3 style="color:#ccc;margin-bottom:8px;font-size:14px;">Términos y Condiciones de Uso</h3>
+            <div style="font-size:12px;color:#aaa;line-height:1.6;">
+                <p><b style="color:#fff;">1. Propósito informativo</b><br>
+                Alerta Global es una aplicación de carácter informativo. Las alertas mostradas provienen de fuentes públicas oficiales (USGS, NASA, NOAA, Smithsonian, OpenWeatherMap) y se presentan con fines informativos únicamente.</p>
+
+                <p><b style="color:#fff;">2. No sustituye a las autoridades</b><br>
+                Esta aplicación NO reemplaza los sistemas oficiales de alerta temprana. En caso de emergencia, siga siempre las instrucciones de las autoridades locales (SENAPRED, ONEMI, protección civil de su país).</p>
+
+                <p><b style="color:#fff;">3. Limitación de responsabilidad</b><br>
+                Los desarrolladores de Alerta Global no se hacen responsables por decisiones tomadas basadas en la información de esta aplicación. Los datos pueden contener retrasos o imprecisiones.</p>
+
+                <p><b style="color:#fff;">4. Privacidad y datos</b><br>
+                La aplicación puede solicitar acceso a su ubicación para mostrar alertas cercanas. Esta información no se almacena en servidores externos y solo se usa localmente en su dispositivo.</p>
+
+                <p><b style="color:#fff;">5. Uso de APIs</b><br>
+                La aplicación utiliza APIs públicas gratuitas. La disponibilidad de los datos depende de terceros y puede variar.</p>
+
+                <p><b style="color:#fff;">6. Versión Beta</b><br>
+                Esta es una versión de prueba. Algunas funciones pueden estar incompletas. Agradecemos su paciencia y comentarios para mejorar la aplicación.</p>
+            </div>
+            <button id="btnAcceptTerms" style="width:100%;padding:14px;background:#ff6666;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:16px;">
+                ✅ Acepto los términos y condiciones
+            </button>
+        </div>
+    </div>
+
     <!-- SCRIPTS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="js/ai.js?v=1784420200"></script>
@@ -304,36 +347,154 @@
     <script src="js/map-layers.js?v=1784395434"></script>
 
     <script>
-        // FILTROS
-        window.currentFilters = { type: 'todos', magnitude: 3 };
+        // ── TÉRMINOS Y CONDICIONES ──
+        var termsPopup = document.getElementById('termsPopup');
+        var btnAcceptTerms = document.getElementById('btnAcceptTerms');
+        if (!localStorage.getItem('ag_terms_v1')) {
+            if (termsPopup) termsPopup.style.display = 'flex';
+        } else {
+            if (termsPopup) termsPopup.style.display = 'none';
+        }
+        if (btnAcceptTerms) {
+            btnAcceptTerms.addEventListener('click', function() {
+                localStorage.setItem('ag_terms_v1', '1');
+                if (termsPopup) termsPopup.style.display = 'none';
+            });
+        }
 
         document.getElementById('filterType').addEventListener('change', function() {
             window.currentFilters.type = this.value;
         });
         document.getElementById('filterMagnitude').addEventListener('change', function() {
-            window.currentFilters.magnitude = parseInt(this.value);
+            window.currentFilters.magnitude = parseFloat(this.value) || 0;
         });
         document.getElementById('btnApplyFilters').addEventListener('click', function() {
+            // Actualizar filtros globales
+            window.alertFilters = window.currentFilters;
             if (typeof loadAlerts === 'function') loadAlerts();
         });
         document.getElementById('btnResetFilters').addEventListener('click', function() {
             document.getElementById('filterType').value = 'todos';
-            document.getElementById('filterMagnitude').value = '3';
-            window.currentFilters = { type: 'todos', magnitude: 3 };
+            document.getElementById('filterMagnitude').value = '0';
+            window.currentFilters = { type: 'todos', magnitude: 0 };
+            window.alertFilters = window.currentFilters;
             if (typeof loadAlerts === 'function') loadAlerts();
         });
 
-        // CONTADOR
-        const observer = new MutationObserver(function() {
-            document.getElementById('alertCount').textContent = document.querySelectorAll('.alert-item').length;
+        // ── CONTADOR ──
+        var _prevCount = -1;
+        var observer = new MutationObserver(function() {
+            var count = document.querySelectorAll('.alert-item').length;
+            if (count !== _prevCount) {
+                _prevCount = count;
+                var el = document.getElementById('alertCount');
+                if (el) el.textContent = count;
+            }
         });
-        observer.observe(document.getElementById('alertList'), { childList: true });
+        var alertListEl = document.getElementById('alertList');
+        if (alertListEl) observer.observe(alertListEl, { childList: true, subtree: true });
 
-        // COMPARTIR
+        // ── FAVORITOS ──
+        (function() {
+            var favPopup = document.getElementById('favoritesPopup');
+            var closeFav = document.getElementById('closeFavorites');
+            var btnFav   = document.getElementById('btnFavorites');
+            function renderFavList() {
+                var list = document.getElementById('favoritesList');
+                var empty = document.getElementById('favoritesEmpty');
+                if (!list) return;
+                var locs = [];
+                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
+                if (!locs.length) {
+                    list.innerHTML = '';
+                    if (empty) empty.style.display = 'block';
+                    return;
+                }
+                if (empty) empty.style.display = 'none';
+                list.innerHTML = locs.map(function(l, i) {
+                    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid #333;">' +
+                        '<span style="cursor:pointer;flex:1" onclick="selectFav('+i+')">📍 ' + l.name + (l.country ? ' — '+l.country : '') + '</span>' +
+                        '<button onclick="removeFav(event,'+i+')" style="background:transparent;border:1px solid #ff4444;color:#ff4444;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:8px;">✕</button>' +
+                        '</div>';
+                }).join('');
+            }
+            window.renderFavList = renderFavList;
+            window.selectFav = function(i) {
+                var locs = [];
+                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
+                var l = locs[i];
+                if (!l) return;
+                if (typeof applyDeviceLocation === 'function') {
+                    applyDeviceLocation(l.lat, l.lon, l.name, l.country || '');
+                }
+                if (favPopup) favPopup.style.display = 'none';
+            };
+            window.removeFav = function(e, i) {
+                e.stopPropagation();
+                var locs = [];
+                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
+                locs.splice(i, 1);
+                try { localStorage.setItem('ag_locations', JSON.stringify(locs)); } catch(e) {}
+                renderFavList();
+            };
+            if (closeFav) closeFav.addEventListener('click', function() { if(favPopup) favPopup.style.display='none'; });
+            if (btnFav) btnFav.addEventListener('click', function() { renderFavList(); if(favPopup) favPopup.style.display='flex'; });
+            if (favPopup) favPopup.addEventListener('click', function(e) { if(e.target===this) this.style.display='none'; });
+        })();
+
+        // ── FAVORITOS MEJORADOS ──
+        function saveFavorites() {
+            try {
+                var favs = JSON.parse(localStorage.getItem('ag_favorites') || '[]');
+                return favs;
+            } catch(e) { return []; }
+        }
+
+        function addFavorite(name, lat, lon) {
+            var favs = saveFavorites();
+            if (favs.find(function(f){ return f.name === name; })) return;
+            favs.push({ name: name, lat: lat, lon: lon, added: Date.now() });
+            localStorage.setItem('ag_favorites', JSON.stringify(favs));
+        }
+
+        function removeFavorite(name) {
+            var favs = saveFavorites().filter(function(f){ return f.name !== name; });
+            localStorage.setItem('ag_favorites', JSON.stringify(favs));
+        }
+
+        // Interceptar click en estrella de favoritos
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('#btnStarAlert, #btnStarWeather, .fav-btn');
+            if (!btn) return;
+            var nameEl = document.getElementById('currentLocationName') || document.getElementById('weatherLocationName');
+            if (!nameEl) return;
+            var locName = nameEl.textContent.trim();
+            if (!locName || locName === 'Detectar mi ubicación') return;
+
+            var favs = saveFavorites();
+            var isFav = favs.find(function(f){ return f.name === locName; });
+            if (isFav) {
+                removeFavorite(locName);
+                btn.textContent = '☆';
+                btn.title = 'Guardar en favoritos';
+            } else {
+                // Obtener coordenadas actuales
+                var lat = (window.focusLocation && window.focusLocation.lat) ||
+                          (window.deviceLocation && window.deviceLocation.lat) || null;
+                var lon = (window.focusLocation && window.focusLocation.lon) ||
+                          (window.deviceLocation && window.deviceLocation.lon) || null;
+                addFavorite(locName, lat, lon);
+                btn.textContent = '★';
+                btn.style.color = '#ffdd44';
+                btn.title = 'Quitar de favoritos';
+            }
+        });
+
+        // ── COMPARTIR ──
         var currentShareText = '';
 
         window.openSharePopup = function(title, description, location, distance) {
-            currentShareText = '🚨 ALERTA: ' + title + '\n' + description + '\n📍 ' + location + ' (' + distance + ')';
+            currentShareText = '🚨 ALERTA: ' + title + '\n' + description + '\n📍 ' + location + (distance ? ' (' + distance + ')' : '');
             document.getElementById('shareContent').value = currentShareText;
             document.getElementById('sharePopup').style.display = 'flex';
         };
@@ -353,7 +514,7 @@
             window.open('https://t.me/share/url?text=' + encodeURIComponent(currentShareText), '_blank');
         });
 
-        // CLICK EN BOTÓN COMPARTIR DE CADA ALERTA
+        // ── CLICK EN BOTÓN COMPARTIR DE CADA ALERTA ──
         document.addEventListener('click', function(e) {
             if (e.target.classList.contains('btn-share')) {
                 e.stopPropagation();

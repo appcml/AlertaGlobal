@@ -1,15 +1,14 @@
 name: Build AlertaGlobal APK
 
+# ✅ SOLO se ejecuta MANUALMENTE desde GitHub Actions
+# Para construir: ve a Actions → Build AlertaGlobal APK → Run workflow
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'android/**'
-      - 'js/**'
-      - 'css/**'
-      - 'index.html'
-      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión del APK (ej: 1.0.2)'
+        required: false
+        default: 'beta'
 
 jobs:
   build:
@@ -37,7 +36,6 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      # Decodificar keystore desde secret base64 usando Python
       - name: Decode Keystore
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -45,114 +43,22 @@ jobs:
           python3 -c "
           import base64, os, sys
           data = os.environ.get('KEYSTORE_B64', '')
-          # Limpiar cualquier espacio/salto de línea
           data = ''.join(data.split())
-          # Agregar padding si falta
-          missing = len(data) % 4
-          if missing:
-              data += '=' * (4 - missing)
-          try:
-              decoded = base64.b64decode(data)
-              with open('android/app/mis-juegos.keystore', 'wb') as f:
-                  f.write(decoded)
-              print(f'Keystore OK: {len(decoded)} bytes')
-          except Exception as e:
-              print(f'Error: {e}')
-              sys.exit(1)
-          " 
+          if len(data) % 4: data += '=' * (4 - len(data) % 4)
+          with open('android/app/keystore.jks', 'wb') as f:
+              f.write(base64.b64decode(data))
+          "
 
-      # Copiar archivos web al APK
-      - name: Copiar web assets
-        run: |
-          mkdir -p android/app/src/main/assets/www
-          cp index.html android/app/src/main/assets/www/
-          cp -r css android/app/src/main/assets/www/
-          cp -r js android/app/src/main/assets/www/
-          cp -r img android/app/src/main/assets/www/ 2>/dev/null || true
-          cp manifest.json android/app/src/main/assets/www/ 2>/dev/null || true
-          echo "✅ Assets copiados:"
-          find android/app/src/main/assets/www -type f
-
-      - name: Permisos gradlew
-        run: chmod +x android/gradlew
-
-      # Build APK Debug
-      - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
-
-      # Build APK Release firmado
-      - name: Build Release APK
-        working-directory: android
+      - name: Build APK
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        working-directory: android
+        run: ./gradlew assembleRelease
 
-      # Renombrar APKs con versión
-      - name: Renombrar APKs
-        run: |
-          VERSION=$(grep 'versionName' android/app/build.gradle.kts | grep -o '".*"' | tr -d '"')
-          BUILD=${{ github.run_number }}
-          mv android/app/build/outputs/apk/debug/app-debug.apk \
-             android/app/build/outputs/apk/debug/AlertaGlobal-v${VERSION}-debug.apk || true
-          mv android/app/build/outputs/apk/release/app-release.apk \
-             android/app/build/outputs/apk/release/AlertaGlobal-v${VERSION}-release.apk || true
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "BUILD=$BUILD" >> $GITHUB_ENV
-
-      - name: Upload APK Debug
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AlertaGlobal-debug-${{ env.VERSION }}
-          path: android/app/build/outputs/apk/debug/*.apk
-          retention-days: 30
-
-      - name: Upload APK Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: AlertaGlobal-release-${{ env.VERSION }}
+          name: AlertaGlobal-${{ github.event.inputs.version }}.apk
           path: android/app/build/outputs/apk/release/*.apk
-          retention-days: 90
-
-      # Crear GitHub Release con APK adjunto
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ env.VERSION }}-build${{ env.BUILD }}
-          name: "🌍 AlertaGlobal v${{ env.VERSION }}"
-          body: |
-            ## 🌍 AlertaGlobal v${{ env.VERSION }}
-            **Build #${{ env.BUILD }}** — ${{ github.event.head_commit.message }}
-
-            ### 📥 Instalación
-            1. Descarga `AlertaGlobal-v${{ env.VERSION }}-release.apk`
-            2. Android: **Ajustes → Seguridad → Instalar apps desconocidas → Permitir**
-            3. Abre el APK descargado e instala
-
-            ### ✅ Qué incluye esta versión
-            - Alertas en tiempo real: sismos, volcanes, tsunamis, incendios, clima
-            - Geolocalización GPS + red móvil + WiFi (sin depender solo del GPS)
-            - Alertas SAE de SENAPRED vía Cell Broadcast (sin internet)
-            - Monitoreo en background con notificaciones push
-            - IA contextual (Cic_IA) para análisis de alertas
-            - Soporte offline con caché local
-            - Mapa interactivo con todos los eventos
-
-            ### 📡 Fuentes de datos
-            USGS · EMSC · GFZ Potsdam · GeoNet NZ
-            NASA FIRMS · NASA EONET · Smithsonian GVP
-            WeatherAPI · MET Norway · Open-Meteo · OpenAQ
-            GDACS ONU · NHC NOAA · PTWC · SENAPRED
-
-            ### ⚠️ Permisos requeridos
-            - Ubicación (GPS + red) — para alertas locales
-            - Notificaciones — para alertas push
-            - Cell Broadcast — para SAE de SENAPRED
-          files: |
-            android/app/build/outputs/apk/release/*.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -102,7 +102,8 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
         if (a.lat == null || a.lon == null) return;
         
         var color = a.color || '#FF9500';
-        var distStr = a.distKm != null ? '<br><small>📏 ' + a.distKm + ' km de ti</small>' : '';
+        var distKm = a.distKm != null ? Math.round(a.distKm) : null;
+        var distStr = distKm != null ? '<br><small>📏 ' + distKm + ' km de ti</small>' : '';
         var timeStr = a.time ? '<br><small>🕐 ' + formatTime(a.time) + '</small>' : '';
         
         var popup = '<div style="min-width:200px;font-family:sans-serif">'
@@ -1128,7 +1129,11 @@ function loadAlerts() {
     if (loc.lat && typeof window.loadAlertsForLocation === 'function') {
         var radius = getUserRadiusKm() || 500;
         scanFn = function(cb) {
-            window.loadAlertsForLocation({ lat: loc.lat, lon: loc.lon }, radius)
+            window.loadAlertsForLocation({
+                lat: loc.lat,
+                lon: loc.lon,
+                name: loc.name || loc.city || 'Tu zona'
+            }, radius)
                 .then(cb)
                 .catch(function() { loadExternalSources(cb); });
         };
@@ -1286,7 +1291,7 @@ function loadAlerts() {
 function renderAlertCard(a, loc) {
     var dist = '';
     if (loc && loc.lat && a.lat != null && a.lon != null) {
-        var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+        var d = Math.round(calcDistance(loc.lat, loc.lon, a.lat, a.lon));
         dist = '<span class="alert-dist">📏 '+d+' km</span>';
     }
     var levelClass = a.priority >= 90 ? 'critical' : a.priority >= 70 ? 'high' : 'medium';
@@ -1363,7 +1368,14 @@ function renderWeather(d) {
     var desc = d.weather && d.weather[0] ? d.weather[0].description : '';
     desc = desc.charAt(0).toUpperCase() + desc.slice(1);
 
-    if (wCity) wCity.textContent = icon+' '+(d.name||'')+' '+(d.sys&&d.sys.country?'('+d.sys.country+')':'');
+    if (wCity) {
+        // Usar el nombre de la ubicación seleccionada por el usuario, no el de OWM
+        var activeLocName = (window.focusLocation && window.focusLocation.name)
+                         || (window.deviceLocation && window.deviceLocation.name)
+                         || d.name || '';
+        var country = d.sys && d.sys.country ? ' ('+d.sys.country+')' : '';
+        wCity.textContent = icon+' '+activeLocName+country;
+    }
     if (wTemp) wTemp.textContent = Math.round(d.main.temp)+'°C';
     if (wDesc) wDesc.textContent = desc;
     if (wHumidity) wHumidity.textContent = d.main.humidity+'%';
@@ -1622,11 +1634,14 @@ function initMap() {
     var lat = loc.lat || -33.4489;
     var lon = loc.lon || -70.6693;
     leafletMap = L.map('map', { zoomControl: true, attributionControl: true }).setView([lat, lon], 6);
+    window.leafletMap = leafletMap;
     L.tileLayer(tileUrl, { attribution: '© OpenStreetMap', subdomains: 'abcd', maxZoom: 20 }).addTo(leafletMap);
     if (loc.lat) {
         userMarker = L.marker([loc.lat, loc.lon], { icon: createUserIcon() }).addTo(leafletMap).bindPopup('📍 Tu ubicación');
     }
     mapInitialized = true;
+    window.mapInitialized = true;
+    window.leafletMap = leafletMap;
     updateMapMarkers(externalAlerts);
     startMapAutoRefresh();
 }

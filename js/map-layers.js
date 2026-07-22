@@ -1,109 +1,109 @@
 // ============================================
 // js/map-layers.js — Capas estilo MSN Weather
+// Barra de capas ARRIBA del mapa
 // ============================================
 
 var OWM_KEY = '6fe6e0dcca264864dbd631bf620aad64';
 var activeLayers = {};
 var alertLayerMarkers = {};
 var mapLayersInitialized = false;
-var clickInfoPopup = null;
 
-// ========== CAPAS DISPONIBLES ==========
 var LAYER_DEFS = {
-    temp:     { label: '🌡️', title: 'Temperatura',    owm: 'temp_new',          opacity: 0.7 },
-    rain:     { label: '💧', title: 'Lluvia',          owm: 'precipitation_new', opacity: 0.7 },
-    wind:     { label: '💨', title: 'Viento',          owm: 'wind_new',          opacity: 0.6 },
-    clouds:   { label: '☁️', title: 'Nubosidad',       owm: 'clouds_new',        opacity: 0.6 },
-    pressure: { label: '📊', title: 'Presión',         owm: 'pressure_new',      opacity: 0.6 },
-    humidity: { label: '💦', title: 'Humedad',         owm: 'humidity_new',      opacity: 0.6 },
-    radar:    { label: '📡', title: 'Radar',           type: 'radar'                          },
-    satellite:{ label: '🛰️', title: 'Satélite',        type: 'satellite'                      },
-    sismos:   { label: '🔴', title: 'Sismos',          type: 'alert'                          },
-    volcanes: { label: '🌋', title: 'Volcanes',        type: 'alert'                          },
-    storm:    { label: '⛈️', title: 'Tormentas',       type: 'alert'                          },
+    temp:     { label: '🌡️', title: 'Temp',      owm: 'temp_new'           },
+    rain:     { label: '💧', title: 'Lluvia',     owm: 'precipitation_new'  },
+    wind:     { label: '💨', title: 'Viento',     owm: 'wind_new'           },
+    clouds:   { label: '☁️', title: 'Nubes',      owm: 'clouds_new'         },
+    pressure: { label: '📊', title: 'Presión',    owm: 'pressure_new'       },
+    humidity: { label: '💦', title: 'Humedad',    owm: 'humidity_new'       },
+    radar:    { label: '📡', title: 'Radar',      type: 'radar'             },
+    satellite:{ label: '🛰️', title: 'Satélite',   type: 'satellite'         },
+    sismos:   { label: '🔴', title: 'Sismos',     type: 'alert'             },
+    volcanes: { label: '🌋', title: 'Volcanes',   type: 'alert'             },
+    storm:    { label: '⛈️', title: 'Tormentas',  type: 'alert'             },
 };
 
-// ========== CREAR PANEL ESTILO MSN ==========
 function createLayerPanel() {
     if (document.getElementById('mlPanel')) return;
 
+    // Inyectar CSS
     var style = document.createElement('style');
     style.textContent = `
-        #mlPanel {
+        #mlBar {
             position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 0;
+            left: 0;
+            right: 0;
             z-index: 1000;
-            background: rgba(15,15,25,0.92);
-            border: 1px solid #333;
-            border-radius: 10px;
-            padding: 6px 8px;
+            background: rgba(10,10,20,0.88);
+            border-bottom: 1px solid #333;
             display: flex;
-            gap: 4px;
             align-items: center;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.6);
-            max-width: 95vw;
-            flex-wrap: wrap;
             justify-content: center;
+            gap: 2px;
+            padding: 4px 8px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
         }
         .ml-sep {
             width: 1px;
-            height: 28px;
+            height: 32px;
             background: #444;
-            margin: 0 2px;
+            margin: 0 3px;
+            flex-shrink: 0;
         }
         .ml-btn {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            width: 44px;
+            min-width: 40px;
             height: 44px;
-            border-radius: 8px;
+            padding: 0 4px;
+            border-radius: 6px;
             border: 1px solid transparent;
             background: transparent;
             color: #ccc;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             transition: all 0.15s;
-            position: relative;
+            flex-shrink: 0;
         }
         .ml-btn span {
             font-size: 8px;
-            margin-top: 2px;
-            color: #888;
+            margin-top: 1px;
+            color: #777;
             white-space: nowrap;
-            line-height: 1;
         }
         .ml-btn:hover {
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.08);
             border-color: #555;
         }
         .ml-btn.active {
-            background: rgba(255,102,102,0.25);
+            background: rgba(255,102,102,0.2);
             border-color: #ff6666;
         }
         .ml-btn.active span { color: #ff9999; }
         #mlValuePop {
-            position: absolute;
-            background: rgba(0,0,0,0.85);
+            position: fixed;
+            background: rgba(0,0,0,0.88);
             color: #fff;
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 12px;
-            pointer-events: none;
-            z-index: 2000;
+            z-index: 9999;
             border: 1px solid #555;
             white-space: nowrap;
+            pointer-events: none;
             display: none;
+            line-height: 1.5;
         }
+        /* Ajustar mapa para dejar espacio a la barra */
+        #map { padding-top: 0 !important; }
     `;
     document.head.appendChild(style);
 
-    // Panel de botones
-    var panel = document.createElement('div');
-    panel.id = 'mlPanel';
+    var bar = document.createElement('div');
+    bar.id = 'mlBar';
 
     var groups = [
         ['temp','rain','wind','clouds','pressure','humidity'],
@@ -120,27 +120,30 @@ function createLayerPanel() {
             btn.title = def.title;
             btn.innerHTML = def.label + '<span>' + def.title + '</span>';
             btn.onclick = function() { toggleMapLayer(id); };
-            panel.appendChild(btn);
+            bar.appendChild(btn);
         });
         if (gi < groups.length - 1) {
             var sep = document.createElement('div');
             sep.className = 'ml-sep';
-            panel.appendChild(sep);
+            bar.appendChild(sep);
         }
     });
 
+    // Insertar la barra DENTRO del div #map, arriba de todo
     var mapEl = document.getElementById('map');
-    if (mapEl) mapEl.appendChild(panel);
+    if (mapEl) {
+        mapEl.style.position = 'relative';
+        mapEl.insertBefore(bar, mapEl.firstChild);
 
-    // Popup de valor al hacer click en el mapa
-    var valuePop = document.createElement('div');
-    valuePop.id = 'mlValuePop';
-    document.body.appendChild(valuePop);
-
-    // Click en mapa → mostrar valor
-    if (window.leafletMap) {
-        window.leafletMap.on('click', function(e) { onMapClick(e); });
+        // Empujar el mapa Leaflet hacia abajo para que la barra no tape nada
+        var mapPane = mapEl.querySelector('.leaflet-pane');
+        if (mapPane) mapPane.style.marginTop = '53px';
     }
+
+    // Popup de valor
+    var pop = document.createElement('div');
+    pop.id = 'mlValuePop';
+    document.body.appendChild(pop);
 }
 
 // ========== TOGGLE CAPA ==========
@@ -149,7 +152,7 @@ window.toggleMapLayer = function(id) {
     var def = LAYER_DEFS[id];
     var btn = document.getElementById('mlb-' + id);
 
-    // Si ya está activa → apagar
+    // Apagar si ya estaba activa
     if (activeLayers[id]) {
         window.leafletMap.removeLayer(activeLayers[id]);
         delete activeLayers[id];
@@ -163,13 +166,12 @@ window.toggleMapLayer = function(id) {
         return;
     }
 
-    // Activar capa
     var layer = null;
 
     if (def.owm) {
         layer = L.tileLayer(
             'https://tile.openweathermap.org/map/' + def.owm + '/{z}/{x}/{y}.png?appid=' + OWM_KEY,
-            { opacity: def.opacity || 0.65, attribution: '© OpenWeatherMap', maxZoom: 20 }
+            { opacity: 0.65, attribution: '© OpenWeatherMap', maxZoom: 20 }
         );
         layer.addTo(window.leafletMap);
         activeLayers[id] = layer;
@@ -196,7 +198,7 @@ window.toggleMapLayer = function(id) {
         return;
     }
 
-    if (btn) btn.classList.add('active');
+    if (btn && layer) btn.classList.add('active');
 };
 
 // ========== PINS DE ALERTAS ==========
@@ -211,34 +213,29 @@ function addAlertPins(type) {
     });
 
     alertLayerMarkers[type] = [];
-
     filtered.forEach(function(a) {
         if (a.lat == null || a.lon == null) return;
-
-        var color  = a.priority >= 90 ? '#ff0000' : a.priority >= 70 ? '#ff6600' : '#ffaa00';
-        var size   = a.priority >= 80 ? 16 : 10;
-        var pulse  = a.priority >= 90 ? 'animation:pulse 1.2s infinite;' : '';
-
+        var color = a.priority >= 90 ? '#ff0000' : a.priority >= 70 ? '#ff6600' : '#ffaa00';
+        var size  = a.priority >= 80 ? 16 : 10;
         var icon = L.divIcon({
             html: '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
-                  'background:' + color + ';border:2px solid #fff;box-shadow:0 0 6px ' + color + ';' + pulse + '"></div>',
+                  'background:' + color + ';border:2px solid #fff;box-shadow:0 0 6px ' + color + ';"></div>',
             className: '', iconSize: [size+4, size+4], iconAnchor: [(size+4)/2, (size+4)/2]
         });
-
         var mag = a.magnitude ? ' — M' + a.magnitude.toFixed(1) : '';
-        var popup = '<div style="min-width:160px;">' +
+        var popup = '<div style="min-width:160px;font-size:13px;">' +
             '<b>' + (a.icon||'⚠️') + ' ' + (a.title||a.type) + mag + '</b>' +
             '<hr style="border-color:#ddd;margin:4px 0">' +
-            '<div style="font-size:12px">' + (a.description||'') + '</div>' +
-            (a.distKm ? '<div style="font-size:11px;color:#777;margin-top:4px">📍 ' + a.distKm + ' km</div>' : '') +
-            '<div style="font-size:11px;color:#777">📡 ' + (a.source||'') + '</div>' +
-            '<div style="font-size:11px;color:#777">🕐 ' + (a.time||'') + '</div>' +
-            (a.link ? '<a href="' + a.link + '" target="_blank" style="font-size:11px;color:#4169E1">Ver más →</a>' : '') +
+            '<div>' + (a.description||'') + '</div>' +
+            (a.distKm ? '<div style="color:#777;font-size:11px;margin-top:4px">📍 ' + a.distKm + ' km</div>' : '') +
+            '<div style="color:#777;font-size:11px">📡 ' + (a.source||'') + '</div>' +
+            '<div style="color:#777;font-size:11px">🕐 ' + (a.time||'') + '</div>' +
+            (a.link ? '<br><a href="' + a.link + '" target="_blank" style="color:#4169E1;font-size:11px">Ver más →</a>' : '') +
             '</div>';
-
-        var m = L.marker([a.lat, a.lon], { icon: icon }).bindPopup(popup);
-        m.addTo(window.leafletMap);
-        alertLayerMarkers[type].push(m);
+        L.marker([a.lat, a.lon], { icon: icon })
+            .bindPopup(popup)
+            .addTo(window.leafletMap);
+        alertLayerMarkers[type].push(L.marker([a.lat, a.lon], { icon: icon }));
     });
 }
 
@@ -251,35 +248,33 @@ function onMapClick(e) {
 
     var lat = e.latlng.lat.toFixed(4);
     var lon = e.latlng.lng.toFixed(4);
-    var activeOWM = Object.keys(activeLayers).filter(function(id) {
-        return LAYER_DEFS[id] && LAYER_DEFS[id].owm;
-    });
-    if (!activeOWM.length) return;
 
     fetch('https://api.openweathermap.org/data/2.5/weather?lat=' + lat + '&lon=' + lon +
           '&appid=' + OWM_KEY + '&units=metric&lang=es')
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            if (!d.main) return;
+            if (!d || !d.main) return;
             var lines = [];
-            if (activeLayers['temp'])     lines.push('🌡️ Temp: ' + Math.round(d.main.temp) + '°C');
-            if (activeLayers['rain'])     lines.push('💧 Lluvia: ' + (d.rain ? (d.rain['1h']||0) : 0) + ' mm/h');
-            if (activeLayers['wind'])     lines.push('💨 Viento: ' + Math.round((d.wind||{}).speed * 3.6) + ' km/h');
-            if (activeLayers['clouds'])   lines.push('☁️ Nubes: ' + (d.clouds||{}).all + '%');
-            if (activeLayers['pressure']) lines.push('📊 Presión: ' + d.main.pressure + ' hPa');
-            if (activeLayers['humidity']) lines.push('💦 Humedad: ' + d.main.humidity + '%');
+            if (activeLayers['temp'])     lines.push('🌡️ ' + Math.round(d.main.temp) + '°C');
+            if (activeLayers['rain'])     lines.push('💧 ' + ((d.rain && d.rain['1h']) || 0) + ' mm/h');
+            if (activeLayers['wind'])     lines.push('💨 ' + Math.round((d.wind&&d.wind.speed||0)*3.6) + ' km/h');
+            if (activeLayers['clouds'])   lines.push('☁️ ' + ((d.clouds&&d.clouds.all)||0) + '%');
+            if (activeLayers['pressure']) lines.push('📊 ' + d.main.pressure + ' hPa');
+            if (activeLayers['humidity']) lines.push('💦 ' + d.main.humidity + '%');
             if (!lines.length) return;
 
             var pop = document.getElementById('mlValuePop');
             if (!pop) return;
-            pop.innerHTML = '<b>' + (d.name||'') + '</b><br>' + lines.join('<br>');
+            var name = (d.name||'') + (d.sys&&d.sys.country ? ', '+d.sys.country : '');
+            pop.innerHTML = '<b style="font-size:13px">' + name + '</b><br>' + lines.join('  ');
             pop.style.display = 'block';
 
+            // Posicionar cerca del click pero arriba a la derecha
             var pt = window.leafletMap.latLngToContainerPoint(e.latlng);
             var mapEl = document.getElementById('map');
             var rect = mapEl.getBoundingClientRect();
-            pop.style.left = (rect.left + pt.x + 12) + 'px';
-            pop.style.top  = (rect.top  + pt.y - 10) + 'px';
+            pop.style.left = Math.min(rect.left + pt.x + 10, window.innerWidth - 220) + 'px';
+            pop.style.top  = Math.max(rect.top  + pt.y - 60, rect.top + 60) + 'px';
 
             setTimeout(function() { pop.style.display = 'none'; }, 4000);
         })
@@ -290,17 +285,14 @@ function onMapClick(e) {
 window.initMapLayers = function() {
     if (mapLayersInitialized || !window.leafletMap) return;
     createLayerPanel();
-    mapLayersInitialized = true;
-
-    // Registrar click
     window.leafletMap.on('click', onMapClick);
+    mapLayersInitialized = true;
     console.log('✅ Capas del mapa inicializadas');
 };
 
-// Esperar mapa
 var _wait = setInterval(function() {
     if (window.leafletMap && window.mapInitialized) {
         clearInterval(_wait);
-        window.initMapLayers();
+        setTimeout(window.initMapLayers, 300);
     }
 }, 500);

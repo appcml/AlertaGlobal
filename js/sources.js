@@ -1,391 +1,370 @@
 // ============================================
-// js/sources.js v4.0
-// Fuentes oficiales + alertas climáticas reales
+// js/sources.js v5.0
+// Alertas climáticas por pronóstico + sismos sin límite de radio
 // ============================================
 
 var OWM_KEY = '6fe6e0dcca264864dbd631bf620aad64';
 
 if (typeof window.LocationDatabase === 'undefined') {
     window.LocationDatabase = {
-        "chile":          { lat:-30.0,    lon:-71.5,   country:"Chile",     region:"Nacional" },
-        "santiago":       { lat:-33.4489, lon:-70.6693, country:"Chile",    region:"Metropolitana" },
-        "concepcion":     { lat:-36.8201, lon:-73.0445, country:"Chile",    region:"Biobío" },
-        "tirua":          { lat:-38.2704, lon:-73.2490, country:"Chile",    region:"Biobío" },
-        "cañete":         { lat:-37.7975, lon:-73.4011, country:"Chile",    region:"Biobío" },
-        "temuco":         { lat:-38.7362, lon:-72.5879, country:"Chile",    region:"Araucanía" },
-        "valparaiso":     { lat:-33.0472, lon:-71.6127, country:"Chile",    region:"Valparaíso" },
-        "antofagasta":    { lat:-23.6345, lon:-70.3996, country:"Chile",    region:"Antofagasta" },
-        "iquique":        { lat:-20.2142, lon:-70.1538, country:"Chile",    region:"Tarapacá" },
-        "arica":          { lat:-18.4861, lon:-70.2979, country:"Chile",    region:"Arica" },
-        "la serena":      { lat:-29.9027, lon:-71.2519, country:"Chile",    region:"Coquimbo" },
-        "puerto montt":   { lat:-41.3143, lon:-72.1481, country:"Chile",    region:"Los Lagos" },
-        "punta arenas":   { lat:-53.1638, lon:-70.9181, country:"Chile",    region:"Magallanes" },
-        "osorno":         { lat:-40.5733, lon:-73.1347, country:"Chile",    region:"Los Lagos" },
-        "valdivia":       { lat:-39.8142, lon:-73.2459, country:"Chile",    region:"Los Ríos" },
-        "copiapo":        { lat:-27.3668, lon:-70.3323, country:"Chile",    region:"Atacama" },
-        "lima":           { lat:-12.0464, lon:-77.0428, country:"Peru",     region:"Lima" },
-        "bogota":         { lat:4.7110,   lon:-74.0721, country:"Colombia", region:"Bogotá" },
-        "buenos aires":   { lat:-34.6037, lon:-58.3816, country:"Argentina",region:"Buenos Aires" },
-        "mexico":         { lat:19.4326,  lon:-99.1332, country:"Mexico",   region:"CDMX" },
-        "sao paulo":      { lat:-23.5505, lon:-46.6333, country:"Brasil",   region:"São Paulo" },
-        "nueva york":     { lat:40.7128,  lon:-74.0060, country:"EEUU",     region:"Nueva York" },
-        "tokyo":          { lat:35.6762,  lon:139.6503, country:"Japón",    region:"Tokio" },
-        "madrid":         { lat:40.4168,  lon:-3.7038,  country:"España",   region:"Madrid" },
-        "miami":          { lat:25.7617,  lon:-80.1918, country:"EEUU",     region:"Florida" },
-        "los angeles":    { lat:34.0522,  lon:-118.2437,country:"EEUU",     region:"California" }
+        "chile":        {lat:-30.0,   lon:-71.5,  country:"Chile",    region:"Nacional"},
+        "santiago":     {lat:-33.449, lon:-70.669,country:"Chile",    region:"Metropolitana"},
+        "concepcion":   {lat:-36.820, lon:-73.044,country:"Chile",    region:"Biobío"},
+        "tirua":        {lat:-38.270, lon:-73.249,country:"Chile",    region:"Biobío"},
+        "cañete":       {lat:-37.797, lon:-73.401,country:"Chile",    region:"Biobío"},
+        "temuco":       {lat:-38.736, lon:-72.588,country:"Chile",    region:"Araucanía"},
+        "valparaiso":   {lat:-33.047, lon:-71.613,country:"Chile",    region:"Valparaíso"},
+        "antofagasta":  {lat:-23.635, lon:-70.400,country:"Chile",    region:"Antofagasta"},
+        "iquique":      {lat:-20.214, lon:-70.154,country:"Chile",    region:"Tarapacá"},
+        "arica":        {lat:-18.486, lon:-70.298,country:"Chile",    region:"Arica"},
+        "la serena":    {lat:-29.903, lon:-71.252,country:"Chile",    region:"Coquimbo"},
+        "puerto montt": {lat:-41.314, lon:-72.148,country:"Chile",    region:"Los Lagos"},
+        "punta arenas": {lat:-53.164, lon:-70.918,country:"Chile",    region:"Magallanes"},
+        "valdivia":     {lat:-39.814, lon:-73.246,country:"Chile",    region:"Los Ríos"},
+        "osorno":       {lat:-40.573, lon:-73.135,country:"Chile",    region:"Los Lagos"},
+        "lima":         {lat:-12.046, lon:-77.043,country:"Peru",     region:"Lima"},
+        "bogota":       {lat:4.711,   lon:-74.072,country:"Colombia", region:"Bogotá"},
+        "buenos aires": {lat:-34.604, lon:-58.382,country:"Argentina",region:"Buenos Aires"},
+        "mexico":       {lat:19.433,  lon:-99.133,country:"Mexico",   region:"CDMX"},
+        "sao paulo":    {lat:-23.550, lon:-46.633,country:"Brasil",   region:"São Paulo"},
+        "nueva york":   {lat:40.713,  lon:-74.006,country:"EEUU",     region:"Nueva York"},
+        "miami":        {lat:25.762,  lon:-80.192,country:"EEUU",     region:"Florida"},
+        "tokyo":        {lat:35.676,  lon:139.650,country:"Japón",    region:"Tokio"},
+        "madrid":       {lat:40.417,  lon:-3.704, country:"España",   region:"Madrid"},
     };
 }
 
 function searchLocation(q) {
     if (!q) return null;
-    var s = q.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    var db = window.LocationDatabase;
-    for (var k in db) { var n=k.normalize('NFD').replace(/[\u0300-\u036f]/g,''); if(n===s) return Object.assign({name:k},db[k]); }
-    for (var k in db) { var n=k.normalize('NFD').replace(/[\u0300-\u036f]/g,''); if(n.includes(s)||s.includes(n)) return Object.assign({name:k},db[k]); }
+    var s=q.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    var db=window.LocationDatabase;
+    for(var k in db){var n=k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');if(n===s)return Object.assign({name:k},db[k]);}
+    for(var k in db){var n=k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');if(n.includes(s)||s.includes(n))return Object.assign({name:k},db[k]);}
     return null;
 }
 
-function calcDistance(lat1,lon1,lat2,lon2) {
-    if(lat2==null||lon2==null) return 99999;
-    var R=6371,dL=(lat2-lat1)*Math.PI/180,dl=(lon2-lon1)*Math.PI/180;
-    var a=Math.sin(dL/2)*Math.sin(dL/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)*Math.sin(dl/2);
+function calcDistance(la1,lo1,la2,lo2) {
+    if(la2==null||lo2==null) return 99999;
+    var R=6371,dL=(la2-la1)*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
+    var a=Math.sin(dL/2)*Math.sin(dL/2)+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dl/2)*Math.sin(dl/2);
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-// ========== 1. SISMOS - USGS (Global, últimas 24h) ==========
+// ========== 1. SISMOS USGS — GLOBAL SIN FILTRO ==========
 async function fetchUSGS(lat, lon) {
     try {
-        var since = new Date(Date.now() - 86400000).toISOString();
-        var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
-                  '&orderby=time&limit=200&minmagnitude=2.0&starttime=' + since;
-        var r = await fetch(url, {signal: AbortSignal.timeout(10000)});
-        var d = await r.json();
+        var since = new Date(Date.now()-86400000).toISOString();
+        var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=250&minmagnitude=2.5&starttime='+since;
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
         return d.features.map(function(f) {
-            var p=f.properties, c=f.geometry.coordinates;
-            var mag = p.mag || 0;
+            var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
             return {
                 id:'usgs_'+p.code,
-                type:'SISMO', icon: mag>=6?'🔴':mag>=4?'🟠':'🟡',
+                type:'SISMO',
+                icon: mag>=6?'🔴':mag>=5?'🟠':mag>=4?'🟡':'⚪',
                 title:'Sismo M'+mag.toFixed(1),
-                description:(p.place||'Sin ubicación') + ' — Prof. '+(c[2]?Math.round(c[2])+'km':'?'),
+                description:(p.place||'Sin ubicación')+' — Prof. '+(c[2]?Math.round(c[2])+'km':'?km'),
                 lat:c[1], lon:c[0], magnitude:mag, depth:c[2],
                 distKm: lat ? Math.round(calcDistance(lat,lon,c[1],c[0])) : null,
                 time: new Date(p.time).toLocaleString('es-CL'),
-                source:'USGS Earthquake Hazards',
-                priority: mag>=7?95 : mag>=6?88 : mag>=5?78 : mag>=4?65 : mag>=3?52 : 40,
-                color: mag>=6?'#ff0000':mag>=4?'#ff6600':mag>=3?'#ffaa00':'#ffdd00',
-                link: p.url
+                source:'USGS', link:p.url,
+                priority: mag>=7?96:mag>=6?88:mag>=5?76:mag>=4?62:mag>=3?48:35,
+                color: mag>=6?'#ff0000':mag>=5?'#ff4400':mag>=4?'#ff9900':mag>=3?'#ffcc00':'#ffee88'
             };
         });
-    } catch(e) { console.error('USGS error:',e); return []; }
+    } catch(e) { console.error('USGS:',e); return []; }
 }
 
-// ========== 2. SISMOS CHILE - CSN ==========
-async function fetchCSNChile(lat, lon) {
-    try {
-        // CSN via proxy (datos últimas 24h Chile)
-        var url = 'https://api.allorigins.win/raw?url=' +
-                  encodeURIComponent('https://www.sismologia.cl/sismicidad/catalogo/ultimashoras.html');
-        var r = await fetch(url, {signal: AbortSignal.timeout(8000)});
-        var txt = await r.text();
-        var alerts = [];
-        // Parsear tabla HTML del CSN
-        var rows = txt.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-        rows.slice(1, 30).forEach(function(row) {
-            var cells = (row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi)||[]).map(function(c){
-                return c.replace(/<[^>]+>/g,'').trim();
-            });
-            if (cells.length < 5) return;
-            var mag = parseFloat(cells[2]);
-            if (isNaN(mag) || mag < 2) return;
-            var flat = parseFloat(cells[3]), flon = parseFloat(cells[4]);
-            if (isNaN(flat)||isNaN(flon)) return;
-            alerts.push({
-                id:'csn_'+cells[0]+'_'+cells[1],
-                type:'SISMO', icon: mag>=5?'🔴':'🟠',
-                title:'Sismo M'+mag.toFixed(1)+' — CSN Chile',
-                description:'Prof. '+(cells[5]||'?')+' km — '+( cells[6]||'Chile'),
-                lat:flat, lon:flon, magnitude:mag,
-                distKm: lat ? Math.round(calcDistance(lat,lon,flat,flon)) : null,
-                time: (cells[0]||'')+' '+(cells[1]||''),
-                source:'CSN — Sismología Chile',
-                priority: mag>=6?90 : mag>=5?78 : mag>=4?63 : mag>=3?50 : 38,
-                color: mag>=5?'#ff4400':'#ff9900'
-            });
-        });
-        return alerts;
-    } catch(e) { console.error('CSN error:',e); return []; }
-}
-
-// ========== 3. VOLCANES - Smithsonian GVP ==========
+// ========== 2. VOLCANES ==========
 function getVolcanes(lat, lon) {
-    var list = [
-        {n:'Villarrica',   la:-39.4233,lo:-71.9311,co:'Chile',    a:'Activo',    p:78},
-        {n:'Calbuco',      la:-41.3295,lo:-72.6084,co:'Chile',    a:'Activo',    p:75},
-        {n:'Copahue',      la:-37.856, lo:-71.173, co:'Chile',    a:'Activo',    p:75},
-        {n:'Llaima',       la:-38.692, lo:-71.729, co:'Chile',    a:'Activo',    p:72},
-        {n:'Osorno',       la:-41.1,   lo:-72.493, co:'Chile',    a:'Vigilancia',p:58},
-        {n:'Hudson',       la:-45.9,   lo:-72.97,  co:'Chile',    a:'Vigilancia',p:55},
-        {n:'Chaitén',      la:-42.833, lo:-72.646, co:'Chile',    a:'Vigilancia',p:60},
-        {n:'Lonquimay',    la:-38.379, lo:-71.586, co:'Chile',    a:'Vigilancia',p:55},
-        {n:'Calbuco',      la:-41.330, lo:-72.608, co:'Chile',    a:'Vigilancia',p:60},
-        {n:'Popocatépetl', la:19.023,  lo:-98.628, co:'México',   a:'Activo',    p:82},
-        {n:'Colima',       la:19.514,  lo:-103.62, co:'México',   a:'Activo',    p:78},
-        {n:'Sabancaya',    la:-15.787, lo:-71.857, co:'Perú',     a:'Activo',    p:78},
-        {n:'Ubinas',       la:-16.356, lo:-70.902, co:'Perú',     a:'Activo',    p:72},
-        {n:'Tungurahua',   la:-1.467,  lo:-78.442, co:'Ecuador',  a:'Activo',    p:76},
-        {n:'Cotopaxi',     la:-0.677,  lo:-78.436, co:'Ecuador',  a:'Vigilancia',p:65},
-        {n:'Nevado Ruiz',  la:4.892,   lo:-75.324, co:'Colombia', a:'Activo',    p:80},
-        {n:'Galeras',      la:1.222,   lo:-77.356, co:'Colombia', a:'Activo',    p:72},
-        {n:'Etna',         la:37.751,  lo:14.999,  co:'Italia',   a:'Activo',    p:78},
-        {n:'Stromboli',    la:38.789,  lo:15.213,  co:'Italia',   a:'Activo',    p:72},
-        {n:'Kilauea',      la:19.421,  lo:-155.287,co:'EEUU',     a:'Activo',    p:82},
-        {n:'Mauna Loa',    la:19.475,  lo:-155.608,co:'EEUU',     a:'Vigilancia',p:70},
-        {n:'Merapi',       la:-7.541,  lo:110.446, co:'Indonesia',a:'Activo',    p:80},
-        {n:'Sakurajima',   la:31.585,  lo:130.657, co:'Japón',    a:'Activo',    p:76},
-        {n:'Sinabung',     la:3.17,    lo:98.392,  co:'Indonesia',a:'Activo',    p:76},
-        {n:'Taal',         la:14.002,  lo:120.993, co:'Filipinas',a:'Vigilancia',p:65},
+    var V=[
+        {n:'Villarrica', la:-39.423,lo:-71.931,co:'Chile',a:'Activo',p:80},
+        {n:'Calbuco',    la:-41.330,lo:-72.608,co:'Chile',a:'Activo',p:76},
+        {n:'Copahue',    la:-37.856,lo:-71.173,co:'Chile',a:'Activo',p:74},
+        {n:'Llaima',     la:-38.692,lo:-71.729,co:'Chile',a:'Activo',p:72},
+        {n:'Osorno',     la:-41.100,lo:-72.493,co:'Chile',a:'Vigilancia',p:58},
+        {n:'Chaitén',    la:-42.833,lo:-72.646,co:'Chile',a:'Vigilancia',p:62},
+        {n:'Hudson',     la:-45.900,lo:-72.970,co:'Chile',a:'Vigilancia',p:55},
+        {n:'Popocatépetl',la:19.023,lo:-98.628,co:'México',a:'Activo',p:84},
+        {n:'Colima',     la:19.514, lo:-103.62,co:'México',a:'Activo',p:78},
+        {n:'Sabancaya',  la:-15.787,lo:-71.857,co:'Perú',  a:'Activo',p:78},
+        {n:'Ubinas',     la:-16.356,lo:-70.902,co:'Perú',  a:'Activo',p:73},
+        {n:'Tungurahua', la:-1.467, lo:-78.442,co:'Ecuador',a:'Activo',p:76},
+        {n:'Cotopaxi',   la:-0.677, lo:-78.436,co:'Ecuador',a:'Vigilancia',p:66},
+        {n:'Nevado Ruiz',la:4.892,  lo:-75.324,co:'Colombia',a:'Activo',p:82},
+        {n:'Etna',       la:37.751, lo:14.999, co:'Italia',a:'Activo',p:78},
+        {n:'Kilauea',    la:19.421, lo:-155.28,co:'EEUU',  a:'Activo',p:82},
+        {n:'Merapi',     la:-7.541, lo:110.446,co:'Indonesia',a:'Activo',p:80},
+        {n:'Sakurajima', la:31.585, lo:130.657,co:'Japón', a:'Activo',p:76},
     ];
-    return list.map(function(v) {
+    return V.map(function(v){
         return {
             id:'volc_'+v.n.replace(/\s/g,'_'),
             type:'VOLCÁN', icon:'🌋',
             title:'Volcán '+v.n,
             description:v.a+' — '+v.co,
             lat:v.la, lon:v.lo,
-            distKm: lat ? Math.round(calcDistance(lat,lon,v.la,v.lo)) : null,
+            distKm: lat?Math.round(calcDistance(lat,lon,v.la,v.lo)):null,
             time: new Date().toLocaleString('es-CL'),
             source:'Smithsonian GVP', priority:v.p, color:'#ff6600'
         };
     });
 }
 
-// ========== 4. ALERTAS CLIMÁTICAS REALES (OWM) ==========
+// ========== 3. ALERTAS CLIMÁTICAS — ACTUAL + PRONÓSTICO ==========
 async function fetchWeatherAlerts(lat, lon) {
     if (!lat||!lon) return [];
     var alerts = [];
 
     try {
         // Datos actuales
-        var r = await fetch('https://api.openweathermap.org/data/2.5/weather?lat='+lat+'&lon='+lon+
-                            '&appid='+OWM_KEY+'&units=metric&lang=es',
-                            {signal: AbortSignal.timeout(8000)});
-        var d = await r.json();
-        if (!d||!d.main) return [];
+        var cur = await (await fetch(
+            'https://api.openweathermap.org/data/2.5/weather?lat='+lat+'&lon='+lon+
+            '&appid='+OWM_KEY+'&units=metric&lang=es',
+            {signal:AbortSignal.timeout(8000)}
+        )).json();
 
-        var w = d.weather && d.weather[0] ? d.weather[0] : {};
-        var code = w.id || 0;
-        var ws = (d.wind&&d.wind.speed||0) * 3.6; // m/s → km/h
-        var wg = (d.wind&&d.wind.gust||0) * 3.6;
-        var rain1h = d.rain&&d.rain['1h'] ? d.rain['1h'] : 0;
-        var snow1h = d.snow&&d.snow['1h'] ? d.snow['1h'] : 0;
-        var temp = d.main.temp;
-        var city = d.name || '';
+        if (!cur||!cur.main) return [];
 
-        // ── TORMENTAS ELÉCTRICAS (código 2xx) ──
-        if (code >= 200 && code < 300) alerts.push({
+        var city = cur.name||'';
+        var ws = (cur.wind&&cur.wind.speed||0)*3.6;
+        var wg = (cur.wind&&cur.wind.gust||0)*3.6;
+        var rain = cur.rain&&cur.rain['1h'] ? cur.rain['1h'] : 0;
+        var snow = cur.snow&&cur.snow['1h'] ? cur.snow['1h'] : 0;
+        var temp = cur.main.temp;
+        var feels = cur.main.feels_like;
+        var humid = cur.main.humidity;
+        var vis = cur.visibility||10000;
+        var code = cur.weather&&cur.weather[0] ? cur.weather[0].id : 800;
+        var wdesc = cur.weather&&cur.weather[0] ? cur.weather[0].description : '';
+
+        // Tormenta eléctrica
+        if (code>=200&&code<300) alerts.push({
             id:'thunder_'+Date.now(), type:'TORMENTA ELÉCTRICA', icon:'⛈️',
-            title:'Tormenta eléctrica en '+city,
-            description:'Tormenta con rayos y precipitaciones — '+w.description,
-            lat:lat, lon:lon, distKm:0,
+            title:'Tormenta eléctrica — '+city,
+            description:'Tormenta con rayos activa. '+wdesc+'. Manténgase en interior.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:72, color:'#FFD700'
+            source:'OpenWeatherMap', priority:80, color:'#FFD700'
         });
 
-        // ── LLUVIA INTENSA (código 5xx o >15mm/h) ──
-        if (rain1h > 15 || (code>=500 && code<520 && rain1h>5)) alerts.push({
-            id:'rain_'+Date.now(), type:'LLUVIA INTENSA', icon:'🌧️',
-            title:'Lluvia intensa '+rain1h.toFixed(1)+' mm/h — '+city,
-            description:'Precipitación intensa. Posibles anegamientos.',
-            lat:lat, lon:lon, distKm:0,
+        // Lluvia intensa
+        if (rain>15) alerts.push({
+            id:'rain_heavy_'+Date.now(), type:'LLUVIA INTENSA', icon:'🌧️',
+            title:'Lluvia intensa '+rain.toFixed(1)+' mm/h — '+city,
+            description:'Precipitación intensa. Riesgo de anegamientos y deslizamientos.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:65, color:'#4169E1'
+            source:'OpenWeatherMap', priority:72, color:'#1E90FF'
         });
-
-        // ── LLUVIA MODERADA (>5mm/h) ──
-        if (rain1h > 5 && rain1h <= 15) alerts.push({
+        else if (rain>5) alerts.push({
             id:'rain_mod_'+Date.now(), type:'LLUVIA MODERADA', icon:'🌦️',
-            title:'Lluvia '+rain1h.toFixed(1)+' mm/h — '+city,
-            description:'Precipitación moderada en la zona.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Lluvia '+rain.toFixed(1)+' mm/h — '+city,
+            description:'Precipitación moderada. Conduzca con precaución.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:45, color:'#6495ED'
+            source:'OpenWeatherMap', priority:48, color:'#4169E1'
         });
 
-        // ── VIENTO FUERTE (>60 km/h) ──
-        if (ws > 60) alerts.push({
-            id:'wind_'+Date.now(), type:'VIENTO FUERTE', icon:'💨',
-            title:'Viento '+Math.round(ws)+' km/h — '+city,
-            description:'Viento fuerte'+(wg>60?' con ráfagas de '+Math.round(wg)+' km/h':'')+'. Precaución al manejar.',
-            lat:lat, lon:lon, distKm:0,
+        // Viento fuerte
+        if (ws>70) alerts.push({
+            id:'wind_str_'+Date.now(), type:'VIENTO FUERTE', icon:'💨',
+            title:'Viento muy fuerte '+Math.round(ws)+' km/h — '+city,
+            description:'Viento fuerte'+(wg>50?' con ráfagas de '+Math.round(wg)+' km/h':'')+'. Riesgo de árboles caídos.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:68, color:'#87CEEB'
+            source:'OpenWeatherMap', priority:72, color:'#87CEEB'
         });
-
-        // ── VIENTO MODERADO (>40 km/h) ──
-        if (ws > 40 && ws <= 60) alerts.push({
+        else if (ws>50) alerts.push({
             id:'wind_mod_'+Date.now(), type:'VIENTO MODERADO', icon:'🌬️',
-            title:'Viento moderado '+Math.round(ws)+' km/h — '+city,
-            description:'Advertencia de viento moderado.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Viento '+Math.round(ws)+' km/h — '+city,
+            description:'Advertencia de viento'+(wg>0?' (ráfagas '+Math.round(wg)+' km/h)':'')+'. Precaución.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:50, color:'#ADD8E6'
+            source:'OpenWeatherMap', priority:52, color:'#ADD8E6'
         });
 
-        // ── NEVADA (código 6xx o snow > 2cm/h) ──
-        if (snow1h > 2 || (code>=600 && code<700)) alerts.push({
+        // Nevada
+        if (snow>2||(code>=600&&code<700)) alerts.push({
             id:'snow_'+Date.now(), type:'NEVADA', icon:'❄️',
-            title:'Nevada '+(snow1h>0?snow1h.toFixed(1)+' cm/h — ':'')+city,
-            description:'Nevada'+(snow1h>5?' intensa':'')+'. Condiciones resbaladizas en vías.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Nevada'+(snow>0?' '+snow.toFixed(1)+' cm/h':'')+' — '+city,
+            description:'Nevada'+(snow>5?' intensa':'')+'. Vías resbaladizas. Use neumáticos de invierno.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:62, color:'#B0E0E6'
+            source:'OpenWeatherMap', priority:65, color:'#B0E0E6'
         });
 
-        // ── NIEBLA (código 7xx) ──
-        if (code >= 700 && code < 800 && d.visibility && d.visibility < 1000) alerts.push({
-            id:'fog_'+Date.now(), type:'NIEBLA', icon:'🌫️',
-            title:'Niebla densa — '+city+' (visib. '+(d.visibility/1000).toFixed(1)+' km)',
-            description:'Visibilidad reducida. Conducir con precaución.',
-            lat:lat, lon:lon, distKm:0,
+        // Niebla densa
+        if ((code>=700&&code<800) && vis<500) alerts.push({
+            id:'fog_'+Date.now(), type:'NIEBLA DENSA', icon:'🌫️',
+            title:'Niebla densa — '+city+' (visib. '+(vis/1000).toFixed(1)+' km)',
+            description:'Visibilidad muy reducida. Peligro en rutas y aeropuertos.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:50, color:'#C0C0C0'
+            source:'OpenWeatherMap', priority:60, color:'#C0C0C0'
         });
 
-        // ── CALOR EXTREMO (>38°C) ──
-        if (temp > 38) alerts.push({
+        // Calor extremo
+        if (temp>38) alerts.push({
             id:'heat_'+Date.now(), type:'CALOR EXTREMO', icon:'🔥',
-            title:'Temperatura extrema '+Math.round(temp)+'°C — '+city,
-            description:'Condiciones de calor peligroso. Manténgase hidratado.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Temperatura extrema '+Math.round(temp)+'°C (sens. '+Math.round(feels)+'°C) — '+city,
+            description:'Condiciones de calor peligroso. Hidratarse. Evitar exposición solar.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:72, color:'#FF4500'
+            source:'OpenWeatherMap', priority:75, color:'#FF4500'
         });
 
-        // ── FRÍO EXTREMO (<-10°C) ──
-        if (temp < -10) alerts.push({
+        // Frío extremo
+        if (feels<-15) alerts.push({
             id:'cold_'+Date.now(), type:'FRÍO EXTREMO', icon:'🥶',
-            title:'Temperatura muy baja '+Math.round(temp)+'°C — '+city,
-            description:'Riesgo de hipotermia. Abríguese bien.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Temperatura polar '+Math.round(temp)+'°C (sens. '+Math.round(feels)+'°C) — '+city,
+            description:'Riesgo de hipotermia. Abríguese. Evite exposición prolongada.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:68, color:'#00BFFF'
+            source:'OpenWeatherMap', priority:72, color:'#00BFFF'
         });
 
-        // ── GRANIZO (código 622) ──
-        if (code === 622 || (code>=200&&code<300&&snow1h>0)) alerts.push({
+        // Granizo
+        if (code===622||(code>=200&&code<300&&snow>0)) alerts.push({
             id:'hail_'+Date.now(), type:'GRANIZO', icon:'🌨️',
-            title:'Granizo detectado — '+city,
-            description:'Caída de granizo. Proteja vehículos y cultivos.',
-            lat:lat, lon:lon, distKm:0,
+            title:'Granizo — '+city,
+            description:'Caída de granizo detectada. Proteja vehículos y cultivos.',
+            lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:65, color:'#B0C4DE'
+            source:'OpenWeatherMap', priority:68, color:'#B0C4DE'
         });
 
-    } catch(e) { console.error('OWM weather error:',e); }
+        // Sequía/Humedad muy baja
+        if (humid<20&&temp>25) alerts.push({
+            id:'dry_'+Date.now(), type:'RIESGO INCENDIO', icon:'🔥',
+            title:'Alto riesgo de incendio — '+city,
+            description:'Temperatura '+Math.round(temp)+'°C y humedad '+humid+'%. Condiciones propensas a incendios.',
+            lat:lat,lon:lon,distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenWeatherMap', priority:70, color:'#FF6600'
+        });
 
-    // ── Intentar One Call API v3 para alertas oficiales ──
+    } catch(e) { console.error('OWM actual:',e); }
+
+    // ── PRONÓSTICO: alertas en las próximas horas ──
     try {
-        var r2 = await fetch('https://api.openweathermap.org/data/3.0/onecall?lat='+lat+'&lon='+lon+
-                             '&appid='+OWM_KEY+'&units=metric&lang=es&exclude=minutely,hourly,daily',
-                             {signal: AbortSignal.timeout(8000)});
-        var d2 = await r2.json();
-        if (d2.alerts && d2.alerts.length) {
-            d2.alerts.forEach(function(a) {
-                var tipo = 'ALERTA CLIMÁTICA';
-                var icono = '⚠️';
-                var ev = (a.event||'').toLowerCase();
-                if (/wind|viento/i.test(ev))   { tipo='VIENTO FUERTE';       icono='💨'; }
-                if (/rain|lluvia/i.test(ev))    { tipo='LLUVIA INTENSA';      icono='🌧️'; }
-                if (/storm|tormenta/i.test(ev)) { tipo='TORMENTA';            icono='⛈️'; }
-                if (/flood|inundac/i.test(ev))  { tipo='INUNDACIÓN';          icono='💧'; }
-                if (/snow|nieve/i.test(ev))     { tipo='NEVADA';              icono='❄️'; }
-                if (/fog|niebla/i.test(ev))     { tipo='NIEBLA';              icono='🌫️'; }
-                if (/fire|incendio/i.test(ev))  { tipo='INCENDIO';            icono='🔥'; }
-                if (/frost|helada/i.test(ev))   { tipo='HELADA';              icono='🧊'; }
-                alerts.push({
-                    id:'owm_off_'+a.start, type:tipo, icon:icono,
-                    title:'⚠️ '+a.event,
-                    description:(a.description||'').substring(0,200),
-                    lat:lat, lon:lon, distKm:0,
-                    time:new Date(a.start*1000).toLocaleString('es-CL'),
-                    source:a.sender_name||'OpenWeather Alerts', priority:70, color:'#FF6B6B'
-                });
+        var fct = await (await fetch(
+            'https://api.openweathermap.org/data/2.5/forecast?lat='+lat+'&lon='+lon+
+            '&appid='+OWM_KEY+'&units=metric&lang=es&cnt=8',
+            {signal:AbortSignal.timeout(8000)}
+        )).json();
+
+        if (fct&&fct.list) {
+            var maxRain=0, maxWind=0, maxTemp=-99, minTemp=99, hasStorm=false, hasSnow=false;
+            fct.list.forEach(function(item) {
+                var r=item.rain&&item.rain['3h']?item.rain['3h']:0;
+                var s=item.snow&&item.snow['3h']?item.snow['3h']:0;
+                var w=(item.wind&&item.wind.speed||0)*3.6;
+                var t=item.main&&item.main.temp||0;
+                var c=item.weather&&item.weather[0]?item.weather[0].id:800;
+                if(r>maxRain) maxRain=r;
+                if(w>maxWind) maxWind=w;
+                if(t>maxTemp) maxTemp=t;
+                if(t<minTemp) minTemp=t;
+                if(c>=200&&c<300) hasStorm=true;
+                if(s>0) hasSnow=true;
+            });
+
+            var city2 = fct.city&&fct.city.name ? fct.city.name : '';
+
+            if (maxRain>20) alerts.push({
+                id:'fct_rain_'+Date.now(), type:'ALERTA LLUVIA 24H', icon:'⚠️',
+                title:'Lluvia fuerte esperada: '+maxRain.toFixed(0)+' mm — '+city2,
+                description:'Pronóstico de lluvia intensa en las próximas 24 horas. Posibles anegamientos.',
+                lat:lat,lon:lon,distKm:0,
+                time:'Próximas 24h',
+                source:'OpenWeatherMap Forecast', priority:65, color:'#1E90FF'
+            });
+            if (maxWind>80) alerts.push({
+                id:'fct_wind_'+Date.now(), type:'ALERTA VIENTO 24H', icon:'⚠️',
+                title:'Viento fuerte esperado: '+Math.round(maxWind)+' km/h — '+city2,
+                description:'Vientos fuertes pronosticados. Asegure objetos en exterior.',
+                lat:lat,lon:lon,distKm:0,
+                time:'Próximas 24h',
+                source:'OpenWeatherMap Forecast', priority:62, color:'#87CEEB'
+            });
+            if (hasStorm) alerts.push({
+                id:'fct_storm_'+Date.now(), type:'TORMENTA ESPERADA', icon:'⛈️',
+                title:'Tormentas esperadas próximas horas — '+city2,
+                description:'Tormentas eléctricas pronosticadas en las próximas 24h. Precaución.',
+                lat:lat,lon:lon,distKm:0,
+                time:'Próximas 24h',
+                source:'OpenWeatherMap Forecast', priority:68, color:'#FFD700'
+            });
+            if (hasSnow) alerts.push({
+                id:'fct_snow_'+Date.now(), type:'NEVADA ESPERADA', icon:'❄️',
+                title:'Nevada pronosticada — '+city2,
+                description:'Se esperan nevadas en las próximas horas. Precaución en vías.',
+                lat:lat,lon:lon,distKm:0,
+                time:'Próximas 24h',
+                source:'OpenWeatherMap Forecast', priority:58, color:'#B0E0E6'
             });
         }
-    } catch(e) { /* One Call v3 puede requerir suscripción */ }
+    } catch(e) { console.error('OWM forecast:',e); }
 
     return alerts;
 }
 
-// ========== 5. NOAA NHC - Huracanes activos ==========
+// ========== 4. HURACANES NOAA NHC ==========
 async function fetchHurricanes() {
     try {
-        var url = 'https://api.allorigins.win/raw?url=' +
-                  encodeURIComponent('https://www.nhc.noaa.gov/gis/kml/nhc_active.kml');
-        var r = await fetch(url, {signal: AbortSignal.timeout(8000)});
-        var txt = await r.text();
-        var alerts = [];
-        var parser = new DOMParser();
-        var kml = parser.parseFromString(txt, 'text/xml');
-        var placemarks = kml.querySelectorAll('Placemark');
-        placemarks.forEach(function(pm) {
-            var name = (pm.querySelector('name')||{}).textContent||'';
-            var desc = (pm.querySelector('description')||{}).textContent||'';
-            var coord = pm.querySelector('coordinates');
-            var lat=null, lon=null;
-            if (coord) {
-                var parts = coord.textContent.trim().split(',');
-                lon = parseFloat(parts[0]); lat = parseFloat(parts[1]);
-            }
-            if (name && /Hurricane|Tropical Storm|Depression|Cyclone|Typhoon/i.test(name)) {
-                var tipo = /Hurricane/i.test(name) ? 'HURACÁN' : /Typhoon/i.test(name) ? 'TIFÓN' : 'TORMENTA TROPICAL';
-                alerts.push({
-                    id:'nhc_'+name.replace(/\s/g,'_'),
-                    type:tipo, icon:'🌀',
-                    title:name, description:desc.replace(/<[^>]+>/g,'').substring(0,200),
-                    lat:lat, lon:lon, distKm:null,
-                    time:new Date().toLocaleString('es-CL'),
-                    source:'NOAA NHC', priority:92, color:'#9900ff'
-                });
-            }
-        });
-        return alerts;
-    } catch(e) { console.error('NHC error:',e); return []; }
-}
-
-// ========== 6. INCENDIOS NASA FIRMS ==========
-async function fetchFires(lat, lon) {
-    try {
-        // API pública FIRMS sin clave
-        var url = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&limit=30&days=1';
-        var r = await fetch(url, {signal: AbortSignal.timeout(8000)});
-        var d = await r.json();
-        var fires = [];
-        (d.events||[]).forEach(function(ev) {
-            var geo = ev.geometry && ev.geometry[0];
-            if (!geo) return;
-            var flat=null, flon=null;
-            if (geo.type==='Point') { flon=geo.coordinates[0]; flat=geo.coordinates[1]; }
-            fires.push({
-                id:'fire_'+ev.id,
-                type:'INCENDIO', icon:'🔥',
-                title:ev.title||'Incendio forestal activo',
-                description:'NASA EONET — Incendio activo detectado por satélite',
-                lat:flat, lon:flon,
-                distKm: (lat&&flat) ? Math.round(calcDistance(lat,lon,flat,flon)) : null,
-                time:new Date(ev.geometry[0].date||Date.now()).toLocaleString('es-CL'),
-                source:'NASA EONET', priority:75, color:'#FF3300'
+        var url='https://api.allorigins.win/raw?url='+encodeURIComponent('https://www.nhc.noaa.gov/gis/kml/nhc_active.kml');
+        var txt=await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var kml=new DOMParser().parseFromString(txt,'text/xml');
+        var alerts=[];
+        kml.querySelectorAll('Placemark').forEach(function(pm) {
+            var name=(pm.querySelector('name')||{}).textContent||'';
+            if(!/Hurricane|Tropical Storm|Cyclone|Typhoon/i.test(name)) return;
+            var coord=pm.querySelector('coordinates');
+            var lat=null,lon=null;
+            if(coord){var p=coord.textContent.trim().split(',');lon=parseFloat(p[0]);lat=parseFloat(p[1]);}
+            alerts.push({
+                id:'nhc_'+name.replace(/\s/g,'_'),
+                type:/Hurricane/i.test(name)?'HURACÁN':'TORMENTA TROPICAL', icon:'🌀',
+                title:name,
+                description:'Sistema tropical activo — NOAA NHC. Siga las instrucciones de las autoridades.',
+                lat:lat,lon:lon,distKm:null,
+                time:new Date().toLocaleString('es-CL'),
+                source:'NOAA NHC', priority:95, color:'#9900ff'
             });
         });
-        return fires;
-    } catch(e) { console.error('EONET error:',e); return []; }
+        return alerts;
+    } catch(e) { return []; }
+}
+
+// ========== 5. INCENDIOS NASA EONET ==========
+async function fetchFires(lat,lon) {
+    try {
+        var d=await (await fetch(
+            'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&limit=50&days=2',
+            {signal:AbortSignal.timeout(8000)}
+        )).json();
+        return (d.events||[]).map(function(ev) {
+            var geo=ev.geometry&&ev.geometry[0];
+            var flat=null,flon=null;
+            if(geo&&geo.type==='Point'){flon=geo.coordinates[0];flat=geo.coordinates[1];}
+            return {
+                id:'fire_'+ev.id, type:'INCENDIO', icon:'🔥',
+                title:ev.title||'Incendio activo',
+                description:'Incendio forestal detectado por satélite (NASA EONET)',
+                lat:flat,lon:flon,
+                distKm:(lat&&flat)?Math.round(calcDistance(lat,lon,flat,flon)):null,
+                time:new Date((ev.geometry[0]&&ev.geometry[0].date)||Date.now()).toLocaleString('es-CL'),
+                source:'NASA EONET', priority:78, color:'#FF3300'
+            };
+        });
+    } catch(e) { return []; }
 }
 
 // ========== CARGA POR UBICACIÓN ==========
 async function loadAlertsForLocation(locationInput, radiusKm) {
-    radiusKm = radiusKm || 500;
-    var lat, lon;
+    radiusKm = radiusKm||500;
+    var lat,lon;
     if (typeof locationInput==='object'&&locationInput.lat) {
         lat=locationInput.lat; lon=locationInput.lon;
     } else {
@@ -393,43 +372,38 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         if(!loc) return [];
         lat=loc.lat; lon=loc.lon;
     }
-    console.log('📍 Alertas para:',lat,lon,'radio:',radiusKm,'km');
 
-    var isChile = lat<-17 && lat>-56 && lon>-76 && lon<-65;
-
-    var tasks = [
-        fetchUSGS(lat, lon),
-        Promise.resolve(getVolcanes(lat, lon)),
-        fetchWeatherAlerts(lat, lon),
+    var tasks=[
+        fetchUSGS(lat,lon),
+        Promise.resolve(getVolcanes(lat,lon)),
+        fetchWeatherAlerts(lat,lon),
         fetchHurricanes(),
-        fetchFires(lat, lon)
+        fetchFires(lat,lon)
     ];
-    if (isChile) tasks.push(fetchCSNChile(lat, lon));
 
-    var results = await Promise.allSettled(tasks);
-    var all = [];
-    results.forEach(function(r) { if(r.status==='fulfilled') all=all.concat(r.value||[]); });
+    var all=[];
+    (await Promise.allSettled(tasks)).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
     return all
-        .filter(function(a) { return !a.distKm || a.distKm<=radiusKm; })
-        .sort(function(a,b) { return (b.priority||0)-(a.priority||0); });
+        .filter(function(a){ return !a.distKm||a.distKm<=radiusKm||a.distKm===0; })
+        .sort(function(a,b){ return (b.priority||0)-(a.priority||0); });
 }
 
 // ========== CARGA GLOBAL ==========
 async function loadGlobalAlerts() {
     console.log('🌍 Cargando alertas globales...');
-    var results = await Promise.allSettled([
+    var all=[];
+    (await Promise.allSettled([
         fetchUSGS(0,0),
         Promise.resolve(getVolcanes(0,0)),
         fetchHurricanes(),
         fetchFires(0,0)
-    ]);
-    var all = [];
-    results.forEach(function(r) { if(r.status==='fulfilled') all=all.concat(r.value||[]); });
+    ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
+
     return all
-        .filter(function(a) { return (a.priority||0)>=45; })
-        .sort(function(a,b) { return (b.priority||0)-(a.priority||0); })
-        .slice(0,200);
+        .filter(function(a){return (a.priority||0)>=40;})
+        .sort(function(a,b){return (b.priority||0)-(a.priority||0);})
+        .slice(0,250);
 }
 
 // ========== EXPORTS ==========
@@ -438,14 +412,8 @@ window.loadAlertsForLocation = loadAlertsForLocation;
 window.loadGlobalAlerts      = loadGlobalAlerts;
 window.calcDistance          = calcDistance;
 
-window.loadExternalSources = function(callback) {
+window.loadExternalSources = function(cb) {
     loadGlobalAlerts()
-        .then(function(alerts) {
-            console.log('✅ Alertas globales cargadas:', alerts.length);
-            if (callback) callback(alerts);
-        })
-        .catch(function(e) {
-            console.error('Error fuentes:', e);
-            if (callback) callback([]);
-        });
+        .then(function(a){console.log('✅ Alertas globales cargadas:',a.length);if(cb)cb(a);})
+        .catch(function(e){console.error('Error:',e);if(cb)cb([]);});
 };

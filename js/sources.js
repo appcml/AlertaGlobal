@@ -522,6 +522,103 @@ async function fetchGDACS() {
     } catch(e) { console.error('GDACS:',e); return []; }
 }
 
+// ========== 9. EMSC — Sismos Europa + Mediterráneo ==========
+async function fetchEMSC(lat, lon) {
+    try {
+        var since = new Date(Date.now()-86400000).toISOString();
+        var url = 'https://www.seismicportal.eu/fdsnws/event/1/query?format=json' +
+                  '&orderby=time&limit=100&minmagnitude=2.0&starttime='+since;
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
+        return (d.features||[]).map(function(f) {
+            var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
+            return {
+                id:'emsc_'+(p.unid||Math.random()),
+                type:'SISMO', icon:mag>=5?'🔴':mag>=4?'🟠':'🟡',
+                title:'Sismo M'+mag.toFixed(1)+' — EMSC',
+                description:(p.flynn_region||p.region||'Europa/Mediterráneo')+
+                            ' — Prof. '+(c[2]?Math.round(c[2])+'km':'?km'),
+                lat:c[1], lon:c[0], magnitude:mag, depth:c[2],
+                distKm:lat?Math.round(calcDistance(lat,lon,c[1],c[0])):null,
+                time:new Date(p.time).toLocaleString('es-CL'),
+                source:'EMSC',
+                priority:mag>=6?90:mag>=5?78:mag>=4?62:mag>=3?48:35,
+                color:mag>=6?'#ff0000':mag>=5?'#ff4400':mag>=4?'#ff9900':'#ffcc00',
+                link:'https://www.seismicportal.eu/eventdetails.html?unid='+(p.unid||'')
+            };
+        });
+    } catch(e) { console.error('EMSC:',e); return []; }
+}
+
+// ========== 10. DMC CHILE — Dirección Meteorológica ==========
+async function fetchDMCChile(lat, lon) {
+    try {
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://www.meteochile.gob.cl/PortalDMC-web/rss/avisos.rss');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var xml = new DOMParser().parseFromString(txt,'text/xml');
+        var alerts = [];
+        xml.querySelectorAll('item').forEach(function(item) {
+            var title = (item.querySelector('title')||{}).textContent||'';
+            var desc  = (item.querySelector('description')||{}).textContent||'';
+            var link  = (item.querySelector('link')||{}).textContent||'';
+            var date  = (item.querySelector('pubDate')||{}).textContent||'';
+            if (!title||title.length<3) return;
+            var tipo='ALERTA METEOROLÓGICA', icono='⚠️', pri=65;
+            var td = title+desc;
+            if (/lluvia|precipitaci/i.test(td)) { tipo='LLUVIA INTENSA';  icono='🌧️'; pri=72; }
+            if (/viento|ventisca/i.test(td))    { tipo='VIENTO FUERTE';   icono='💨'; pri=70; }
+            if (/nieve|nevada/i.test(td))       { tipo='NEVADA';          icono='❄️'; pri=68; }
+            if (/tormenta/i.test(td))           { tipo='TORMENTA';        icono='⛈️'; pri=78; }
+            if (/tsunami/i.test(td))            { tipo='TSUNAMI';         icono='🌊'; pri=98; }
+            if (/marejada/i.test(td))           { tipo='MAREJADA';        icono='🌊'; pri=75; }
+            if (/calor/i.test(td))              { tipo='CALOR EXTREMO';   icono='🔥'; pri=72; }
+            if (/helada/i.test(td))             { tipo='HELADA';          icono='🧊'; pri=62; }
+            alerts.push({
+                id:'dmc_'+alerts.length+'_'+Date.now(),
+                type:tipo, icon:icono,
+                title:'🇨🇱 DMC: '+title.replace(/<[^>]+>/g,'').trim(),
+                description:desc.replace(/<[^>]+>/g,'').substring(0,200),
+                lat:lat||null, lon:lon||null, distKm:0,
+                time:date?new Date(date).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
+                source:'DMC — Meteorología Chile',
+                priority:pri, color:'#FF6B35', link:link
+            });
+        });
+        return alerts.slice(0,10);
+    } catch(e) { console.error('DMC:',e); return []; }
+}
+
+// ========== 11. SHOA — Avisos Tsunamis Pacífico ==========
+async function fetchSHOA() {
+    try {
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('http://www.shoa.cl/php/infot.php');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var alerts = [];
+        if (txt&&txt.length>50) {
+            var clean = txt.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+            var tipo='BOLETÍN SHOA', icono='🌊', pri=60;
+            if (/cancelad|sin amenaza|no existe|normal/i.test(clean)) { tipo='SIN AMENAZA TSUNAMI'; icono='✅'; pri=25; }
+            if (/alerta roja|TSUNAMI ALERT/i.test(clean))             { tipo='ALERTA TSUNAMI';      icono='🚨'; pri=99; }
+            if (/watch|vigilancia/i.test(clean))                      { tipo='VIGILANCIA TSUNAMI';  icono='🌊'; pri=88; }
+            if (clean.length>20) {
+                alerts.push({
+                    id:'shoa_'+Date.now(),
+                    type:tipo, icon:icono,
+                    title:'🇨🇱 SHOA: '+clean.substring(0,80),
+                    description:clean.substring(0,250),
+                    lat:-30.0, lon:-71.5, distKm:0,
+                    time:new Date().toLocaleString('es-CL'),
+                    source:'SHOA — Chile Pacífico',
+                    priority:pri, color:pri>=85?'#0000ff':'#4169E1',
+                    link:'http://www.shoa.cl'
+                });
+            }
+        }
+        return alerts;
+    } catch(e) { console.error('SHOA:',e); return []; }
+}
+
 
 async function loadAlertsForLocation(locationInput, radiusKm) {
     radiusKm=radiusKm||500;
@@ -536,16 +633,20 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
     }
     console.log('📍 Alertas para:',cityName,lat,lon,'radio:',radiusKm);
 
+    var isChile = lat&&lat<-17&&lat>-56&&lon>-76&&lon<-65;
     var all=[];
     (await Promise.allSettled([
         fetchOpenMeteoAlerts(lat,lon,cityName), // Open-Meteo clima
-        fetchAirQuality(lat,lon,cityName),       // 🆕 Calidad del aire
-        fetchUSGS(lat,lon),                      // Sismos USGS
+        fetchAirQuality(lat,lon,cityName),       // Calidad del aire
+        fetchUSGS(lat,lon),                      // Sismos USGS (global)
+        fetchEMSC(lat,lon),                      // 🆕 Sismos EMSC (Europa)
         Promise.resolve(getVolcanes(lat,lon)),   // Volcanes
         fetchHurricanes(),                       // Huracanes NOAA
         fetchFires(lat,lon),                     // Incendios NASA
-        fetchWeatherGov(lat,lon),                // 🆕 NWS (solo EEUU)
-        fetchGDACS()                             // 🆕 GDACS ONU
+        fetchWeatherGov(lat,lon),                // NWS (solo EEUU)
+        fetchGDACS(),                            // GDACS ONU
+        isChile ? fetchDMCChile(lat,lon) : Promise.resolve([]), // 🆕 DMC Chile
+        isChile ? fetchSHOA()            : Promise.resolve([])  // 🆕 SHOA Chile
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
     return all
@@ -563,14 +664,16 @@ async function loadGlobalAlerts() {
     var all=[];
     (await Promise.allSettled([
         fetchUSGS(0,0),
+        fetchEMSC(0,0),                 // 🆕 Sismos Europa
         Promise.resolve(getVolcanes(0,0)),
         fetchHurricanes(),
         fetchFires(0,0),
-        fetchGDACS()  // 🆕 GDACS global
+        fetchGDACS(),
+        fetchSHOA()                     // 🆕 SHOA siempre global
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
-    return all.filter(function(a){return (a.priority||0)>=40;})
+    return all.filter(function(a){return (a.priority||0)>=35;})
               .sort(function(a,b){return (b.priority||0)-(a.priority||0);})
-              .slice(0,300);
+              .slice(0,350);
 }
 
 // ========== EXPORTS ==========

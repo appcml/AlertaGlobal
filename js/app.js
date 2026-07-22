@@ -158,7 +158,7 @@ function updateMapGlobalFixed(allAlerts) {
     var currentZoom = leafletMap.getZoom();
     if (currentZoom <= 6) {
         var globalAlerts = allAlerts.filter(function(a) {
-            return (a.priority >= 80) || (a.magnitude && a.magnitude >= 5);
+            return (a.priority >= 40) || (a.magnitude && a.magnitude >= 2.0);
         });
         console.log('🌍 Alertas globales visibles:', globalAlerts.length);
     }

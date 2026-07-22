@@ -1118,11 +1118,18 @@ function loadAlerts() {
     }
     loadAlerts._srcRetry = 0;
 
-    // Si tenemos coordenadas → escaneo directo por ubicación (más preciso)
-    // Si no → fetch global con filtro posterior
-    var scanFn = (loc.lat && typeof scanByCoords === 'function')
-        ? function(cb) { scanByCoords(loc.lat, loc.lon, getUserRadiusKm() || 500, cb); }
-        : loadExternalSources;
+    // Si tenemos coordenadas → cargar alertas específicas para esa ubicación
+    var scanFn;
+    if (loc.lat && typeof window.loadAlertsForLocation === 'function') {
+        var radius = getUserRadiusKm() || 500;
+        scanFn = function(cb) {
+            window.loadAlertsForLocation({ lat: loc.lat, lon: loc.lon }, radius)
+                .then(cb)
+                .catch(function() { loadExternalSources(cb); });
+        };
+    } else {
+        scanFn = loadExternalSources;
+    }
 
     scanFn(function(alerts) {
         alertsLoading = false;
@@ -1156,65 +1163,20 @@ function loadAlerts() {
         var radius = getUserRadiusKm() || 500;
 
         var filtered = externalAlerts.filter(function(a) {
-            // Sin ubicación del usuario → mostrar todo
+            // Sin ubicación → mostrar todo
             if (!loc.lat) return true;
             // Radio global → mostrar todo
             if (radius === 0) return true;
-
             // Alertas climáticas locales (distKm=0) → siempre mostrar
             if (a.distKm === 0) return true;
-
-            // Alertas de OpenWeather (son de la ubicación del usuario) → mostrar
+            // Alertas de OpenWeather son siempre locales
             if (/OpenWeather/i.test(a.source||'')) return true;
-
-            // Sin coordenadas → filtrar por fuente
-            if (a.lat == null || a.lon == null) {
-                if (/SENAPRED|SHOA|CSN|MET Norway/i.test(a.source||'')) return true;
-                return (a.priority||0) >= 80;
-            }
-
-            // Con coordenadas → calcular distancia
-            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-            a.distKm = Math.round(d);
-
-            // Tsunamis y huracanes: zona de impacto amplia
-            if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return d <= 3000;
-
-            // Todo lo demás: respetar radio del usuario
-            return d <= radius;
-
-            // Fuentes chilenas: solo si usuario está en Chile
-            if (/SENAPRED|CONAF|SHOA|CSN/i.test(src)) return userInChile;
-
-            // MET Norway: ya filtrada por coords en la API → siempre incluir
-            if (/MET Norway/i.test(src)) return true;
-
-            // Open-Meteo: clima de las coords exactas → siempre incluir
-            if (/Open-Meteo/i.test(src)) return true;
-
-            // NASA EONET: eventos globales por satélite → incluir si alta prioridad
-            if (/NASA EONET/i.test(src)) return a.priority >= 40;
-
-            // VolcanoDiscovery: volcanes globales → incluir si moderada prioridad
-            if (/VolcanoDiscovery/i.test(src)) return a.priority >= 40;
-
-            // PTWC: tsunamis Pacífico → siempre incluir (afecta costas lejanas)
-            if (/PTWC/i.test(src)) return true;
-
-            // NHC Huracanes: incluir si son importantes
-            if (/NHC/i.test(src)) return a.priority >= 50;
-
-            // ReliefWeb: desastres declarados → incluir si son urgentes
-            if (/ReliefWeb/i.test(src)) return a.priority >= 50;
-
-            // GDACS: incluir si tiene prioridad suficiente
-            if (/GDACS/i.test(src)) return a.priority >= 50;
-
-            // NOAA Clima Espacial: siempre incluir
-            if (/NOAA.*Espac|Space Weather/i.test(src)) return true;
-
-            // Resto sin coords: prioridad mínima baja
-            return a.priority >= 50;
+            // Tsunamis/Huracanes afectan zonas amplias
+            if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return true;
+            // Con distancia calculada
+            if (a.distKm != null) return a.distKm <= radius;
+            // Sin coordenadas: fuentes confiables siempre
+            return (a.priority||0) >= 70;
         });
 
         // ── FILTRO POR TIPO Y MAGNITUD (desde UI) ──
@@ -1276,8 +1238,14 @@ function loadAlerts() {
         if (!filtered.length) {
             if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()+' km')+'</small></div>';
             updateStatus(false, 'Entorno Seguro');
+            var cnt = document.getElementById('alertCount'); if (cnt) cnt.textContent = '0';
             return;
         }
+
+        // Actualizar contador en barra de filtros
+        var alertCount = document.getElementById('alertCount');
+        if (alertCount) alertCount.textContent = filtered.length;
+        console.log('✅ Alertas visibles:', filtered.length, 'de', externalAlerts.length, 'totales');
 
         var hasCritical = filtered.some(function(a) { return a.priority >= 90; });
         if (hasCritical) {

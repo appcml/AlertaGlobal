@@ -554,7 +554,9 @@ async function fetchDMCChile(lat, lon) {
     try {
         var url = 'https://api.allorigins.win/raw?url='+
                   encodeURIComponent('https://www.meteochile.gob.cl/PortalDMC-web/rss/avisos.rss');
-        var txt = await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var r = await fetch(url,{signal:AbortSignal.timeout(12000)});
+        if (!r.ok) return [];
+        var txt = await r.text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
         var alerts = [];
         xml.querySelectorAll('item').forEach(function(item) {
@@ -593,7 +595,9 @@ async function fetchSHOA() {
     try {
         var url = 'https://api.allorigins.win/raw?url='+
                   encodeURIComponent('http://www.shoa.cl/php/infot.php');
-        var txt = await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var r = await fetch(url,{signal:AbortSignal.timeout(12000)});
+        if (!r.ok) return [];
+        var txt = await r.text();
         var alerts = [];
         if (txt&&txt.length>50) {
             var clean = txt.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();

@@ -173,7 +173,12 @@ function setUserRadiusKm(km) {
     CONFIG.USER_RADIUS_KM = km;
     try { localStorage.setItem('ag_radius_km', String(km)); } catch(e){}
 }
-function getUserRadiusKm() { return CONFIG.USER_RADIUS_KM || 500; }
+function getUserRadiusKm() {
+    if (CONFIG.USER_RADIUS_KM != null && CONFIG.USER_RADIUS_KM !== 500) return CONFIG.USER_RADIUS_KM;
+    var stored = parseInt(localStorage.getItem('ag_radius_km'));
+    if (!isNaN(stored)) { CONFIG.USER_RADIUS_KM = stored; return stored; }
+    return 500;
+}
 function saveFocusLocation() {
     try { localStorage.setItem('ag_focus', JSON.stringify(focusLocation)); } catch(e){}
 }

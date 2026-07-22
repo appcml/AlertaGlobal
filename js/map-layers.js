@@ -1,36 +1,34 @@
 // ============================================
-// js/map-layers.js — Capas del mapa
-// Barra horizontal con scroll
+// js/map-layers.js — Capas del mapa v4
 // ============================================
 
 var OWM_KEY = '6fe6e0dcca264864dbd631bf620aad64';
 var activeLayers = {};
+var currentBaseLayer = null;
 var mapLayersInitialized = false;
 
-var ALL_LAYERS = [
-    // MAPAS BASE
-    { id:'base_dark',  group:'BASE', label:'🌑', title:'Oscuro',    type:'base',
-      url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr:'© CartoDB' },
-    { id:'base_light', group:'BASE', label:'🌕', title:'Claro',     type:'base',
-      url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr:'© OpenStreetMap' },
-    { id:'base_sat',   group:'BASE', label:'🛰️',  title:'Satélite', type:'base',
-      url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr:'© Esri' },
-    { id:'base_topo',  group:'BASE', label:'⛰️', title:'Relieve',   type:'base',
-      url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr:'© OpenTopoMap' },
-    // METEOROLOGÍA
-    { id:'temp',     group:'MET', label:'🌡️', title:'Temp',    type:'owm', owm:'temp_new',           opacity:0.70 },
-    { id:'rain',     group:'MET', label:'🌧️', title:'Lluvia',  type:'owm', owm:'precipitation_new',  opacity:0.70 },
-    { id:'wind',     group:'MET', label:'💨', title:'Viento',  type:'owm', owm:'wind_new',            opacity:0.65 },
-    { id:'clouds',   group:'MET', label:'☁️', title:'Nubes',   type:'owm', owm:'clouds_new',          opacity:0.60 },
-    { id:'pressure', group:'MET', label:'📊', title:'Presión', type:'owm', owm:'pressure_new',        opacity:0.60 },
-    { id:'humidity', group:'MET', label:'💦', title:'Humedad', type:'owm', owm:'humidity_new',        opacity:0.65 },
-    // SATÉLITE / RADAR
-    { id:'radar',    group:'SAT', label:'📡', title:'Radar',   type:'rainviewer', rv:'radar'    },
-    { id:'infrared', group:'SAT', label:'🔴', title:'Infra',   type:'rainviewer', rv:'infrared' },
-    { id:'vapor',    group:'SAT', label:'💧', title:'Vapor',   type:'rainviewer', rv:'vapor'    },
-];
+// Tiles que funcionan sin restricciones
+var BASE_TILES = {
+    dark:  { label:'🌑', title:'Oscuro',   url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',     attr:'© CartoDB' },
+    light: { label:'🌕', title:'Claro',    url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',                attr:'© OSM' },
+    sat:   { label:'🛰️',  title:'Satélite', url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr:'© Esri' },
+    topo:  { label:'⛰️', title:'Relieve',  url:'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',            attr:'© OSM France' },
+};
 
-var BASE_LAYER_OBJ = null;
+var MET_TILES = {
+    temp:     { label:'🌡️', title:'Temp',    owm:'temp_new',           op:0.70 },
+    rain:     { label:'🌧️', title:'Lluvia',  owm:'precipitation_new',  op:0.70 },
+    wind:     { label:'💨', title:'Viento',  owm:'wind_new',            op:0.65 },
+    clouds:   { label:'☁️', title:'Nubes',   owm:'clouds_new',          op:0.60 },
+    pressure: { label:'📊', title:'Presión', owm:'pressure_new',        op:0.60 },
+    humidity: { label:'💦', title:'Humedad', owm:'humidity_new',        op:0.65 },
+};
+
+// Solo radar funciona bien en RainViewer sin restricción de zoom
+var SAT_TILES = {
+    radar: { label:'📡', title:'Radar', url:'https://tilecache.rainviewer.com/v2/radar/nowcast/{z}/{x}/{y}/2/1_1.png', op:0.55, maxZ:20 },
+    sat2:  { label:'🌍', title:'Esri',  url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', op:0.75, maxZ:20 },
+};
 
 function injectCSS() {
     if (document.getElementById('ml-css')) return;
@@ -40,239 +38,236 @@ function injectCSS() {
         #mlBar {
             position: absolute;
             top: 0; left: 0; right: 0;
-            z-index: 1000;
-            background: rgba(8,8,18,0.95);
-            border-bottom: 1px solid #222;
+            z-index: 1001;
+            background: rgba(6,6,16,0.96);
+            border-bottom: 1px solid #1e1e2e;
             display: flex;
             align-items: center;
-            overflow-x: scroll;
+            overflow-x: auto;
             overflow-y: hidden;
             scrollbar-width: thin;
             scrollbar-color: #333 transparent;
+            padding: 2px 6px;
+            gap: 1px;
             -webkit-overflow-scrolling: touch;
-            padding: 2px 4px;
-            gap: 0;
         }
         #mlBar::-webkit-scrollbar { height: 3px; }
-        #mlBar::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
-        .ml-sep {
-            width: 1px; height: 36px;
-            background: #2a2a3a;
-            margin: 0 3px;
-            flex-shrink: 0;
-        }
-        .ml-group-lbl {
-            font-size: 7px; color: #444;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 0 3px 0 4px;
-            flex-shrink: 0;
-            white-space: nowrap;
-        }
+        #mlBar::-webkit-scrollbar-thumb { background: #444; }
+        .ml-sep { width:1px; height:34px; background:#222; margin:0 4px; flex-shrink:0; }
+        .ml-lbl { font-size:7px; color:#3a3a5a; text-transform:uppercase; padding:0 4px; flex-shrink:0; letter-spacing:.5px; }
         .ml-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-width: 40px;
-            height: 50px;
-            padding: 2px 3px 0;
-            border-radius: 5px;
-            border: 1px solid transparent;
-            background: transparent;
-            color: #bbb;
-            cursor: pointer;
-            font-size: 17px;
-            flex-shrink: 0;
-            transition: all 0.15s;
-            position: relative;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            min-width:38px; height:48px; padding:1px 2px 0;
+            border-radius:5px; border:1px solid transparent;
+            background:transparent; color:#aaa; cursor:pointer;
+            font-size:16px; flex-shrink:0; transition:all .12s;
         }
-        .ml-btn span {
-            font-size: 7px; color: #555;
-            white-space: nowrap;
-            margin-top: 1px;
-            line-height: 1;
+        .ml-btn span { font-size:7px; color:#444; white-space:nowrap; margin-top:1px; line-height:1; }
+        .ml-btn:hover { background:rgba(255,255,255,.07); border-color:#333; color:#ddd; }
+        .ml-btn:hover span { color:#888; }
+        .ml-btn.on-base { background:rgba(60,220,100,.15); border-color:#3dcc66; }
+        .ml-btn.on-base span { color:#5ddd88; }
+        .ml-btn.on-met  { background:rgba(80,160,255,.18); border-color:#4a9eff; }
+        .ml-btn.on-met span { color:#7bbfff; }
+        .ml-btn.on-sat  { background:rgba(180,100,255,.18); border-color:#c07fff; }
+        .ml-btn.on-sat span { color:#d4a0ff; }
+        #mlPop {
+            position:fixed; background:rgba(4,4,14,.96); color:#fff;
+            padding:8px 12px; border-radius:8px; font-size:12px;
+            z-index:9999; border:1px solid #2a2a3a; pointer-events:none;
+            display:none; line-height:1.8; box-shadow:0 4px 18px rgba(0,0,0,.7);
+            max-width:220px;
         }
-        .ml-btn:hover  { background:rgba(255,255,255,0.07); border-color:#444; }
-        .ml-btn:hover span { color:#999; }
-        .ml-btn.on     { background:rgba(80,160,255,0.18); border-color:#4a9eff; }
-        .ml-btn.on span { color:#7bbfff; }
-        .ml-btn.base-on { background:rgba(60,220,100,0.15); border-color:#3dcc66; }
-        .ml-btn.base-on span { color:#66dd99; }
-        #mlValuePop {
-            position: fixed;
-            background: rgba(5,5,15,0.95);
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            z-index: 9999;
-            border: 1px solid #333;
-            pointer-events: none;
-            display: none;
-            line-height: 1.8;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.6);
-            max-width: 230px;
-        }
-        #mlValuePop b { font-size:13px; display:block; border-bottom:1px solid #333; padding-bottom:4px; margin-bottom:4px; }
-        @keyframes alertPulse {
-            0%   { box-shadow: 0 0 0 0 rgba(255,50,50,0.8); }
-            70%  { box-shadow: 0 0 0 10px rgba(255,50,50,0); }
-            100% { box-shadow: 0 0 0 0 rgba(255,50,50,0); }
-        }
+        #mlPop .pt { font-size:13px; font-weight:700; border-bottom:1px solid #333; padding-bottom:3px; margin-bottom:4px; }
     `;
     document.head.appendChild(s);
 }
+
+function mkBtn(id, emoji, title, cls, onclick) {
+    var b = document.createElement('button');
+    b.className = 'ml-btn ' + (cls||'');
+    b.id = 'mlb-' + id;
+    b.title = title;
+    b.innerHTML = emoji + '<span>' + title + '</span>';
+    b.onclick = onclick;
+    return b;
+}
+
+function sep() { var d=document.createElement('div'); d.className='ml-sep'; return d; }
+function lbl(t) { var s=document.createElement('span'); s.className='ml-lbl'; s.textContent=t; return s; }
 
 function createBar() {
     if (document.getElementById('mlBar')) return;
     var bar = document.createElement('div');
     bar.id = 'mlBar';
 
-    var groups = ['BASE','MET','SAT'];
-    var groupLabels = { BASE:'Base', MET:'Meteorología', SAT:'Satélite' };
+    // BASE
+    bar.appendChild(lbl('Base'));
+    Object.keys(BASE_TILES).forEach(function(id) {
+        var d = BASE_TILES[id];
+        bar.appendChild(mkBtn(id, d.label, d.title, id==='dark'?'on-base':'', function(){ switchBase(this.id.replace('mlb-',''));}.bind({id:'mlb-'+id})));
+    });
 
-    groups.forEach(function(g, gi) {
-        var lbl = document.createElement('span');
-        lbl.className = 'ml-group-lbl';
-        lbl.textContent = groupLabels[g];
-        bar.appendChild(lbl);
+    bar.appendChild(sep());
 
-        ALL_LAYERS.filter(function(l){ return l.group===g; }).forEach(function(def) {
-            var btn = document.createElement('button');
-            btn.className = 'ml-btn' + (def.id==='base_dark' ? ' base-on' : '');
-            btn.id = 'mlb-' + def.id;
-            btn.title = def.title;
-            btn.innerHTML = def.label + '<span>' + def.title + '</span>';
-            btn.onclick = function(){ handleLayerClick(def.id); };
-            bar.appendChild(btn);
-        });
+    // MET
+    bar.appendChild(lbl('Met'));
+    Object.keys(MET_TILES).forEach(function(id) {
+        var d = MET_TILES[id];
+        bar.appendChild(mkBtn(id, d.label, d.title, '', function(){ toggleMet(this.id.replace('mlb-',''));}.bind({id:'mlb-'+id})));
+    });
 
-        if (gi < groups.length-1) {
-            var sep = document.createElement('div');
-            sep.className = 'ml-sep';
-            bar.appendChild(sep);
-        }
+    bar.appendChild(sep());
+
+    // SAT
+    bar.appendChild(lbl('Sat'));
+    Object.keys(SAT_TILES).forEach(function(id) {
+        var d = SAT_TILES[id];
+        bar.appendChild(mkBtn(id, d.label, d.title, '', function(){ toggleSat(this.id.replace('mlb-',''));}.bind({id:'mlb-'+id})));
     });
 
     var mapEl = document.getElementById('map');
     if (mapEl) {
         mapEl.style.position = 'relative';
         mapEl.insertBefore(bar, mapEl.firstChild);
-        setTimeout(function(){ if(window.leafletMap) window.leafletMap.invalidateSize(); }, 200);
+        setTimeout(function(){ if(window.leafletMap) window.leafletMap.invalidateSize(); }, 300);
     }
 
-    // Popup de valor
     var pop = document.createElement('div');
-    pop.id = 'mlValuePop';
+    pop.id = 'mlPop';
     document.body.appendChild(pop);
 }
 
-function handleLayerClick(id) {
-    var def = ALL_LAYERS.find(function(l){ return l.id===id; });
-    if (!def) return;
-    if (def.type === 'base') { switchBase(id); return; }
-    if (activeLayers[id])   { removeLayer(id); return; }
-    addLayer(def);
-}
-
+// ========== CAMBIAR MAPA BASE ==========
 function switchBase(id) {
     if (!window.leafletMap) return;
-    if (BASE_LAYER_OBJ) { window.leafletMap.removeLayer(BASE_LAYER_OBJ); BASE_LAYER_OBJ=null; }
-    var def = ALL_LAYERS.find(function(l){ return l.id===id; });
-    BASE_LAYER_OBJ = L.tileLayer(def.url, { attribution:def.attr, maxZoom:20 });
-    BASE_LAYER_OBJ.addTo(window.leafletMap);
-    BASE_LAYER_OBJ.bringToBack();
-    ALL_LAYERS.filter(function(l){ return l.type==='base'; }).forEach(function(l){
-        var b=document.getElementById('mlb-'+l.id);
-        if(b) b.className='ml-btn'+(l.id===id?' base-on':'');
+
+    // Quitar base actual
+    if (currentBaseLayer) {
+        window.leafletMap.removeLayer(currentBaseLayer);
+        currentBaseLayer = null;
+    }
+
+    // También quitar cualquier TileLayer existente que sea base
+    window.leafletMap.eachLayer(function(layer) {
+        if (layer instanceof L.TileLayer && layer._isBase) {
+            window.leafletMap.removeLayer(layer);
+        }
+    });
+
+    var d = BASE_TILES[id];
+    currentBaseLayer = L.tileLayer(d.url, { attribution: d.attr, maxZoom: 20, zIndex: 1 });
+    currentBaseLayer._isBase = true;
+    currentBaseLayer.addTo(window.leafletMap);
+    currentBaseLayer.bringToBack();
+
+    // Actualizar botones
+    Object.keys(BASE_TILES).forEach(function(k) {
+        var b = document.getElementById('mlb-' + k);
+        if (b) b.className = 'ml-btn' + (k === id ? ' on-base' : '');
     });
 }
 
-function addLayer(def) {
+// ========== CAPAS METEOROLÓGICAS ==========
+function toggleMet(id) {
     if (!window.leafletMap) return;
-    var layer;
-    if (def.type==='owm') {
-        layer = L.tileLayer(
-            'https://tile.openweathermap.org/map/'+def.owm+'/{z}/{x}/{y}.png?appid='+OWM_KEY,
-            { opacity:def.opacity||0.65, attribution:'© OpenWeatherMap', maxZoom:20 }
-        );
-    } else if (def.type==='rainviewer') {
-        var urls = {
-            radar:    'https://tilecache.rainviewer.com/v2/radar/nowcast/{z}/{x}/{y}/2/1_1.png',
-            infrared: 'https://tilecache.rainviewer.com/v2/satellite/infrared/{z}/{x}/{y}/0/1_1.png',
-            vapor:    'https://tilecache.rainviewer.com/v2/satellite/vapor/{z}/{x}/{y}/0/1_1.png'
-        };
-        layer = L.tileLayer(urls[def.rv], { opacity:0.55, attribution:'© RainViewer', maxZoom:15 });
-    }
-    if (layer) {
-        layer.addTo(window.leafletMap);
-        activeLayers[def.id] = layer;
-        var b=document.getElementById('mlb-'+def.id);
-        if(b) b.classList.add('on');
-    }
-}
-
-function removeLayer(id) {
+    var b = document.getElementById('mlb-' + id);
     if (activeLayers[id]) {
         window.leafletMap.removeLayer(activeLayers[id]);
         delete activeLayers[id];
-        var b=document.getElementById('mlb-'+id);
-        if(b) b.classList.remove('on');
+        if (b) b.className = 'ml-btn';
+        return;
     }
+    var d = MET_TILES[id];
+    var layer = L.tileLayer(
+        'https://tile.openweathermap.org/map/' + d.owm + '/{z}/{x}/{y}.png?appid=' + OWM_KEY,
+        { opacity: d.op, attribution: '© OpenWeatherMap', maxZoom: 20, zIndex: 5 }
+    );
+    layer.addTo(window.leafletMap);
+    activeLayers[id] = layer;
+    if (b) b.className = 'ml-btn on-met';
 }
 
-// ========== CLICK EN MAPA → POPUP ==========
-function onMapClick(e) {
-    var hasOWM = Object.keys(activeLayers).some(function(id){
-        var d=ALL_LAYERS.find(function(l){return l.id===id;});
-        return d && d.type==='owm';
+// ========== CAPAS SATÉLITE ==========
+function toggleSat(id) {
+    if (!window.leafletMap) return;
+    var b = document.getElementById('mlb-' + id);
+    if (activeLayers[id]) {
+        window.leafletMap.removeLayer(activeLayers[id]);
+        delete activeLayers[id];
+        if (b) b.className = 'ml-btn';
+        return;
+    }
+    var d = SAT_TILES[id];
+    var layer = L.tileLayer(d.url, {
+        opacity: d.op, attribution: '© RainViewer / Esri',
+        maxZoom: d.maxZ || 20, minZoom: 2, zIndex: 4
     });
-    if (!hasOWM) return;
+    layer.addTo(window.leafletMap);
+    activeLayers[id] = layer;
+    if (b) b.className = 'ml-btn on-sat';
+}
 
-    var lat=e.latlng.lat.toFixed(4), lon=e.latlng.lng.toFixed(4);
-    fetch('https://api.openweathermap.org/data/2.5/weather?lat='+lat+'&lon='+lon+'&appid='+OWM_KEY+'&units=metric&lang=es')
-        .then(function(r){return r.json();})
-        .then(function(d){
-            if(!d||!d.main) return;
-            var lines=[];
-            if(activeLayers['temp'])     lines.push('🌡️ <b>'+Math.round(d.main.temp)+'°C</b> (sens. '+Math.round(d.main.feels_like)+'°C)');
-            if(activeLayers['rain'])     lines.push('🌧️ <b>'+((d.rain&&d.rain['1h'])||0)+' mm/h</b>');
-            if(activeLayers['wind'])     lines.push('💨 <b>'+Math.round((d.wind&&d.wind.speed||0)*3.6)+' km/h</b>'+(d.wind&&d.wind.gust?' ráf. '+Math.round(d.wind.gust*3.6):''));
-            if(activeLayers['clouds'])   lines.push('☁️ <b>'+((d.clouds&&d.clouds.all)||0)+'%</b>');
-            if(activeLayers['pressure']) lines.push('📊 <b>'+d.main.pressure+' hPa</b>');
-            if(activeLayers['humidity']) lines.push('💦 <b>'+d.main.humidity+'%</b>');
-            if(!lines.length) return;
+// ========== CLICK → DATOS EN EL PUNTO ==========
+function onMapClick(e) {
+    var hasMet = Object.keys(activeLayers).some(function(id){ return MET_TILES[id]; });
+    if (!hasMet) return;
 
-            var pop=document.getElementById('mlValuePop');
-            if(!pop) return;
-            var city=d.name+(d.sys&&d.sys.country?', '+d.sys.country:'');
-            pop.innerHTML='<b>'+city+'</b>'+lines.join('<br>');
-            pop.style.display='block';
+    var lat = e.latlng.lat.toFixed(4), lon = e.latlng.lng.toFixed(4);
+    fetch('https://api.openweathermap.org/data/2.5/weather?lat='+lat+'&lon='+lon+
+          '&appid='+OWM_KEY+'&units=metric&lang=es')
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+            if (!d || !d.main) return;
+            var lines = [];
+            if (activeLayers['temp'])     lines.push('🌡️ <b>'+Math.round(d.main.temp)+'°C</b> (sens. '+Math.round(d.main.feels_like)+'°C)');
+            if (activeLayers['rain'])     lines.push('🌧️ <b>'+((d.rain&&d.rain['1h'])||0)+' mm/h</b>');
+            if (activeLayers['wind'])     lines.push('💨 <b>'+Math.round((d.wind&&d.wind.speed||0)*3.6)+' km/h</b>'+(d.wind&&d.wind.gust?' ráf.'+Math.round(d.wind.gust*3.6):''));
+            if (activeLayers['clouds'])   lines.push('☁️ <b>'+((d.clouds&&d.clouds.all)||0)+'%</b>');
+            if (activeLayers['pressure']) lines.push('📊 <b>'+d.main.pressure+' hPa</b>');
+            if (activeLayers['humidity']) lines.push('💦 <b>'+d.main.humidity+'%</b>');
+            if (!lines.length) return;
 
-            var pt=window.leafletMap.latLngToContainerPoint(e.latlng);
-            var rect=document.getElementById('map').getBoundingClientRect();
-            var px=rect.left+pt.x+14, py=rect.top+pt.y-20;
-            if(px+240>window.innerWidth) px=px-250;
-            if(py<rect.top+60) py=rect.top+60;
-            pop.style.left=px+'px'; pop.style.top=py+'px';
-            setTimeout(function(){pop.style.display='none';},5000);
+            var pop = document.getElementById('mlPop');
+            if (!pop) return;
+            var city = d.name + (d.sys&&d.sys.country ? ', '+d.sys.country : '');
+            pop.innerHTML = '<div class="pt">'+city+'</div>' + lines.join('<br>');
+            pop.style.display = 'block';
+
+            var pt = window.leafletMap.latLngToContainerPoint(e.latlng);
+            var rect = document.getElementById('map').getBoundingClientRect();
+            var px = rect.left + pt.x + 14;
+            var py = rect.top  + pt.y - 20;
+            if (px + 230 > window.innerWidth) px -= 240;
+            if (py < rect.top + 55) py = rect.top + 55;
+            pop.style.left = px + 'px';
+            pop.style.top  = py + 'px';
+            setTimeout(function(){ pop.style.display='none'; }, 5000);
         }).catch(function(){});
 }
 
 // ========== INIT ==========
 window.initMapLayers = function() {
-    if (mapLayersInitialized||!window.leafletMap) return;
+    if (mapLayersInitialized || !window.leafletMap) return;
     injectCSS();
     createBar();
+
+    // Capturar la capa base que puso app.js al init
+    window.leafletMap.eachLayer(function(layer) {
+        if (layer instanceof L.TileLayer) {
+            layer._isBase = true;
+            currentBaseLayer = layer;
+        }
+    });
+
     window.leafletMap.on('click', onMapClick);
     mapLayersInitialized = true;
-    console.log('✅ Capas del mapa inicializadas');
+    console.log('✅ Capas del mapa v4 inicializadas');
 };
 
-var _w = setInterval(function(){
+var _w = setInterval(function() {
     if (window.leafletMap && window.mapInitialized) {
         clearInterval(_w);
-        setTimeout(window.initMapLayers, 400);
+        setTimeout(window.initMapLayers, 500);
     }
 }, 500);

@@ -16,12 +16,12 @@ var BASE_TILES = {
 };
 
 var MET_TILES = {
-    temp:     { label:'🌡️', title:'Temp',    owm:'temp_new',           op:0.70 },
-    rain:     { label:'🌧️', title:'Lluvia',  owm:'precipitation_new',  op:0.70 },
-    wind:     { label:'💨', title:'Viento',  owm:'wind_new',            op:0.65 },
-    clouds:   { label:'☁️', title:'Nubes',   owm:'clouds_new',          op:0.60 },
-    pressure: { label:'📊', title:'Presión', owm:'pressure_new',        op:0.60 },
-    humidity: { label:'💦', title:'Humedad', owm:'humidity_new',        op:0.65 },
+    temp:     { label:'🌡️', title:'Temp',    owm:'temp_new',           op:0.85 },
+    rain:     { label:'🌧️', title:'Lluvia',  owm:'precipitation_new',  op:0.85 },
+    wind:     { label:'💨', title:'Viento',  owm:'wind_new',            op:0.80 },
+    clouds:   { label:'☁️', title:'Nubes',   owm:'clouds_new',          op:0.75 },
+    pressure: { label:'📊', title:'Presión', owm:'pressure_new',        op:0.75 },
+    humidity: { label:'💦', title:'Humedad', owm:'humidity_new',        op:0.80 },
 };
 
 // Solo radar funciona bien en RainViewer sin restricción de zoom

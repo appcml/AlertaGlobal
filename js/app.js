@@ -1644,6 +1644,10 @@ function initMap() {
     window.leafletMap = leafletMap;
     updateMapMarkers(externalAlerts);
     startMapAutoRefresh();
+    // Notificar a map-layers.js
+    setTimeout(function(){
+        if(typeof window.initMapLayers==='function') window.initMapLayers();
+    }, 600);
 }
 
 function getMapIcon(alert) {

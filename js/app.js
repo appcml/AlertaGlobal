@@ -1129,13 +1129,33 @@ function loadAlerts() {
     if (loc.lat && typeof window.loadAlertsForLocation === 'function') {
         var radius = getUserRadiusKm() || 500;
         scanFn = function(cb) {
-            window.loadAlertsForLocation({
-                lat: loc.lat,
-                lon: loc.lon,
-                name: loc.name || loc.city || 'Tu zona'
-            }, radius)
-                .then(cb)
-                .catch(function() { loadExternalSources(cb); });
+            // Ejecutar fuentes externas Y motor de alertas en paralelo
+            var tasks = [
+                window.loadAlertsForLocation({
+                    lat: loc.lat, lon: loc.lon,
+                    name: loc.name || loc.city || 'Tu zona'
+                }, radius)
+            ];
+            // Agregar motor de alertas si está disponible
+            if (typeof window.runAlertEngine === 'function') {
+                tasks.push(window.runAlertEngine(loc.lat, loc.lon, loc.name||'Tu zona', radius));
+            }
+            Promise.allSettled(tasks).then(function(results) {
+                var all = [];
+                results.forEach(function(r) {
+                    if (r.status === 'fulfilled') all = all.concat(r.value||[]);
+                });
+                // Deduplicar: si ya existe alerta del mismo tipo de fuente oficial, no duplicar del engine
+                var seen = {};
+                all = all.filter(function(a) {
+                    var key = (a.type||'') + '_' + Math.round((a.distKm||0)/50);
+                    if (seen[key] && (seen[key].priority||0) >= (a.priority||0)) return false;
+                    seen[key] = a;
+                    return true;
+                });
+                all.sort(function(a,b){ return (b.priority||0)-(a.priority||0); });
+                cb(all);
+            }).catch(function() { loadExternalSources(cb); });
         };
     } else {
         scanFn = loadExternalSources;

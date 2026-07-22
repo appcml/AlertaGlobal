@@ -1161,25 +1161,27 @@ function loadAlerts() {
             // Radio global → mostrar todo
             if (radius === 0) return true;
 
-            // ── Alertas CON coordenadas → filtrar por distancia real ──
-            if (a.lat != null && a.lon != null) {
-                var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-                a.distKm = Math.round(d);
-                // Sismos M5+: siempre mostrar (afectan zonas lejanas)
-                if (a.type === 'SISMO' && (a.magnitude||0) >= 5) return true;
-                // Tsunamis/Huracanes: siempre mostrar
-                if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type)) return true;
-                // Incendios con distKm=0: locales
-                if (a.distKm === 0) return true;
-                return d <= radius;
-            }
-
-            // ── Alertas SIN coordenadas (climáticas locales) ──
+            // Alertas climáticas locales (distKm=0) → siempre mostrar
             if (a.distKm === 0) return true;
 
-            // ── Alertas SIN coordenadas — incluir por tipo ──
-            var src = a.source || '';
-            var type = a.type || '';
+            // Alertas de OpenWeather (son de la ubicación del usuario) → mostrar
+            if (/OpenWeather/i.test(a.source||'')) return true;
+
+            // Sin coordenadas → filtrar por fuente
+            if (a.lat == null || a.lon == null) {
+                if (/SENAPRED|SHOA|CSN|MET Norway/i.test(a.source||'')) return true;
+                return (a.priority||0) >= 80;
+            }
+
+            // Con coordenadas → calcular distancia
+            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            a.distKm = Math.round(d);
+
+            // Tsunamis y huracanes: zona de impacto amplia
+            if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return d <= 3000;
+
+            // Todo lo demás: respetar radio del usuario
+            return d <= radius;
 
             // Fuentes chilenas: solo si usuario está en Chile
             if (/SENAPRED|CONAF|SHOA|CSN/i.test(src)) return userInChile;

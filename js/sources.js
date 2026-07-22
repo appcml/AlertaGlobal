@@ -623,6 +623,278 @@ async function fetchSHOA() {
     } catch(e) { console.error('SHOA:',e); return []; }
 }
 
+// ========== 12. NASA FIRMS — Incendios casi en tiempo real ==========
+async function fetchNASAFIRMS(lat, lon) {
+    try {
+        // NASA FIRMS API pública (sin key para datos generales)
+        var url = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&limit=100&days=1';
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
+        return (d.events||[]).map(function(ev){
+            var geo=ev.geometry&&ev.geometry[0];
+            var flat=null,flon=null;
+            if(geo&&geo.type==='Point'){flon=geo.coordinates[0];flat=geo.coordinates[1];}
+            return {
+                id:'firms_'+ev.id, type:'INCENDIO ACTIVO', icon:'🔥',
+                title:'🔥 '+ev.title,
+                description:'Incendio detectado en tiempo real por satélite NASA FIRMS.',
+                lat:flat, lon:flon,
+                distKm:(lat&&flat)?Math.round(calcDistance(lat,lon,flat,flon)):null,
+                time:new Date((geo&&geo.date)||Date.now()).toLocaleString('es-CL'),
+                source:'NASA FIRMS', priority:80, color:'#FF3300'
+            };
+        }).filter(function(a){return a.lat;});
+    } catch(e) { return []; }
+}
+
+// ========== 13. NOAA Space Weather — Clima espacial ==========
+async function fetchSpaceWeather() {
+    try {
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
+        var alerts = [];
+        if (Array.isArray(d) && d.length > 1) {
+            var last = d[d.length-1];
+            var kp = parseFloat(last[1]) || 0;
+            if (kp >= 5) {
+                var level = kp>=8?'Extrema':kp>=7?'Severa':kp>=6?'Fuerte':'Moderada';
+                var icon = kp>=7?'☢️':'🌌';
+                alerts.push({
+                    id:'kp_'+Date.now(), type:'TORMENTA GEOMAGNÉTICA', icon:icon,
+                    title:icon+' Tormenta geomagnética '+level+' (Kp='+kp+')',
+                    description:'Índice Kp='+kp+'. '+
+                        (kp>=7?'Posibles auroras visibles en latitudes medias. Riesgo para satélites y redes eléctricas.':
+                         kp>=6?'Posibles auroras visibles. Interferencias en GPS y comunicaciones.':
+                         'Actividad geomagnética elevada. Posibles interferencias de radio.'),
+                    lat:null, lon:null, distKm:null,
+                    time:new Date().toLocaleString('es-CL'),
+                    source:'NOAA SWPC', priority:kp>=7?85:70, color:'#9B59B6'
+                });
+            }
+        }
+        // CME y alertas de la NOAA
+        try {
+            var alerts2 = await (await fetch(
+                'https://api.allorigins.win/raw?url='+
+                encodeURIComponent('https://services.swpc.noaa.gov/products/alerts.json'),
+                {signal:AbortSignal.timeout(8000)}
+            )).json();
+            (alerts2||[]).slice(0,5).forEach(function(a){
+                if (!a.message) return;
+                var msg = a.message.substring(0,200);
+                var pri = /WATCH|WARNING/i.test(a.product_id||'') ? 78 : 60;
+                alerts.push({
+                    id:'swpc_'+a.serial_number, type:'CLIMA ESPACIAL', icon:'☀️',
+                    title:'☀️ NOAA SWPC: '+(a.product_id||'Alerta Solar'),
+                    description:msg,
+                    lat:null, lon:null, distKm:null,
+                    time:new Date(a.issue_datetime||Date.now()).toLocaleString('es-CL'),
+                    source:'NOAA SWPC', priority:pri, color:'#E67E22'
+                });
+            });
+        } catch(e2) {}
+        return alerts;
+    } catch(e) { console.error('SpaceWeather:',e); return []; }
+}
+
+// ========== 14. OpenSky Network — Aviación en tiempo real ==========
+async function fetchOpenSky(lat, lon, radius) {
+    if (!lat||!lon) return [];
+    try {
+        // OpenSky tiene API pública sin key (con límites)
+        var deg = (radius||200)/111;
+        var url = 'https://opensky-network.org/api/states/all?'+
+                  'lamin='+(lat-deg)+'&lamax='+(lat+deg)+
+                  '&lomin='+(lon-deg)+'&lomax='+(lon+deg);
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
+        if (!d||!d.states||!d.states.length) return [];
+        // Solo mostrar vuelos de emergencia o interesantes
+        var emergency = (d.states||[]).filter(function(s){
+            return s[15]===true || s[14]==='squawk 7700' || s[14]==='squawk 7600';
+        });
+        return emergency.map(function(s){
+            return {
+                id:'sky_'+s[0], type:'EMERGENCIA AÉREA', icon:'✈️',
+                title:'✈️ Emergencia: '+s[1]+' ('+s[0]+')',
+                description:'Vuelo en situación de emergencia. Alt: '+(s[7]?Math.round(s[7])+'m':'?')+
+                            ' Vel: '+(s[9]?Math.round(s[9]*3.6)+'km/h':'?'),
+                lat:s[6]||null, lon:s[5]||null,
+                distKm:s[6]&&lat?Math.round(calcDistance(lat,lon,s[6],s[5])):null,
+                time:new Date().toLocaleString('es-CL'),
+                source:'OpenSky Network', priority:92, color:'#FF0000'
+            };
+        }).filter(function(a){return a.lat;});
+    } catch(e) { return []; }
+}
+
+// ========== 15. MeteoAlarm — Alertas oficiales Europa ==========
+async function fetchMeteoAlarm() {
+    try {
+        // MeteoAlarm RSS feed (cap alerts)
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-europe');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
+        var xml = new DOMParser().parseFromString(txt,'text/xml');
+        var alerts = [];
+        xml.querySelectorAll('entry').forEach(function(e){
+            var title = (e.querySelector('title')||{}).textContent||'';
+            var summary = (e.querySelector('summary')||{}).textContent||'';
+            var updated = (e.querySelector('updated')||{}).textContent||'';
+            if (!title||title.length<3) return;
+            var severity = /extreme/i.test(summary)?95:/severe/i.test(summary)?82:/moderate/i.test(summary)?65:50;
+            var tipo = 'ALERTA METEOROLÓGICA', icono = '⚠️';
+            if (/wind/i.test(title+summary))     { tipo='VIENTO FUERTE';     icono='💨'; }
+            if (/rain|flood/i.test(title+summary)){ tipo='LLUVIA/INUNDACIÓN'; icono='🌧️'; }
+            if (/snow|ice/i.test(title+summary))  { tipo='NIEVE/HIELO';      icono='❄️'; }
+            if (/thunder/i.test(title+summary))   { tipo='TORMENTA';         icono='⛈️'; }
+            if (/heat/i.test(title+summary))      { tipo='CALOR EXTREMO';    icono='🔥'; }
+            if (/fog/i.test(title+summary))       { tipo='NIEBLA';           icono='🌫️'; }
+            alerts.push({
+                id:'ma_'+alerts.length+'_'+Date.now(),
+                type:tipo, icon:icono,
+                title:'🇪🇺 MeteoAlarm: '+title.substring(0,80),
+                description:summary.replace(/<[^>]+>/g,'').substring(0,200),
+                lat:null, lon:null, distKm:null,
+                time:updated?new Date(updated).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
+                source:'MeteoAlarm (Europa)', priority:severity, color:'#FF6B35'
+            });
+        });
+        return alerts.slice(0,15);
+    } catch(e) { console.error('MeteoAlarm:',e); return []; }
+}
+
+// ========== 16. Global Flood Awareness System (GloFAS) ==========
+async function fetchGloFAS() {
+    try {
+        // Copernicus GloFAS via GDACS (integrado en API GDACS)
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?'+
+                  'fromDate='+new Date(Date.now()-3*86400000).toISOString().split('T')[0]+
+                  '&toDate='+new Date().toISOString().split('T')[0]+
+                  '&alertlevel=Red,Orange&eventtype=FL');
+        var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
+        var events = d.features||d.results||[];
+        return events.slice(0,20).map(function(ev){
+            var p=ev.properties||ev;
+            var alert=(p.alertlevel||'').toLowerCase();
+            return {
+                id:'flood_'+(p.eventid||Math.random()),
+                type:'INUNDACIÓN', icon:'💧',
+                title:'💧 Inundación — '+(p.name||p.country||'GloFAS'),
+                description:(p.description||'Inundación confirmada por GloFAS/Copernicus').substring(0,200),
+                lat:parseFloat(p.latitude||0)||null,
+                lon:parseFloat(p.longitude||0)||null,
+                distKm:null,
+                time:new Date(p.fromDate||Date.now()).toLocaleString('es-CL'),
+                source:'GloFAS / Copernicus',
+                priority:alert==='red'?88:70,
+                color:alert==='red'?'#0044ff':'#0088ff'
+            };
+        }).filter(function(a){return a.lat;});
+    } catch(e) { return []; }
+}
+
+// ========== 17. OpenAQ — Calidad del Aire Ciudadana ==========
+async function fetchOpenAQ(lat, lon) {
+    if (!lat||!lon) return [];
+    try {
+        var url = 'https://api.openaq.org/v2/measurements?'+
+                  'coordinates='+lat+','+lon+'&radius=50000&limit=20&order_by=datetime&sort=desc&'+
+                  'parameter=pm25,pm10,o3,no2,co';
+        var d = await (await fetch(url,{
+            signal:AbortSignal.timeout(10000),
+            headers:{'X-API-Key':''}  // OpenAQ permite acceso sin key
+        })).json();
+        if (!d||!d.results||!d.results.length) return [];
+        // Agrupar por parameter y tomar último valor
+        var vals = {};
+        (d.results||[]).forEach(function(r){
+            if (!vals[r.parameter]) vals[r.parameter]=r.value;
+        });
+        var pm25 = vals.pm25, pm10 = vals.pm10, o3 = vals.o3;
+        var alerts = [];
+        if (pm25 && pm25>35) alerts.push({
+            id:'oaq_pm25_'+Date.now(), type:'PM2.5 ELEVADO', icon:'😷',
+            title:'😷 PM2.5: '+pm25.toFixed(1)+' μg/m³ (OpenAQ)',
+            description:'Partículas finas PM2.5 por encima del límite recomendado OMS (25 μg/m³).',
+            lat:lat, lon:lon, distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenAQ', priority:pm25>75?80:65, color:'#8B4513'
+        });
+        if (pm10 && pm10>50) alerts.push({
+            id:'oaq_pm10_'+Date.now(), type:'PM10 ELEVADO', icon:'😷',
+            title:'😷 PM10: '+pm10.toFixed(1)+' μg/m³ (OpenAQ)',
+            description:'Partículas PM10 por encima del límite recomendado.',
+            lat:lat, lon:lon, distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenAQ', priority:60, color:'#CD853F'
+        });
+        return alerts;
+    } catch(e) { return []; }
+}
+
+// ========== 18. NOAA Storm Prediction Center — Tornados USA ==========
+async function fetchSPC() {
+    try {
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://www.spc.noaa.gov/products/spcacrss.xml');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
+        var xml = new DOMParser().parseFromString(txt,'text/xml');
+        var alerts = [];
+        xml.querySelectorAll('item').forEach(function(item){
+            var title = (item.querySelector('title')||{}).textContent||'';
+            var desc  = (item.querySelector('description')||{}).textContent||'';
+            var date  = (item.querySelector('pubDate')||{}).textContent||'';
+            if (!title||title.length<3) return;
+            var tipo='ALERTA CONVECTIVA', icono='⛈️', pri=75;
+            if (/tornado/i.test(title+desc)) { tipo='TORNADO'; icono='🌪️'; pri=92; }
+            if (/severe.*thunderstorm/i.test(title+desc)) { tipo='TORMENTA SEVERA'; icono='⛈️'; pri=82; }
+            if (/hail/i.test(title+desc)) { tipo='GRANIZO SEVERO'; icono='🌨️'; pri=78; }
+            alerts.push({
+                id:'spc_'+alerts.length+'_'+Date.now(),
+                type:tipo, icon:icono,
+                title:'🇺🇸 SPC: '+title.substring(0,80),
+                description:desc.replace(/<[^>]+>/g,'').substring(0,200),
+                lat:null, lon:null, distKm:null,
+                time:date?new Date(date).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
+                source:'NOAA SPC', priority:pri, color:'#FF0000'
+            });
+        });
+        return alerts.slice(0,10);
+    } catch(e) { return []; }
+}
+
+// ========== 19. Pacific Tsunami Warning Center (PTWC) ==========
+async function fetchPTWC() {
+    try {
+        var url = 'https://api.allorigins.win/raw?url='+
+                  encodeURIComponent('https://www.tsunami.gov/events/xml/PHEBAtom.xml');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
+        var xml = new DOMParser().parseFromString(txt,'text/xml');
+        var alerts = [];
+        xml.querySelectorAll('entry').forEach(function(e){
+            var title   = (e.querySelector('title')||{}).textContent||'';
+            var summary = (e.querySelector('summary')||{}).textContent||'';
+            var updated = (e.querySelector('updated')||{}).textContent||'';
+            if (!title||title.length<3) return;
+            var isCancelled = /cancel|no.*threat/i.test(title+summary);
+            var pri = isCancelled?20:(/warning/i.test(title)?98:/watch/i.test(title)?88:70);
+            var icon = isCancelled?'✅':'🌊';
+            alerts.push({
+                id:'ptwc_'+alerts.length+'_'+Date.now(),
+                type:isCancelled?'SIN AMENAZA TSUNAMI':'ALERTA TSUNAMI', icon:icon,
+                title:icon+' PTWC: '+title.substring(0,80),
+                description:summary.replace(/<[^>]+>/g,'').substring(0,200),
+                lat:null, lon:null, distKm:null,
+                time:updated?new Date(updated).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
+                source:'Pacific Tsunami Warning Center',
+                priority:pri, color:pri>=85?'#0000ff':'#4169E1'
+            });
+        });
+        return alerts.slice(0,5);
+    } catch(e) { return []; }
+}
+
 
 async function loadAlertsForLocation(locationInput, radiusKm) {
     radiusKm=radiusKm||500;
@@ -638,25 +910,40 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
     console.log('📍 Alertas para:',cityName,lat,lon,'radio:',radiusKm);
 
     var isChile = lat&&lat<-17&&lat>-56&&lon>-76&&lon<-65;
+    var isUSA   = lat&&lat>18&&lat<72&&lon>-180&&lon<-65;
     var all=[];
     (await Promise.allSettled([
-        fetchOpenMeteoAlerts(lat,lon,cityName), // Open-Meteo clima
-        fetchAirQuality(lat,lon,cityName),       // Calidad del aire
-        fetchUSGS(lat,lon),                      // Sismos USGS (global)
-        fetchEMSC(lat,lon),                      // 🆕 Sismos EMSC (Europa)
-        Promise.resolve(getVolcanes(lat,lon)),   // Volcanes
-        fetchHurricanes(),                       // Huracanes NOAA
-        fetchFires(lat,lon),                     // Incendios NASA
-        fetchWeatherGov(lat,lon),                // NWS (solo EEUU)
-        fetchGDACS(),                            // GDACS ONU
-        isChile ? fetchDMCChile(lat,lon) : Promise.resolve([]), // 🆕 DMC Chile
-        isChile ? fetchSHOA()            : Promise.resolve([])  // 🆕 SHOA Chile
+        // ── Clima local ──
+        fetchOpenMeteoAlerts(lat,lon,cityName),
+        fetchAirQuality(lat,lon,cityName),
+        fetchOpenAQ(lat,lon),                    // OpenAQ partículas
+        // ── Sismos ──
+        fetchUSGS(lat,lon),
+        fetchEMSC(lat,lon),
+        // ── Volcanes e Incendios ──
+        Promise.resolve(getVolcanes(lat,lon)),
+        fetchNASAFIRMS(lat,lon),                 // NASA FIRMS incendios
+        fetchFires(lat,lon),                     // NASA EONET backup
+        // ── Ciclones y Tsunamis ──
+        fetchHurricanes(),
+        fetchPTWC(),                             // Pacific Tsunami WC
+        // ── Desastres globales ──
+        fetchGDACS(),
+        fetchGloFAS(),                           // Inundaciones
+        fetchSpaceWeather(),                     // Clima espacial
+        // ── Tormentas severas ──
+        fetchSPC(),                              // NOAA SPC tornados
+        fetchMeteoAlarm(),                       // Alertas Europa
+        // ── Regionales ──
+        isUSA   ? fetchWeatherGov(lat,lon) : Promise.resolve([]),
+        isChile ? fetchDMCChile(lat,lon)   : Promise.resolve([]),
+        isChile ? fetchSHOA()              : Promise.resolve([])
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
     return all
         .filter(function(a){
             if(a.distKm===0||!a.distKm) return true;
-            if(/TSUNAMI|HURACÁN|CICLÓN/.test(a.type||'')) return true;
+            if(/TSUNAMI|HURACÁN|CICLÓN|ALERTA TSUNAMI/.test(a.type||'')) return true;
             return a.distKm<=radiusKm;
         })
         .sort(function(a,b){return (b.priority||0)-(a.priority||0);});
@@ -668,16 +955,22 @@ async function loadGlobalAlerts() {
     var all=[];
     (await Promise.allSettled([
         fetchUSGS(0,0),
-        fetchEMSC(0,0),                 // 🆕 Sismos Europa
+        fetchEMSC(0,0),
         Promise.resolve(getVolcanes(0,0)),
         fetchHurricanes(),
+        fetchNASAFIRMS(0,0),
         fetchFires(0,0),
         fetchGDACS(),
-        fetchSHOA()                     // 🆕 SHOA siempre global
+        fetchGloFAS(),
+        fetchSpaceWeather(),
+        fetchSPC(),
+        fetchMeteoAlarm(),
+        fetchPTWC(),
+        fetchSHOA()
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
-    return all.filter(function(a){return (a.priority||0)>=35;})
+    return all.filter(function(a){return (a.priority||0)>=30;})
               .sort(function(a,b){return (b.priority||0)-(a.priority||0);})
-              .slice(0,350);
+              .slice(0,500);
 }
 
 // ========== EXPORTS ==========

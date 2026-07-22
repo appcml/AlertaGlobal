@@ -165,6 +165,22 @@ async function fetchWeatherAlerts(lat, lon) {
             time:new Date().toLocaleString('es-CL'),
             source:'OpenWeatherMap', priority:48, color:'#4169E1'
         });
+        else if (rain>1) alerts.push({
+            id:'rain_light_'+Date.now(), type:'LLUVIA', icon:'🌂',
+            title:'Lluvia '+rain.toFixed(1)+' mm/h — '+city,
+            description:'Precipitación leve en la zona.',
+            lat:lat,lon:lon,distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenWeatherMap', priority:32, color:'#6495ED'
+        });
+        else if (code>=500&&code<600) alerts.push({
+            id:'rain_drizzle_'+Date.now(), type:'LLOVIZNA', icon:'🌂',
+            title:'Llovizna — '+city+' ('+wdesc+')',
+            description:'Precipitación leve detectada.',
+            lat:lat,lon:lon,distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenWeatherMap', priority:28, color:'#B0C4DE'
+        });
 
         // Viento fuerte
         if (ws>70) alerts.push({
@@ -175,13 +191,21 @@ async function fetchWeatherAlerts(lat, lon) {
             time:new Date().toLocaleString('es-CL'),
             source:'OpenWeatherMap', priority:72, color:'#87CEEB'
         });
-        else if (ws>50) alerts.push({
+        else if (ws>40) alerts.push({
             id:'wind_mod_'+Date.now(), type:'VIENTO MODERADO', icon:'🌬️',
-            title:'Viento '+Math.round(ws)+' km/h — '+city,
-            description:'Advertencia de viento'+(wg>0?' (ráfagas '+Math.round(wg)+' km/h)':'')+'. Precaución.',
+            title:'Viento moderado '+Math.round(ws)+' km/h — '+city,
+            description:'Advertencia de viento moderado'+(wg>0?' (ráfagas '+Math.round(wg)+' km/h)':'')+'. Precaución.',
             lat:lat,lon:lon,distKm:0,
             time:new Date().toLocaleString('es-CL'),
-            source:'OpenWeatherMap', priority:52, color:'#ADD8E6'
+            source:'OpenWeatherMap', priority:55, color:'#ADD8E6'
+        });
+        else if (ws>20) alerts.push({
+            id:'wind_light_'+Date.now(), type:'VIENTO', icon:'🌬️',
+            title:'Viento '+Math.round(ws)+' km/h'+(wg>20?' (ráf. '+Math.round(wg)+' km/h)':'')+' — '+city,
+            description:'Viento moderado en la zona.',
+            lat:lat,lon:lon,distKm:0,
+            time:new Date().toLocaleString('es-CL'),
+            source:'OpenWeatherMap', priority:38, color:'#E0FFFF'
         });
 
         // Nevada

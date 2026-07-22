@@ -850,10 +850,19 @@ async function fetchSPC() {
             if (/tornado/i.test(title+desc)) { tipo='TORNADO'; icono='🌪️'; pri=92; }
             if (/severe.*thunderstorm/i.test(title+desc)) { tipo='TORMENTA SEVERA'; icono='⛈️'; pri=82; }
             if (/hail/i.test(title+desc)) { tipo='GRANIZO SEVERO'; icono='🌨️'; pri=78; }
+            // Traducir y limpiar título
+            var titleES = title
+                .replace(/Convective Outlook/gi,'Perspectiva Convectiva')
+                .replace(/Day 1/gi,'Día 1').replace(/Day 2/gi,'Día 2')
+                .replace(/Severe Thunderstorm/gi,'Tormenta Severa')
+                .replace(/Tornado Watch/gi,'Vigilancia Tornado')
+                .replace(/Tornado Warning/gi,'Alerta Tornado')
+                .replace(/Hail/gi,'Granizo')
+                .substring(0,80);
             alerts.push({
                 id:'spc_'+alerts.length+'_'+Date.now(),
                 type:tipo, icon:icono,
-                title:'🇺🇸 SPC: '+title.substring(0,80),
+                title:'🇺🇸 SPC: '+titleES,
                 description:desc.replace(/<[^>]+>/g,'').substring(0,200),
                 lat:null, lon:null, distKm:null,
                 time:date?new Date(date).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
@@ -942,7 +951,28 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
 
     return all
         .filter(function(a){
-            if(a.distKm===0||!a.distKm) return true;
+            if(a.distKm===0||!a.distKm) {
+                // Alertas sin coordenadas: solo mostrar si son globalmente importantes
+                // o si vienen de fuentes que ya filtran por zona
+                var src = a.source||'';
+                var tipo = a.type||'';
+                // Tsunamis, clima espacial y huracanes siempre
+                if(/TSUNAMI|GEOMAGNÉTICA|CLIMA ESPACIAL|SOLAR|HURACÁN|TIFÓN/i.test(tipo)) return true;
+                // Alertas de MeteoAlarm y SPC: solo si la ubicación es Europa o EEUU
+                if(/MeteoAlarm/i.test(src)) {
+                    var isEurope = lat&&lat>35&&lat<72&&lon>-10&&lon<45;
+                    return isEurope;
+                }
+                if(/NOAA SPC/i.test(src)) {
+                    var isUSA2 = lat&&lat>18&&lat<72&&lon>-180&&lon<-65;
+                    return isUSA2;
+                }
+                // Alertas Open-Meteo, DMC, SHOA: siempre (ya son locales)
+                if(/Open-Meteo|DMC|SHOA|OpenWeather|OpenAQ/i.test(src)) return true;
+                // PTWC y GDACS: solo alertas críticas
+                if(/PTWC|GDACS|GloFAS/i.test(src)) return (a.priority||0)>=70;
+                return (a.priority||0)>=75;
+            }
             if(/TSUNAMI|HURACÁN|CICLÓN|ALERTA TSUNAMI/.test(a.type||'')) return true;
             return a.distKm<=radiusKm;
         })

@@ -1683,13 +1683,30 @@ function generateTips() {
         }
     }
 
-    if (!tips.length) {
-        tips.push({ icon:'✅', title:'Sin alertas activas', color:'#00E676', tips:[
-            'No hay fenómenos naturales significativos en tu zona',
-            'Igual mantén tu mochila de emergencia lista',
+    // ── TIPS DE PRIMEROS AUXILIOS (siempre al final, como referencia) ──
+    tips.push({ icon:'🏥', title:'Primeros Auxilios — Referencia rápida', color:'#00BCD4', tips:[
+        '🫀 RCP: 30 compresiones fuerte + 2 respiraciones — llama al 112 primero',
+        '🩸 Hemorragia: presión constante 10 min, no retires la tela, eleva la extremidad',
+        '🔥 Quemadura: agua fría 20 min, nunca hielo ni cremas, cubre con tela húmeda',
+        '🔴 Atragantamiento: 5 golpes espalda + 5 compresiones abdominales (Heimlich)',
+        '🐍 Mordedura: no hagas cortes, inmoviliza, lleva a urgencias con descripción del animal'
+    ]});
+
+    // ── TIPS OFFLINE / PREPARACIÓN (siempre visibles) ──
+    tips.push({ icon:'🎒', title:'Preparación para emergencias', color:'#FF9800', tips:[
+        '📦 Mochila de emergencia: agua (3L/persona), comida no perecedera, linterna, radio, botiquín',
+        '📋 Plan familiar: todos deben saber el punto de encuentro y los números de emergencia',
+        '💧 Agua: guarda al menos 3 litros por persona para 72 horas',
+        '🔋 Carga tu teléfono y powerbank antes de una alerta prevista',
+        '📻 Sin internet: una radio FM a pilas es tu mejor fuente de información'
+    ]});
+
+    if (!tips.length || tips.length <= 2) {
+        tips.unshift({ icon:'✅', title:'Sin alertas activas en tu zona', color:'#00E676', tips:[
+            'No hay fenómenos naturales significativos en tu zona ahora',
+            'Los tips de preparación y primeros auxilios están siempre disponibles abajo',
             'Revisa que tu familia sepa el plan de evacuación',
-            'Guarda los números de emergencia en tu teléfono',
-            'Sigue las alertas para mantenerte informado'
+            'Guarda los números de emergencia: Chile 132/133/131/112'
         ]});
     }
     return tips;

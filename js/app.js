@@ -1145,18 +1145,27 @@ function loadAlerts() {
                 results.forEach(function(r) {
                     if (r.status === 'fulfilled') all = all.concat(r.value||[]);
                 });
-                // Deduplicar: mismo tipo + misma ubicación geográfica (~25km)
-                // Usar coordenadas redondeadas para no eliminar eventos distintos del mismo tipo
+                // Deduplicar inteligente:
+                // - Alertas locales (distKm=0 o sin coords): dedup por tipo+palabras clave del título
+                //   Evita que Open-Meteo y alert-engine generen 2 "CHUBASCOS FUERTES" para la misma ciudad
+                // - Alertas con coords: dedup por tipo + grilla ~25km
+                //   Permite que sismo en Constitución y sismo en Caldera sean distintos
                 var seen = {};
                 all = all.filter(function(a) {
-                    var latKey  = a.lat  != null ? Math.round(a.lat  * 4) : 'X'; // ~25km de grilla
-                    var lonKey  = a.lon  != null ? Math.round(a.lon  * 4) : 'X';
-                    var typeKey = (a.type||'').toUpperCase().substring(0,8);
-                    // Para alertas sin coords (climáticas locales), usar source_id o título abreviado
-                    var noCoord = (a.lat == null || a.lon == null);
-                    var key = noCoord
-                        ? typeKey + '_' + (a.source_id || (a.title||'').substring(0,20))
-                        : typeKey + '_' + latKey + '_' + lonKey;
+                    var typeKey = (a.type||'').toUpperCase().replace(/\s+/g,'').substring(0,12);
+                    var isLocal = (a.distKm === 0 || (a.lat == null && a.lon == null));
+                    var key;
+                    if (isLocal) {
+                        // Para locales: tipo + primeras 3 palabras del título (captura ciudad)
+                        var titleWords = (a.title||'').split(' ').slice(0,3).join('_').toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+                        key = typeKey + '_' + titleWords;
+                    } else {
+                        // Para geolocalizadas: tipo + grilla ~25km
+                        var latKey = Math.round((a.lat||0) * 4);
+                        var lonKey = Math.round((a.lon||0) * 4);
+                        key = typeKey + '_' + latKey + '_' + lonKey;
+                    }
                     if (seen[key] && (seen[key].priority||0) >= (a.priority||0)) return false;
                     seen[key] = a;
                     return true;

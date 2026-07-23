@@ -255,15 +255,15 @@
                     </div>
                     <div class="sos-card">
                         <div class="sos-icon">🔦</div>
-                        <div class="sos-title">Linterna</div>
-                        <div class="sos-desc">Enciende la linterna de tu dispositivo</div>
-                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">💡 Encender</button>
+                        <div class="sos-title">Señal SOS</div>
+                        <div class="sos-desc">Linterna en morse SOS (···−−−···) para ser localizado</div>
+                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">🔦 Señal SOS</button>
                     </div>
                     <div class="sos-card">
                         <div class="sos-icon">📻</div>
-                        <div class="sos-title">Modo Offline</div>
-                        <div class="sos-desc">Guías sin conexión a internet</div>
-                        <button class="sos-btn" onclick="openOfflineGuide()">📥 Ver</button>
+                        <div class="sos-title">Radio / Walkie</div>
+                        <div class="sos-desc">Frecuencias de emergencia y apps walkie-talkie</div>
+                        <button class="sos-btn" onclick="openRadioPanel()">📡 Ver canales</button>
                     </div>
                 </div>
             </div>
@@ -366,6 +366,15 @@
         </div>
     </div>
 
+    <!-- POPUP RADIO DE EMERGENCIA -->
+    <div class="modal" id="radioPopup">
+        <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto;">
+            <button class="modal-close" onclick="document.getElementById('radioPopup').style.display='none'">&times;</button>
+            <h2 style="color:var(--accent);margin-bottom:16px;">📻 Radio & Comunicación de Emergencia</h2>
+            <div id="radioContent"></div>
+        </div>
+    </div>
+
     <!-- POPUP IDIOMAS -->
     <div class="modal" id="langPopup">
         <div class="modal-content" style="max-width:320px;">
@@ -435,7 +444,7 @@
     <script src="js/alert-engine.js?v=1784395434"></script>
     <script src="js/app.js?v=1784395434"></script>
     <script src="js/map-layers.js?v=1784395434"></script>
-    <script src="js/sos.js?v=1784834584"></script>
+    <script src="js/sos.js?v=1784835138"></script>
 
     <script>
         // ── TÉRMINOS Y CONDICIONES ──

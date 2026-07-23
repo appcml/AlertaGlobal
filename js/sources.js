@@ -287,6 +287,80 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             });
         }
 
+        // ── MAREJADAS COSTERAS (Marine API Open-Meteo — sin key) ──
+        // Detectar si la ubicación es costera: intentar la API marine siempre
+        // Si falla, es tierra adentro → silencioso
+        try {
+            var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?' +
+                'latitude='+lat+'&longitude='+lon +
+                '&current=wave_height,swell_wave_height,wave_period,wind_wave_height' +
+                '&timezone=auto';
+            var rm = await fetch(marineUrl, {signal: AbortSignal.timeout(8000)});
+            if (rm.ok) {
+                var dm = await rm.json();
+                if (dm && dm.current && dm.current.wave_height != null) {
+                    var wh  = dm.current.wave_height       || 0;
+                    var swh = dm.current.swell_wave_height || 0;
+                    var wp  = dm.current.wave_period       || 0;
+                    if (wh >= 4.0) alerts.push({
+                        id:'om_wave_ex_'+Date.now(), type:'MAREJADA PELIGROSA', icon:'🌊',
+                        title:'Marejada peligrosa '+wh.toFixed(1)+' m — '+city,
+                        description:'Olas de '+wh.toFixed(1)+' m. Peligro extremo. No acercarse al borde costero ni caletas.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo Marine', priority:88, color:'#0000CD'
+                    });
+                    else if (wh >= 2.5) alerts.push({
+                        id:'om_wave_hi_'+Date.now(), type:'MAREJADA', icon:'🌊',
+                        title:'Marejada '+wh.toFixed(1)+' m — '+city,
+                        description:'Olas de '+wh.toFixed(1)+' m. Playas peligrosas. Evitar zonas costeras bajas.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo Marine', priority:72, color:'#0055AA'
+                    });
+                    else if (wh >= 1.5) alerts.push({
+                        id:'om_wave_md_'+Date.now(), type:'MAR AGITADO', icon:'🌊',
+                        title:'Mar agitado '+wh.toFixed(1)+' m — '+city,
+                        description:'Olas moderadas. Precaución en actividades marítimas y pesca artesanal.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo Marine', priority:52, color:'#4169E1'
+                    });
+                    if (swh >= 3.0) alerts.push({
+                        id:'om_swell_'+Date.now(), type:'OLEAJE DE FONDO', icon:'🌊',
+                        title:'Oleaje de fondo '+swh.toFixed(1)+' m — '+city,
+                        description:'Swell de '+swh.toFixed(1)+' m (período '+wp.toFixed(0)+'s). Riesgo para embarcaciones menores y bañistas.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo Marine', priority:65, color:'#1E90FF'
+                    });
+                }
+            }
+        } catch(em) { /* ubicación sin datos marinos — continental */ }
+
+        // ── UV EXTREMO ──
+        if (c.is_day && temp > 15) {
+            try {
+                var uvUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?' +
+                    'latitude='+lat+'&longitude='+lon+'&current=uv_index&timezone=auto';
+                var ruv = await fetch(uvUrl, {signal: AbortSignal.timeout(6000)});
+                if (ruv.ok) {
+                    var duv = await ruv.json();
+                    var uvi = (duv && duv.current && duv.current.uv_index) || 0;
+                    if (uvi >= 11) alerts.push({
+                        id:'om_uv_ex_'+Date.now(), type:'UV EXTREMO', icon:'☀️',
+                        title:'Radiación UV extrema (UVI '+uvi.toFixed(0)+') — '+city,
+                        description:'Índice UV extremo. Evitar exposición 10:00-16:00. Protector 50+, gafas y sombrero obligatorios.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo UV', priority:70, color:'#FF4500'
+                    });
+                    else if (uvi >= 8) alerts.push({
+                        id:'om_uv_hi_'+Date.now(), type:'UV ALTO', icon:'☀️',
+                        title:'Radiación UV muy alta (UVI '+uvi.toFixed(0)+') — '+city,
+                        description:'Índice UV muy alto. Protector solar 30+, limitar exposición al mediodía.',
+                        lat:lat,lon:lon,distKm:0, time:now,
+                        source:'Open-Meteo UV', priority:52, color:'#FF8C00'
+                    });
+                }
+            } catch(euv) { /* sin datos UV */ }
+        }
+
         return alerts;
     } catch(e) { console.error('Open-Meteo:',e); return []; }
 }
@@ -623,6 +697,201 @@ async function fetchSHOA() {
     } catch(e) { console.error('SHOA:',e); return []; }
 }
 
+// ========== 11b. CSN — Centro Sismológico Nacional Chile ==========
+// Fuente oficial: www.sismologia.cl — más rápida que USGS para sismos chilenos
+//
+// ESTRUCTURA REAL de la tabla HTML del CSN (3 columnas):
+// <td><a href="/...">2026-07-23 11:04:09\n41 km al SE de Constitución</a></td>
+// <td>46</td>      ← profundidad en km (número solo, sin texto)
+// <td>3.5</td>     ← magnitud (número decimal)
+//
+// El link en cells[0] contiene fecha + salto de línea + descripción del lugar
+async function fetchCSN(lat, lon) {
+    var today = new Date();
+    var y = today.getFullYear();
+    var m = String(today.getMonth()+1).padStart(2,'0');
+    var d = String(today.getDate()).padStart(2,'0');
+    var dateStr = y + m + d;
+
+    var targetUrl = 'https://www.sismologia.cl/sismicidad/catalogo/'+y+'/'+m+'/'+dateStr+'.html';
+
+    var proxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest='
+    ];
+
+    var html = null;
+    for (var i = 0; i < proxies.length; i++) {
+        try {
+            var r = await fetch(proxies[i] + encodeURIComponent(targetUrl),
+                               {signal: AbortSignal.timeout(12000)});
+            if (r.ok) { html = await r.text(); break; }
+        } catch(e) { continue; }
+    }
+
+    if (!html || html.length < 200) return [];
+
+    // ── Mapa de referencia: ciudades chilenas → coordenadas ──
+    var CIUDADES = {
+        'santiago':[-33.45,-70.67],'concepcion':[-36.82,-73.04],
+        'valparaiso':[-33.05,-71.61],'temuco':[-38.74,-72.59],
+        'antofagasta':[-23.65,-70.40],'iquique':[-20.21,-70.15],
+        'arica':[-18.49,-70.30],'la serena':[-29.90,-71.25],
+        'puerto montt':[-41.47,-72.94],'coquimbo':[-29.95,-71.34],
+        'rancagua':[-34.17,-70.74],'talca':[-35.43,-71.67],
+        'chillan':[-36.61,-72.10],'los angeles':[-37.47,-72.35],
+        'osorno':[-40.57,-73.13],'valdivia':[-39.81,-73.25],
+        'constitucion':[-35.33,-72.42],'curico':[-34.98,-71.24],
+        'linares':[-35.85,-71.60],'san antonio':[-33.60,-71.62],
+        'pichilemu':[-34.39,-72.00],'ovalle':[-30.60,-71.20],
+        'caldera':[-27.07,-70.82],'copiapo':[-27.37,-70.33],
+        'illapel':[-31.63,-71.17],'punta arenas':[-53.16,-70.92],
+        'coyhaique':[-45.57,-72.07],'cauquenes':[-35.97,-72.32],
+        'parral':[-36.14,-71.83],'santa cruz':[-34.63,-71.36],
+        'calama':[-22.45,-68.93],'tocopilla':[-22.09,-70.20],
+        'mejillones':[-23.10,-70.45],'taltal':[-25.40,-70.49],
+        'papudo':[-32.50,-71.45],'los vilos':[-31.91,-71.51],
+        'vicuna':[-30.03,-70.71],'salamanca':[-31.77,-70.97],
+        'fray jorge':[-30.65,-71.65],'ollague':[-21.23,-68.25],
+        'ollagüe':[-21.23,-68.25],'carrizal bajo':[-28.07,-71.14],
+        'cañete':[-37.80,-73.40],'lebu':[-37.61,-73.65],
+        'arauco':[-37.25,-73.32],'tirua':[-38.35,-73.50],
+        'camarones':[-19.02,-69.86],'camina':[-19.57,-69.42],
+        'vichuquen':[-34.87,-72.02],'pelluhue':[-35.82,-72.57],
+        'empedrado':[-35.60,-72.27],'chanco':[-35.73,-72.53],
+        'quirihue':[-36.28,-72.54],'coelemu':[-36.49,-72.71],
+        'florida':[-37.10,-72.65],'santa barbara':[-37.67,-72.02],
+        'mulchen':[-37.72,-72.24],'nacimiento':[-37.50,-72.67],
+        'angol':[-37.80,-72.71],'victoria':[-38.23,-72.33],
+        'curacautin':[-38.44,-71.88],'lonquimay':[-38.44,-71.24],
+        'villarrica':[-39.28,-72.23],'pucon':[-39.27,-71.96],
+        'loncoche':[-39.37,-72.63],'pitrufquen':[-38.97,-72.65],
+        'panguipulli':[-39.64,-72.34],'la union':[-40.29,-73.08],
+        'rio bueno':[-40.33,-72.97],'mafil':[-39.68,-72.93],
+        'llanquihue':[-41.24,-73.00],'frutillar':[-41.12,-73.07],
+        'puerto varas':[-41.32,-72.98],'calbuco':[-41.77,-73.13],
+        'maullin':[-41.63,-73.59],'ancud':[-41.87,-73.83],
+        'castro':[-42.48,-73.77],'quellon':[-43.12,-73.62],
+        'chaiten':[-42.92,-72.71],'futaleufu':[-43.19,-71.86]
+    };
+
+    // ── Función para calcular coords del sismo desde descripción ──
+    function lugarACoords(lugarText) {
+        // Formato CSN: "41 km al SE de Constitución" o "2 km al NE de Camiña"
+        var m = lugarText.match(/(\d+)\s*km\s*al\s+([NSEO]+(?:\s*de\s*[NSEO]+)?)\s+de\s+(.+)/i);
+        if (!m) return null;
+        var distRef = parseInt(m[1]);
+        var dir = m[2].trim().toUpperCase()
+            .replace(/\s+DE\s+/i,'')   // "NO de" → "NO"
+            .replace(/NORTE/i,'N').replace(/SUR/i,'S')
+            .replace(/ESTE/i,'E').replace(/OESTE/i,'O');
+        var ciudad = m[3].trim().toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+
+        var coords = null;
+        for (var k in CIUDADES) {
+            var kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+            if (ciudad === kn || ciudad.includes(kn) || kn.includes(ciudad)) {
+                coords = CIUDADES[k]; break;
+            }
+        }
+        if (!coords) return null;
+
+        var kmPerDegLat = 111;
+        var kmPerDegLon = 111 * Math.cos(coords[0] * Math.PI / 180);
+        var dLat = 0, dLon = 0;
+        // Diagonal: componente 0.707
+        var factor = (dir.length >= 2) ? 0.707 : 1.0;
+        if (dir.includes('N')) dLat =  (distRef * factor) / kmPerDegLat;
+        if (dir.includes('S')) dLat = -(distRef * factor) / kmPerDegLat;
+        if (dir.includes('E')) dLon =  (distRef * factor) / kmPerDegLon;
+        if (dir.includes('O') || dir.includes('W')) dLon = -(distRef * factor) / kmPerDegLon;
+
+        return [coords[0] + dLat, coords[1] + dLon];
+    }
+
+    var alerts = [];
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(html, 'text/html');
+    var rows = doc.querySelectorAll('table tr');
+
+    rows.forEach(function(row) {
+        var cells = row.querySelectorAll('td');
+        // La tabla CSN tiene 3 columnas: [fecha+lugar | profundidad | magnitud]
+        if (cells.length < 3) return;
+
+        // ── Columna 0: fecha + lugar (dentro de un <a>) ──
+        var cell0text = (cells[0].textContent || '').replace(/\s+/g,' ').trim();
+        // Separar por el patrón de fecha "YYYY-MM-DD HH:MM:SS"
+        var fechaMatch = cell0text.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*(.*)/);
+        if (!fechaMatch) return;
+
+        var fechaText = fechaMatch[1].trim();  // "2026-07-23 11:04:09"
+        var lugar     = fechaMatch[2].trim();  // "41 km al SE de Constitución"
+
+        // ── Columna 1: profundidad (número, puede tener " km" o no) ──
+        var profText = (cells[1].textContent || '').replace(/[^0-9]/g,'').trim();
+        var prof = parseInt(profText) || 0;
+
+        // ── Columna 2: magnitud (número decimal) ──
+        var magText = (cells[2].textContent || '').replace(/[^0-9.]/g,'').trim();
+        var mag = parseFloat(magText);
+        if (isNaN(mag) || mag < 2.0 || mag > 10.0) return; // Validar rango real
+
+        // ── Parsear fecha → timestamp para ordenar y formatear ──
+        // "2026-07-23 11:04:09" → ISO sin zona → interpretar como hora local Chile
+        var fechaISO = fechaText.replace(' ', 'T'); // "2026-07-23T11:04:09"
+        var fechaObj;
+        try {
+            // El CSN reporta en hora LOCAL chilena (CLT = UTC-3, CLST = UTC-4)
+            // Agregamos offset -03:00 para parseo correcto
+            fechaObj = new Date(fechaISO + '-03:00');
+            if (isNaN(fechaObj.getTime())) fechaObj = new Date(fechaISO);
+        } catch(e) { fechaObj = new Date(); }
+
+        var timeMs  = fechaObj.getTime();
+        var timeStr = fechaObj.toLocaleString('es-CL');
+
+        // ── Calcular coordenadas del epicentro ──
+        var coords = lugarACoords(lugar);
+        var sisoLat = coords ? coords[0] : null;
+        var sisoLon = coords ? coords[1] : null;
+        var distKmCalc = (lat && sisoLat) ? Math.round(calcDistance(lat, lon, sisoLat, sisoLon)) : null;
+
+        // ── Link al detalle ──
+        var linkEl = row.querySelector('a');
+        var href   = linkEl ? linkEl.getAttribute('href') : '';
+
+        // ── Prioridad y color según magnitud ──
+        var pri = mag>=7?96 : mag>=6?88 : mag>=5?76 : mag>=4?62 : mag>=3?50 : 38;
+        var col = mag>=6?'#ff0000' : mag>=5?'#ff4400' : mag>=4?'#ff9900' : mag>=3?'#ffcc00' : '#ffee88';
+        var icon = mag>=6?'🔴' : mag>=5?'🟠' : mag>=4?'🟡' : '⚪';
+
+        alerts.push({
+            id: 'csn_' + dateStr + '_' + timeMs,
+            type: 'SISMO', icon: icon,
+            title: 'Sismo M' + mag.toFixed(1) + ' — ' + lugar,
+            description: lugar + ' · Prof. ' + prof + ' km' +
+                         (distKmCalc ? ' · ' + distKmCalc + ' km de ti' : ''),
+            lat: sisoLat, lon: sisoLon,
+            magnitude: mag, depth: prof,
+            distKm: distKmCalc,
+            time: timeStr,
+            _timeMs: timeMs,   // guardamos ms para ordenar
+            source: 'CSN — Chile',
+            priority: pri, color: col,
+            link: 'https://www.sismologia.cl' + (href || '')
+        });
+    });
+
+    // Ordenar por tiempo descendente (más reciente primero)
+    alerts.sort(function(a,b){ return (b._timeMs||0) - (a._timeMs||0); });
+
+    console.log('🇨🇱 CSN:', alerts.length, 'sismos hoy (M2.0+)');
+    return alerts;
+}
+
 // ========== 12. NASA FIRMS — Incendios casi en tiempo real ==========
 async function fetchNASAFIRMS(lat, lon) {
     try {
@@ -946,7 +1215,8 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         // ── Regionales ──
         isUSA   ? fetchWeatherGov(lat,lon) : Promise.resolve([]),
         isChile ? fetchDMCChile(lat,lon)   : Promise.resolve([]),
-        isChile ? fetchSHOA()              : Promise.resolve([])
+        isChile ? fetchSHOA()              : Promise.resolve([]),
+        isChile ? fetchCSN(lat,lon)        : Promise.resolve([])
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
     return all

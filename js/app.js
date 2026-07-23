@@ -140,7 +140,8 @@ function setupMapZoomListener() {
     if (!leafletMap) return;
     leafletMap.on('zoomend', function() {
         var userLoc = getActiveLocation();
-        updateMapMarkersSmartZoom(externalAlerts, userLoc);
+        var allForMap = externalAlerts.concat(window._globalMapAlerts || []);
+        updateMapMarkersSmartZoom(allForMap, userLoc);
     });
 }
 
@@ -320,23 +321,20 @@ function showToast(msg) {
 }
 function formatTime(ts) {
     if (!ts) return '';
-    // Strings especiales no-fecha (ej: "Próx. 24h") → mostrar tal cual
-    if (typeof ts === 'string' && !/\d{4}|\d{2}:\d{2}/.test(ts)) return ts;
-    var t = typeof ts === 'string' ? new Date(ts).getTime() : (typeof ts === 'number' ? ts : NaN);
-    if (isNaN(t)) return String(ts);
+    var t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
+    if (isNaN(t)) return ts;
     var d = Date.now() - t;
     var dt = new Date(t);
-    var hour  = String(dt.getHours()).padStart(2,'0');
-    var min   = String(dt.getMinutes()).padStart(2,'0');
     var day   = String(dt.getDate()).padStart(2,'0');
     var month = String(dt.getMonth()+1).padStart(2,'0');
-    var timeStr = hour+':'+min;
-    var dateStr = day+'/'+month+' '+timeStr;
-    if (d < 0)         return 'Hoy '+timeStr;
-    if (d < 60000)     return 'Ahora · '+timeStr;
-    if (d < 3600000)   return 'Hace '+Math.floor(d/60000)+' min · '+timeStr;
-    if (d < 86400000)  return 'Hace '+Math.floor(d/3600000)+'h · '+timeStr;
-    if (d < 172800000) return 'Ayer '+timeStr;
+    var year  = dt.getFullYear();
+    var hour  = String(dt.getHours()).padStart(2,'0');
+    var min   = String(dt.getMinutes()).padStart(2,'0');
+    var dateStr = day+'/'+month+'/'+year+' '+hour+':'+min;
+    if (d < 60000)     return 'Hace menos de 1 min · '+dateStr;
+    if (d < 3600000)   return 'Hace '+Math.floor(d/60000)+' min · '+dateStr;
+    if (d < 86400000)  return 'Hace '+Math.floor(d/3600000)+'h · '+dateStr;
+    if (d < 172800000) return 'Ayer · '+dateStr;
     return dateStr;
 }
 function calcDistance(lat1, lon1, lat2, lon2) {
@@ -1181,6 +1179,25 @@ function loadAlerts() {
         alertsLoading = false;
         externalAlerts = alerts || [];
         if (loading) loading.style.display = 'none';
+
+        // ── Cargar alertas globales para enriquecer el mapa ──
+        // Se ejecuta en paralelo y fusiona con las locales para los pins del mapa
+        if (typeof loadGlobalAlerts === 'function') {
+            loadGlobalAlerts().then(function(globalAlerts) {
+                if (!globalAlerts || !globalAlerts.length) return;
+                // Fusionar: las alertas globales solo van al mapa, no a la lista
+                var localIds = {};
+                externalAlerts.forEach(function(a){ localIds[a.id] = true; });
+                var onlyGlobal = globalAlerts.filter(function(a){
+                    return !localIds[a.id] && a.lat != null && a.lon != null;
+                });
+                window._globalMapAlerts = onlyGlobal;
+                // Actualizar mapa con todos los pins
+                var allForMap = externalAlerts.concat(onlyGlobal);
+                updateMapMarkersSmartZoom(allForMap, getActiveLocation());
+                console.log('🌍 Alertas globales visibles:', onlyGlobal.length, 'pins extra en mapa');
+            }).catch(function(){});
+        }
 
         // ── FILTRO INTELIGENTE POR PROXIMIDAD ──
         // Orden: localidad → comuna → provincia → país → global

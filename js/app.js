@@ -320,20 +320,23 @@ function showToast(msg) {
 }
 function formatTime(ts) {
     if (!ts) return '';
-    var t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
-    if (isNaN(t)) return ts;
+    // Strings especiales no-fecha (ej: "Próx. 24h") → mostrar tal cual
+    if (typeof ts === 'string' && !/\d{4}|\d{2}:\d{2}/.test(ts)) return ts;
+    var t = typeof ts === 'string' ? new Date(ts).getTime() : (typeof ts === 'number' ? ts : NaN);
+    if (isNaN(t)) return String(ts);
     var d = Date.now() - t;
     var dt = new Date(t);
-    var day   = String(dt.getDate()).padStart(2,'0');
-    var month = String(dt.getMonth()+1).padStart(2,'0');
-    var year  = dt.getFullYear();
     var hour  = String(dt.getHours()).padStart(2,'0');
     var min   = String(dt.getMinutes()).padStart(2,'0');
-    var dateStr = day+'/'+month+'/'+year+' '+hour+':'+min;
-    if (d < 60000)     return 'Hace menos de 1 min · '+dateStr;
-    if (d < 3600000)   return 'Hace '+Math.floor(d/60000)+' min · '+dateStr;
-    if (d < 86400000)  return 'Hace '+Math.floor(d/3600000)+'h · '+dateStr;
-    if (d < 172800000) return 'Ayer · '+dateStr;
+    var day   = String(dt.getDate()).padStart(2,'0');
+    var month = String(dt.getMonth()+1).padStart(2,'0');
+    var timeStr = hour+':'+min;
+    var dateStr = day+'/'+month+' '+timeStr;
+    if (d < 0)         return 'Hoy '+timeStr;
+    if (d < 60000)     return 'Ahora · '+timeStr;
+    if (d < 3600000)   return 'Hace '+Math.floor(d/60000)+' min · '+timeStr;
+    if (d < 86400000)  return 'Hace '+Math.floor(d/3600000)+'h · '+timeStr;
+    if (d < 172800000) return 'Ayer '+timeStr;
     return dateStr;
 }
 function calcDistance(lat1, lon1, lat2, lon2) {

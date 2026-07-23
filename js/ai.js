@@ -185,31 +185,19 @@ function analyzeAlerts(alerts, location, lang, callback) {
     // Mostrar indicador de carga
     showAILoading(true);
 
-    // Intentar Cic_IA primero
-    analyzeWithCicIA(prompt)
+    // CicIA servidor caído — usar Anthropic directamente
+    analyzeWithAnthropic(prompt)
         .then(function(result) {
-            console.log('🤖 Cic_IA respondió OK');
+            console.log('🤖 Anthropic respondió OK');
             var parsed = parseAIResponse(result.text);
             showAILoading(false);
             renderAISummary(parsed, result.source, alerts);
             callback(parsed);
         })
         .catch(function(e) {
-            console.log('🤖 Cic_IA falló:', e.message, '— usando Anthropic');
-            // Fallback a Anthropic
-            analyzeWithAnthropic(prompt)
-                .then(function(result) {
-                    console.log('🤖 Anthropic respondió OK');
-                    var parsed = parseAIResponse(result.text);
-                    showAILoading(false);
-                    renderAISummary(parsed, result.source, alerts);
-                    callback(parsed);
-                })
-                .catch(function(e2) {
-                    console.log('🤖 Ambas IAs fallaron:', e2.message);
-                    showAILoading(false);
-                    callback(null);
-                });
+            console.log('🤖 IA falló:', e.message);
+            showAILoading(false);
+            callback(null);
         });
 }
 

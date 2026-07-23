@@ -428,13 +428,14 @@
     <!-- SCRIPTS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="js/ai.js?v=1784420200"></script>
-    <script src="js/i18n.js?v=1784395434"></script>
+    <script src="js/i18n.js?v=1784834584"></script>
     <script src="js/sources.js?v=1784395434"></script>
     <script src="js/locations.js?v=1784395434"></script>
     <script src="js/AlertFiltering_FIX.js"></script>
     <script src="js/alert-engine.js?v=1784395434"></script>
     <script src="js/app.js?v=1784395434"></script>
     <script src="js/map-layers.js?v=1784395434"></script>
+    <script src="js/sos.js?v=1784834584"></script>
 
     <script>
         // ── TÉRMINOS Y CONDICIONES ──
@@ -664,131 +665,5 @@
         })();
     </script>
 
-    <script>
-    // ── IDIOMAS ──
-    function selectLanguage(lang) {
-        if (typeof setLanguage === 'function') setLanguage(lang);
-        document.querySelectorAll('.lang-option').forEach(function(b) {
-            b.style.borderColor = b.dataset.lang === lang ? 'var(--accent)' : '#444';
-            b.style.background  = b.dataset.lang === lang ? '#2a1a1a' : '#222';
-        });
-        document.getElementById('langPopup').style.display = 'none';
-        renderSOSNumbers();
-        if (typeof loadAlerts === 'function') loadAlerts();
-    }
-    (function() {
-        var saved = localStorage.getItem('ag_lang') || 'es';
-        document.querySelectorAll('.lang-option').forEach(function(b) {
-            if (b.dataset.lang === saved) { b.style.borderColor='var(--accent)'; b.style.background='#2a1a1a'; }
-        });
-        var btnLang = document.getElementById('btnLang');
-        if (btnLang) btnLang.addEventListener('click', function() { document.getElementById('langPopup').style.display='flex'; });
-        var btnTheme = document.getElementById('btnTheme');
-        if (btnTheme) btnTheme.addEventListener('click', function() { document.getElementById('themePopup').style.display='flex'; });
-        ['langPopup','themePopup','firstAidPopup'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) el.addEventListener('click', function(e) { if(e.target===this) this.style.display='none'; });
-        });
-    })();
-
-    // ── TEMAS (4) ──
-    var THEMES = {
-        dark:  {'--bg':'#0a0a0f','--bg2':'#111122','--card':'#1a1a2e','--text':'#eee','--accent':'#ff6666','--border':'#333'},
-        light: {'--bg':'#f5f5f5','--bg2':'#ffffff','--card':'#ffffff','--text':'#111','--accent':'#cc2222','--border':'#ddd'},
-        blue:  {'--bg':'#030d1a','--bg2':'#0a1628','--card':'#0d2040','--text':'#e0eeff','--accent':'#4488ff','--border':'#1a3060'},
-        green: {'--bg':'#040d04','--bg2':'#0a1a0a','--card':'#0d220d','--text':'#e0ffe0','--accent':'#44cc44','--border':'#1a401a'}
-    };
-    function applyTheme(name) {
-        var theme = THEMES[name]; if (!theme) return;
-        Object.keys(theme).forEach(function(k) { document.documentElement.style.setProperty(k, theme[k]); });
-        try { localStorage.setItem('ag_theme', name); } catch(e) {}
-        document.getElementById('themePopup').style.display = 'none';
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.content = theme['--bg'];
-    }
-    (function() { var s=localStorage.getItem('ag_theme')||'dark'; if(s!=='dark') applyTheme(s); })();
-
-    // ── KIT SOS — Números de emergencia por país ──
-    var EMERGENCY_NUMBERS = {
-        CL:[{label:'Bomberos',n:'132',icon:'🚒'},{label:'Carabineros',n:'133',icon:'👮'},{label:'SAMU',n:'131',icon:'🚑'},{label:'Emergencias',n:'112',icon:'🆘'},{label:'SENAPRED',n:'1455',icon:'🌊'}],
-        AR:[{label:'Policía',n:'101',icon:'👮'},{label:'Bomberos',n:'100',icon:'🚒'},{label:'Ambulancia',n:'107',icon:'🚑'},{label:'Emergencias',n:'911',icon:'🆘'}],
-        PE:[{label:'Policía',n:'105',icon:'👮'},{label:'Bomberos',n:'116',icon:'🚒'},{label:'Emergencias',n:'117',icon:'🆘'}],
-        BR:[{label:'Polícia',n:'190',icon:'👮'},{label:'Bombeiros',n:'193',icon:'🚒'},{label:'SAMU',n:'192',icon:'🚑'}],
-        US:[{label:'Emergency',n:'911',icon:'🆘'},{label:'FEMA',n:'1-800-621-3362',icon:'🏛️'}],
-        DEFAULT:[{label:'Emergencias',n:'112',icon:'🆘'},{label:'Policía local',n:'101/133',icon:'👮'},{label:'Ambulancia',n:'118/131',icon:'🚑'}]
-    };
-    function renderSOSNumbers() {
-        var c = document.getElementById('sosEmergencyNumbers'); if (!c) return;
-        var country = 'DEFAULT';
-        if (window.focusLocation && window.focusLocation.country) {
-            var cn = window.focusLocation.country.toLowerCase();
-            if (cn.includes('chile')) country='CL';
-            else if (cn.includes('argentina')) country='AR';
-            else if (cn.includes('per')) country='PE';
-            else if (cn.includes('brasil')||cn.includes('brazil')) country='BR';
-            else if (cn.includes('united states')||cn.includes('eeuu')) country='US';
-        }
-        var nums = EMERGENCY_NUMBERS[country]||EMERGENCY_NUMBERS.DEFAULT;
-        c.innerHTML = nums.map(function(n){
-            return '<a href="tel:'+n.n+'" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;text-decoration:none;color:#fff;">'+
-                '<span style="font-size:22px">'+n.icon+'</span>'+
-                '<div><div style="font-size:11px;color:#aaa;text-transform:uppercase">'+n.label+'</div>'+
-                '<div style="font-size:20px;font-weight:bold;color:var(--accent)">'+n.n+'</div></div></a>';
-        }).join('');
-    }
-    document.querySelectorAll('.tab').forEach(function(tab){
-        tab.addEventListener('click',function(){ if(this.dataset.tab==='sos') setTimeout(renderSOSNumbers,100); });
-    });
-    setTimeout(renderSOSNumbers, 600);
-
-    function triggerSOS() {
-        var num = '112';
-        if(confirm('¿Llamar al '+num+' (Número de Emergencias)?')) window.location.href='tel:'+num;
-    }
-    function shareEmergencyLocation() {
-        var lat=window.focusLocation&&window.focusLocation.lat, lon=window.focusLocation&&window.focusLocation.lon;
-        var name=(window.focusLocation&&window.focusLocation.name)||'Mi ubicación';
-        if(!lat||!lon){alert('Activa el GPS primero.');return;}
-        var msg='🆘 EMERGENCIA - Necesito ayuda
-📍 '+name+'
-Lat: '+lat.toFixed(5)+', Lon: '+lon.toFixed(5)+'
-https://maps.google.com/?q='+lat+','+lon;
-        if(navigator.share){navigator.share({title:'🆘 EMERGENCIA',text:msg});}
-        else{navigator.clipboard.writeText(msg).then(function(){alert('Copiado. Pega en WhatsApp.');}).catch(function(){window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');});}
-    }
-    var flashOn=false,flashTrack=null;
-    function toggleFlashlight(){
-        var btn=document.getElementById('btnFlashlight');
-        if(!navigator.mediaDevices){alert('Linterna no disponible');return;}
-        if(!flashOn){
-            navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){
-                flashTrack=s.getVideoTracks()[0];return flashTrack.applyConstraints({advanced:[{torch:true}]});
-            }).then(function(){flashOn=true;if(btn){btn.textContent='🌑 Apagar';btn.style.color='#ff6666';}}).catch(function(){alert('Linterna no disponible en este dispositivo');});
-        }else{
-            if(flashTrack){flashTrack.applyConstraints({advanced:[{torch:false}]});flashTrack.stop();flashTrack=null;}
-            flashOn=false;if(btn){btn.textContent='💡 Encender';btn.style.color='';}
-        }
-    }
-    var FIRST_AID_ES=[
-        {t:'🫀 RCP',s:['Llama al 112 inmediatamente','Acuesta boca arriba en superficie dura','30 compresiones centro del pecho, fuerte y rápido','2 respiraciones de rescate','Repite hasta que llegue ayuda']},
-        {t:'🩸 Hemorragia grave',s:['Presiona con tela limpia firmemente','Mantén 10 min sin soltar','Agrega más tela si se empapa','Eleva la extremidad','Llama al 131 SAMU']},
-        {t:'🔥 Quemaduras',s:['Agua fría corriente por 20 min','No uses hielo ni cremas','Cubre con tela limpia húmeda','No revientes ampollas','Busca atención médica urgente']},
-        {t:'🌍 Terremoto',s:['AGÁCHATE, CÚBRETE, AGÁRRATE','Bajo mesa sólida o junto a muro interior','Lejos de ventanas y objetos que caigan','Si afuera, aleja de edificios y postes','Espera a que pare completamente']},
-        {t:'🌊 Tsunami',s:['ALÉJATE DE LA COSTA INMEDIATAMENTE','Sube a terreno alto (mín. 30m sobre el mar)','No esperes ver el mar retroceder','Sigue instrucciones de SENAPRED','No vuelvas hasta autorización oficial']},
-        {t:'🔴 Atragantamiento',s:['Anima a toser si puede respirar','5 golpes fuertes entre omóplatos','5 compresiones abdominales (Heimlich)','Alterna golpes y compresiones','Llama al 131 si no mejora']}
-    ];
-    function openFirstAid(){
-        var guides=FIRST_AID_ES;
-        var popup=document.getElementById('firstAidPopup'),ct=document.getElementById('firstAidDetail');
-        if(!popup||!ct)return;
-        ct.innerHTML=guides.map(function(g){
-            return '<div style="margin-bottom:16px;padding:12px;background:#1a1a2e;border-radius:8px;border-left:3px solid var(--accent);">'+
-                '<div style="font-weight:bold;font-size:14px;color:var(--accent);margin-bottom:8px;">'+g.t+'</div>'+
-                '<ol style="margin:0;padding-left:18px;">'+g.s.map(function(s){return '<li style="margin-bottom:5px;">'+s+'</li>';}).join('')+'</ol></div>';
-        }).join('');
-        popup.style.display='flex';
-    }
-    function openOfflineGuide(){openFirstAid();}
-    </script>
 </body>
 </html>

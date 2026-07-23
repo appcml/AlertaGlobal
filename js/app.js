@@ -64,14 +64,10 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
     var filteredAlerts = [];
     
     if (currentZoom <= 6) {
-        // ZOOM BAJO: mostrar sismos M2.5+, volcanes, huracanes
+        // ZOOM BAJO (global): mostrar TODAS las alertas que tengan coordenadas
+        // Sin filtro de prioridad — el usuario quiere ver el mapa global completo
         filteredAlerts = allAlerts.filter(function(a) {
-            var t = (a.type||'').toUpperCase();
-            return (a.priority >= 55)
-                || (t.includes('SISMO') && (a.magnitude||0) >= 2.5)
-                || t.includes('VOLCÁN') || t.includes('ERUPCIÓN')
-                || t.includes('TSUNAMI') || t.includes('HURACÁN')
-                || t.includes('INCENDIO');
+            return a.lat != null && a.lon != null;
         });
     } else if (currentZoom <= 10) {
         // ZOOM MEDIO: alertas cercanas + importantes

@@ -64,11 +64,11 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
     var filteredAlerts = [];
     
     if (currentZoom <= 6) {
-        // ZOOM BAJO: mostrar sismos M3+, volcanes, huracanes
+        // ZOOM BAJO: mostrar sismos M2.5+, volcanes, huracanes
         filteredAlerts = allAlerts.filter(function(a) {
             var t = (a.type||'').toUpperCase();
-            return (a.priority >= 60)
-                || (t.includes('SISMO') && (a.magnitude||0) >= 3)
+            return (a.priority >= 55)
+                || (t.includes('SISMO') && (a.magnitude||0) >= 2.5)
                 || t.includes('VOLCÁN') || t.includes('ERUPCIÓN')
                 || t.includes('TSUNAMI') || t.includes('HURACÁN')
                 || t.includes('INCENDIO');

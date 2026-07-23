@@ -103,7 +103,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
                 id:'om_thunder_'+Date.now(), type:'TORMENTA ELÉCTRICA', icon:'⛈️',
                 title:'Tormenta eléctrica'+(code>=96?' con granizo':'')+' — '+city,
                 description:'Tormenta activa con rayos y lluvia intensa. Refugiarse en interior.',
-                lat:lat,lon:lon,distKm:0, time:now,
+                lat:lat,lon:lon,distKm:0, time:Date.now(),
                 source:'Open-Meteo', priority:85, color:'#FFD700'
             });
         } else if (code>=80) {
@@ -111,7 +111,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
                 id:'om_shower_'+Date.now(), type:'CHUBASCOS FUERTES', icon:'🌦️',
                 title:'Chubascos fuertes — '+city,
                 description:'Precipitación intensa por chubascos. Conducir con precaución.',
-                lat:lat,lon:lon,distKm:0, time:now,
+                lat:lat,lon:lon,distKm:0, time:Date.now(),
                 source:'Open-Meteo', priority:65, color:'#4169E1'
             });
         }
@@ -121,21 +121,21 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_rain_h_'+Date.now(), type:'LLUVIA INTENSA', icon:'🌧️',
             title:'Lluvia intensa '+rain.toFixed(1)+' mm/h — '+city,
             description:'Precipitación intensa. Riesgo de anegamientos y aludes.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:78, color:'#1E90FF'
         });
         else if (rain>5) alerts.push({
             id:'om_rain_m_'+Date.now(), type:'LLUVIA MODERADA', icon:'🌧️',
             title:'Lluvia '+rain.toFixed(1)+' mm/h — '+city,
             description:'Precipitación moderada. Vías mojadas, conducir despacio.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:52, color:'#4169E1'
         });
         else if (rain>0.5||(code>=51&&code<70)) alerts.push({
             id:'om_rain_l_'+Date.now(), type:'LLOVIZNA', icon:'🌂',
             title:'Llovizna — '+city+' ('+wmoDesc(code)+')',
             description:'Precipitación leve. '+wmoDesc(code)+'.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:30, color:'#87CEEB'
         });
 
@@ -144,14 +144,14 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_snow_h_'+Date.now(), type:'NEVADA INTENSA', icon:'❄️',
             title:'Nevada intensa '+snow.toFixed(1)+' cm/h — '+city,
             description:'Nevada intensa. Rutas cortadas posibles. Neumáticos de invierno obligatorios.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:75, color:'#B0E0E6'
         });
         else if (snow>0||(code>=70&&code<80)) alerts.push({
             id:'om_snow_l_'+Date.now(), type:'NEVADA', icon:'❄️',
             title:'Nevada — '+city,
             description:'Caída de nieve detectada. Vías resbaladizas.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:62, color:'#B0E0E6'
         });
 
@@ -160,7 +160,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_hail_'+Date.now(), type:'GRANIZO', icon:'🌨️',
             title:'Granizo — '+city,
             description:'Caída de granizo. Proteger vehículos y cultivos.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:70, color:'#B0C4DE'
         });
 
@@ -169,28 +169,28 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_wind_ex_'+Date.now(), type:'VIENTO EXTREMO', icon:'🌬️',
             title:'Viento extremo '+Math.round(ws)+' km/h (ráf. '+Math.round(wg)+') — '+city,
             description:'Viento peligroso. Riesgo de árboles y estructuras caídas. No salir.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:90, color:'#FF0000'
         });
         else if (ws>55) alerts.push({
             id:'om_wind_st_'+Date.now(), type:'VIENTO FUERTE', icon:'💨',
             title:'Viento fuerte '+Math.round(ws)+' km/h (ráf. '+Math.round(wg)+') — '+city,
             description:'Viento fuerte. Precaución al conducir y en zonas boscosas.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:72, color:'#FF6B35'
         });
         else if (ws>35) alerts.push({
             id:'om_wind_m_'+Date.now(), type:'VIENTO MODERADO', icon:'🌬️',
             title:'Viento moderado '+Math.round(ws)+' km/h — '+city,
             description:'Viento'+(wg>30?' con ráfagas de '+Math.round(wg)+' km/h':'')+'. Advertencia moderada.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:48, color:'#FFA500'
         });
         else if (ws>15) alerts.push({
             id:'om_wind_l_'+Date.now(), type:'VIENTO', icon:'🌬️',
             title:'Viento '+Math.round(ws)+' km/h — '+city,
             description:'Viento leve a moderado.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:28, color:'#ADD8E6'
         });
 
@@ -199,7 +199,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_fog_'+Date.now(), type:'NIEBLA', icon:'🌫️',
             title:'Niebla'+(vis<500?' densa':'')+' — '+city+' (visib. '+(vis/1000).toFixed(1)+' km)',
             description:'Visibilidad reducida. Peligro en rutas y vuelos.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:vis<500?65:48, color:'#C0C0C0'
         });
 
@@ -208,14 +208,14 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_heat_'+Date.now(), type:'CALOR EXTREMO', icon:'🔥',
             title:'Calor extremo '+Math.round(temp)+'°C (sens. '+Math.round(feels)+'°C) — '+city,
             description:'Temperatura peligrosa. Hidratarse y evitar exposición solar.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:80, color:'#FF4500'
         });
         else if (temp>32) alerts.push({
             id:'om_hot_'+Date.now(), type:'CALOR INTENSO', icon:'☀️',
             title:'Temperatura alta '+Math.round(temp)+'°C — '+city,
             description:'Temperatura elevada. Hidratarse bien.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:45, color:'#FF8C00'
         });
 
@@ -223,21 +223,21 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_polar_'+Date.now(), type:'FRÍO POLAR', icon:'🥶',
             title:'Frío polar '+Math.round(temp)+'°C (sens. '+Math.round(feels)+'°C) — '+city,
             description:'Condición polar. Riesgo de hipotermia. No salir sin ropa adecuada.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:85, color:'#0000CD'
         });
         else if (feels<-5) alerts.push({
             id:'om_cold_'+Date.now(), type:'FRÍO INTENSO', icon:'🧊',
             title:'Frío intenso '+Math.round(temp)+'°C (sens. '+Math.round(feels)+'°C) — '+city,
             description:'Temperatura muy baja. Riesgo de heladas y congelamiento de vías.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:65, color:'#4169E1'
         });
         else if (temp<2) alerts.push({
             id:'om_frost_'+Date.now(), type:'HELADA', icon:'🧊',
             title:'Helada posible — '+city+' ('+Math.round(temp)+'°C)',
             description:'Temperatura cerca del punto de congelamiento. Helada posible en superficies.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:55, color:'#00BFFF'
         });
 
@@ -246,7 +246,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_fire_risk_'+Date.now(), type:'RIESGO DE INCENDIO', icon:'🔥',
             title:'Alto riesgo de incendio — '+city,
             description:'Temp '+Math.round(temp)+'°C, humedad '+humid+'%, viento '+Math.round(ws)+' km/h. Condiciones extremas para incendios.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:78, color:'#FF6600'
         });
 
@@ -255,7 +255,7 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             id:'om_low_p_'+Date.now(), type:'SISTEMA DE BAJA PRESIÓN', icon:'🌀',
             title:'Baja presión '+Math.round(pressure)+' hPa — '+city,
             description:'Sistema de baja presión. Posible empeoramiento del tiempo.',
-            lat:lat,lon:lon,distKm:0, time:now,
+            lat:lat,lon:lon,distKm:0, time:Date.now(),
             source:'Open-Meteo', priority:55, color:'#9B59B6'
         });
 
@@ -275,14 +275,14 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
                 id:'om_fct_rain_'+Date.now(), type:'ALERTA LLUVIA 24H', icon:'⚠️',
                 title:'Lluvia intensa prevista — '+city+' ('+Math.round(maxProb)+'% prob.)',
                 description:'Se esperan lluvias de hasta '+maxRain.toFixed(0)+' mm en las próximas 24h.',
-                lat:lat,lon:lon,distKm:0, time:'Próx. 24h',
+                lat:lat,lon:lon,distKm:0, time:Date.now(),
                 source:'Open-Meteo Forecast', priority:62, color:'#1E90FF'
             });
             if (maxWind>70) alerts.push({
                 id:'om_fct_wind_'+Date.now(), type:'ALERTA VIENTO 24H', icon:'⚠️',
                 title:'Viento fuerte previsto — '+city+' ('+Math.round(maxWind)+' km/h)',
                 description:'Vientos de hasta '+Math.round(maxWind)+' km/h en las próximas 24h.',
-                lat:lat,lon:lon,distKm:0, time:'Próx. 24h',
+                lat:lat,lon:lon,distKm:0, time:Date.now(),
                 source:'Open-Meteo Forecast', priority:60, color:'#FFA500'
             });
         }
@@ -306,28 +306,28 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
                         id:'om_wave_ex_'+Date.now(), type:'MAREJADA PELIGROSA', icon:'🌊',
                         title:'Marejada peligrosa '+wh.toFixed(1)+' m — '+city,
                         description:'Olas de '+wh.toFixed(1)+' m. Peligro extremo. No acercarse al borde costero ni caletas.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo Marine', priority:88, color:'#0000CD'
                     });
                     else if (wh >= 2.5) alerts.push({
                         id:'om_wave_hi_'+Date.now(), type:'MAREJADA', icon:'🌊',
                         title:'Marejada '+wh.toFixed(1)+' m — '+city,
                         description:'Olas de '+wh.toFixed(1)+' m. Playas peligrosas. Evitar zonas costeras bajas.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo Marine', priority:72, color:'#0055AA'
                     });
                     else if (wh >= 1.5) alerts.push({
                         id:'om_wave_md_'+Date.now(), type:'MAR AGITADO', icon:'🌊',
                         title:'Mar agitado '+wh.toFixed(1)+' m — '+city,
                         description:'Olas moderadas. Precaución en actividades marítimas y pesca artesanal.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo Marine', priority:52, color:'#4169E1'
                     });
                     if (swh >= 3.0) alerts.push({
                         id:'om_swell_'+Date.now(), type:'OLEAJE DE FONDO', icon:'🌊',
                         title:'Oleaje de fondo '+swh.toFixed(1)+' m — '+city,
                         description:'Swell de '+swh.toFixed(1)+' m (período '+wp.toFixed(0)+'s). Riesgo para embarcaciones menores y bañistas.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo Marine', priority:65, color:'#1E90FF'
                     });
                 }
@@ -347,14 +347,14 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
                         id:'om_uv_ex_'+Date.now(), type:'UV EXTREMO', icon:'☀️',
                         title:'Radiación UV extrema (UVI '+uvi.toFixed(0)+') — '+city,
                         description:'Índice UV extremo. Evitar exposición 10:00-16:00. Protector 50+, gafas y sombrero obligatorios.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo UV', priority:70, color:'#FF4500'
                     });
                     else if (uvi >= 8) alerts.push({
                         id:'om_uv_hi_'+Date.now(), type:'UV ALTO', icon:'☀️',
                         title:'Radiación UV muy alta (UVI '+uvi.toFixed(0)+') — '+city,
                         description:'Índice UV muy alto. Protector solar 30+, limitar exposición al mediodía.',
-                        lat:lat,lon:lon,distKm:0, time:now,
+                        lat:lat,lon:lon,distKm:0, time:Date.now(),
                         source:'Open-Meteo UV', priority:52, color:'#FF8C00'
                     });
                 }
@@ -540,7 +540,7 @@ async function fetchAirQuality(lat, lon, cityName) {
                     c.ozone>100  ? '⚠️ Ozono: '+c.ozone.toFixed(0)+' μg/m³' : '',
                     c.nitrogen_dioxide>40 ? '⚠️ NO₂: '+c.nitrogen_dioxide.toFixed(0)+' μg/m³' : '',
                 ].filter(Boolean).join(' '),
-                lat:lat, lon:lon, distKm:0, time:now,
+                lat:lat, lon:lon, distKm:0, time:Date.now(),
                 source:'Open-Meteo Air Quality', priority:aqiPri, color:aqiColor,
                 extra:{ aqi:aqi, pm25:c.pm2_5, pm10:c.pm10, ozone:c.ozone, no2:c.nitrogen_dioxide }
             });
@@ -552,7 +552,7 @@ async function fetchAirQuality(lat, lon, cityName) {
                 id:'co_'+Date.now(), type:'MONÓXIDO DE CARBONO', icon:'☠️',
                 title:'CO elevado en '+city,
                 description:'Concentración de CO: '+Math.round(c.carbon_monoxide/1000)+' mg/m³. Peligro de intoxicación.',
-                lat:lat, lon:lon, distKm:0, time:now,
+                lat:lat, lon:lon, distKm:0, time:Date.now(),
                 source:'Open-Meteo Air Quality', priority:82, color:'#8B0000'
             });
         }

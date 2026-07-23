@@ -819,13 +819,13 @@ async function fetchCSN(lat, lon) {
     rows.forEach(function(row) {
         var cells = row.querySelectorAll('td');
         // La tabla CSN tiene 4 columnas separadas:
-        // cells[0] = <a href="...">FECHA LOCAL</a>  (solo fecha en el link)
+        // cells[0] = <a href="...">FECHA LOCAL</a>  (solo fecha, sin lugar)
         // cells[1] = LUGAR  ("41 km al SE de Constitución")
         // cells[2] = PROFUNDIDAD  ("108")
         // cells[3] = MAGNITUD  ("3.5")
         if (cells.length < 4) return;
 
-        // ── Columna 0: fecha (dentro del link) ──
+        // ── Columna 0: fecha ──
         var fechaText = (cells[0].textContent || '').replace(/\s+/g,' ').trim();
         var fechaMatch = fechaText.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
         if (!fechaMatch) return;
@@ -841,7 +841,7 @@ async function fetchCSN(lat, lon) {
         // ── Columna 3: magnitud ──
         var magText = (cells[3].textContent || '').replace(/[^0-9.]/g,'').trim();
         var mag = parseFloat(magText);
-        if (isNaN(mag) || mag < 2.0 || mag > 10.0) return; // Validar rango real
+        if (isNaN(mag) || mag < 2.0 || mag > 10.0) return;
 
         // ── Parsear fecha → timestamp para ordenar y formatear ──
         // "2026-07-23 11:04:09" → ISO sin zona → interpretar como hora local Chile

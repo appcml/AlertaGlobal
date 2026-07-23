@@ -1145,10 +1145,18 @@ function loadAlerts() {
                 results.forEach(function(r) {
                     if (r.status === 'fulfilled') all = all.concat(r.value||[]);
                 });
-                // Deduplicar: si ya existe alerta del mismo tipo de fuente oficial, no duplicar del engine
+                // Deduplicar: mismo tipo + misma ubicación geográfica (~25km)
+                // Usar coordenadas redondeadas para no eliminar eventos distintos del mismo tipo
                 var seen = {};
                 all = all.filter(function(a) {
-                    var key = (a.type||'') + '_' + Math.round((a.distKm||0)/50);
+                    var latKey  = a.lat  != null ? Math.round(a.lat  * 4) : 'X'; // ~25km de grilla
+                    var lonKey  = a.lon  != null ? Math.round(a.lon  * 4) : 'X';
+                    var typeKey = (a.type||'').toUpperCase().substring(0,8);
+                    // Para alertas sin coords (climáticas locales), usar source_id o título abreviado
+                    var noCoord = (a.lat == null || a.lon == null);
+                    var key = noCoord
+                        ? typeKey + '_' + (a.source_id || (a.title||'').substring(0,20))
+                        : typeKey + '_' + latKey + '_' + lonKey;
                     if (seen[key] && (seen[key].priority||0) >= (a.priority||0)) return false;
                     seen[key] = a;
                     return true;
@@ -1199,14 +1207,19 @@ function loadAlerts() {
             if (radius === 0) return true;
             // Alertas climáticas locales (distKm=0) → siempre mostrar
             if (a.distKm === 0) return true;
-            // Alertas de OpenWeather son siempre locales
-            if (/OpenWeather/i.test(a.source||'')) return true;
-            // Tsunamis/Huracanes afectan zonas amplias
+            // Alertas de Open-Meteo/OpenWeather son siempre locales
+            if (/Open.?Meteo|OpenWeather/i.test(a.source||'')) return true;
+            // Tsunamis/Huracanes/Alertas críticas → siempre mostrar (afectan zonas amplias)
             if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return true;
-            // Con distancia calculada
+            if ((a.priority||0) >= 90) return true;
+            // Con distancia calculada → usar radio seleccionado
             if (a.distKm != null) return a.distKm <= radius;
-            // Sin coordenadas: fuentes confiables siempre
-            return (a.priority||0) >= 70;
+            // Sin coordenadas: mostrar fuentes nacionales/regionales conocidas siempre
+            var src = (a.source||'').toLowerCase();
+            var isNationalSource = /dmc|shoa|snam|onemi|senapred|csn|usgs|noaa|gdacs|ptwc|emsc/i.test(src);
+            if (isNationalSource) return true;
+            // Resto sin coords: mostrar si tiene alguna prioridad
+            return (a.priority||0) >= 50;
         });
 
         // ── FILTRO POR TIPO Y MAGNITUD (desde UI) ──
@@ -1242,24 +1255,53 @@ function loadAlerts() {
             });
         }
 
-        // Ordenar: prioridad crítica primero, luego más reciente
-        filtered.sort(function(a, b) {
-            // 1. Emergencias críticas siempre arriba (tsunami, M7+)
-            var aCrit = a.priority >= 90 ? 1 : 0;
-            var bCrit = b.priority >= 90 ? 1 : 0;
-            if (bCrit !== aCrit) return bCrit - aCrit;
-            // 2. Más reciente primero
-            var tA = a.time ? new Date(a.time).getTime() : 0;
-            var tB = b.time ? new Date(b.time).getTime() : 0;
-            if (tB !== tA) return tB - tA;
-            // 3. Mayor magnitud/prioridad como desempate
-            return b.priority - a.priority;
+        // ── ORDENAR: Proximidad × Severidad ──
+        // Fórmula: puntaje = proximidad (0-4) * 25 + severidad (0-100)
+        // Proximidad 4 = Tu zona (≤50km), 3 = Cercano (≤150km), 2 = Provincia (≤300km), 1 = País (≤radio), 0 = Global
+        // Excepciones: Tsunamis y críticos globales siempre al tope
+
+        function calcProxScore(a) {
+            if (!loc.lat || a.lat == null || a.lon == null) {
+                // Sin coords: dar puntaje moderado para que aparezcan pero no dominen
+                return 1;
+            }
+            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            a._distCalc = d; // guardar para no recalcular
+            if (d <= 50)             return 4; // En tu zona
+            if (d <= 150)            return 3; // Cercano
+            if (d <= 300)            return 2; // Tu provincia
+            if (d <= (radius||500))  return 1; // Tu país/radio
+            return 0;                           // Global
+        }
+
+        // Pre-calcular scores para no repetir
+        filtered.forEach(function(a) {
+            a._proxScore = (a.distKm === 0) ? 4 : calcProxScore(a);
+            a._sevScore  = Math.min(a.priority || 0, 100);
+            // Score compuesto: proximidad pesa 60%, severidad 40%
+            a._rankScore = a._proxScore * 15 + a._sevScore * 0.4;
         });
 
-        // Mostrar indicador de localidad en las cards
+        filtered.sort(function(a, b) {
+            // 1. Tsunamis y alertas M8+ SIEMPRE al tope — son emergencias absolutas
+            var aAbsolute = (a.priority >= 95 || /TSUNAMI/.test(a.type||'')) ? 1 : 0;
+            var bAbsolute = (b.priority >= 95 || /TSUNAMI/.test(b.type||'')) ? 1 : 0;
+            if (bAbsolute !== aAbsolute) return bAbsolute - aAbsolute;
+
+            // 2. Score compuesto (proximidad × severidad)
+            if (b._rankScore !== a._rankScore) return b._rankScore - a._rankScore;
+
+            // 3. Desempate: más reciente primero
+            var tA = a.time ? new Date(a.time).getTime() : 0;
+            var tB = b.time ? new Date(b.time).getTime() : 0;
+            return tB - tA;
+        });
+
+        // Mostrar indicador de localidad en las cards (usar _distCalc ya calculado)
         filtered.forEach(function(a) {
+            if (a.distKm === 0) { a._localLabel = '📍 En tu zona'; return; }
             if (!loc.lat || a.lat == null) return;
-            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            var d = a._distCalc != null ? a._distCalc : calcDistance(loc.lat, loc.lon, a.lat, a.lon);
             if (d <= RADIO_LOCAL)       a._localLabel = '📍 En tu zona';
             else if (d <= RADIO_COMUNA) a._localLabel = '🏘️ Cercano';
             else if (d <= RADIO_PROV)   a._localLabel = '🌐 Tu provincia';

@@ -1264,56 +1264,50 @@ function loadAlerts() {
             });
         }
 
-        // ── ORDENAR: Proximidad × Severidad ──
-        // Fórmula: puntaje = proximidad (0-4) * 25 + severidad (0-100)
-        // Proximidad 4 = Tu zona (≤50km), 3 = Cercano (≤150km), 2 = Provincia (≤300km), 1 = País (≤radio), 0 = Global
-        // Excepciones: Tsunamis y críticos globales siempre al tope
+        // ── ORDENAR: Hora reciente primero, con excepciones de seguridad ──
+        // Regla base: más reciente primero — el usuario quiere ver qué pasó AHORA
+        // Excepción 1: Tsunamis y M8+ siempre al tope (emergencias absolutas)
+        // Excepción 2: Alertas "En tu zona" (≤50km) se agrupan antes que las lejanas
+        //              pero dentro de cada grupo el orden es por hora
 
-        function calcProxScore(a) {
-            if (!loc.lat || a.lat == null || a.lon == null) {
-                // Sin coords: dar puntaje moderado para que aparezcan pero no dominen
-                return 1;
-            }
-            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-            a._distCalc = d; // guardar para no recalcular
-            if (d <= 50)             return 4; // En tu zona
-            if (d <= 150)            return 3; // Cercano
-            if (d <= 300)            return 2; // Tu provincia
-            if (d <= (radius||500))  return 1; // Tu país/radio
-            return 0;                           // Global
-        }
-
-        // Pre-calcular scores para no repetir
         filtered.forEach(function(a) {
-            a._proxScore = (a.distKm === 0) ? 4 : calcProxScore(a);
-            a._sevScore  = Math.min(a.priority || 0, 100);
-            // Score compuesto: proximidad pesa 60%, severidad 40%
-            a._rankScore = a._proxScore * 15 + a._sevScore * 0.4;
+            // Score de banda: solo para agrupar local vs regional vs global
+            // No mezcla hora con distancia — el orden dentro de cada banda es por hora
+            if (a.distKm === 0 || (a.distKm != null && a.distKm <= 50)) {
+                a._banda = 2; // En tu zona
+            } else if (a.distKm != null && a.distKm <= radius) {
+                a._banda = 1; // Regional (dentro del radio seleccionado)
+            } else {
+                a._banda = 0; // Global / sin coords
+            }
         });
 
         filtered.sort(function(a, b) {
-            // 1. Tsunamis y alertas M8+ SIEMPRE al tope — son emergencias absolutas
+            // 1. Tsunamis y M8+ SIEMPRE al tope
             var aAbsolute = (a.priority >= 95 || /TSUNAMI/.test(a.type||'')) ? 1 : 0;
             var bAbsolute = (b.priority >= 95 || /TSUNAMI/.test(b.type||'')) ? 1 : 0;
             if (bAbsolute !== aAbsolute) return bAbsolute - aAbsolute;
 
-            // 2. Score compuesto (proximidad × severidad)
-            if (b._rankScore !== a._rankScore) return b._rankScore - a._rankScore;
+            // 2. Banda de proximidad (local > regional > global)
+            if (b._banda !== a._banda) return b._banda - a._banda;
 
-            // 3. Desempate: más reciente primero
-            var tA = a.time ? new Date(a.time).getTime() : 0;
-            var tB = b.time ? new Date(b.time).getTime() : 0;
-            return tB - tA;
+            // 3. DENTRO de la misma banda: más reciente primero
+            var tA = a._timeMs || (a.time ? new Date(a.time).getTime() : 0);
+            var tB = b._timeMs || (b.time ? new Date(b.time).getTime() : 0);
+            if (tB !== tA) return tB - tA;
+
+            // 4. Desempate final: mayor severidad
+            return (b.priority||0) - (a.priority||0);
         });
 
-        // Mostrar indicador de localidad en las cards (usar _distCalc ya calculado)
+        // Mostrar indicador de localidad en las cards
         filtered.forEach(function(a) {
-            if (a.distKm === 0) { a._localLabel = '📍 En tu zona'; return; }
+            if (a.distKm === 0 || a._banda === 2) { a._localLabel = '📍 En tu zona'; return; }
             if (!loc.lat || a.lat == null) return;
-            var d = a._distCalc != null ? a._distCalc : calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-            if (d <= RADIO_LOCAL)       a._localLabel = '📍 En tu zona';
-            else if (d <= RADIO_COMUNA) a._localLabel = '🏘️ Cercano';
-            else if (d <= RADIO_PROV)   a._localLabel = '🌐 Tu provincia';
+            var d = a.distKm != null ? a.distKm : calcDistance(loc.lat, loc.lon, a.lat, a.lon);
+            if (d <= 50)        a._localLabel = '📍 En tu zona';
+            else if (d <= 150)  a._localLabel = '🏘️ Cercano';
+            else if (d <= 300)  a._localLabel = '🌐 Tu provincia';
         });
 
         if (!filtered.length) {

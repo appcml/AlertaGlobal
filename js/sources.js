@@ -647,7 +647,7 @@ async function fetchEMSC(lat, lon) {
 async function fetchDMCChile(lat, lon) {
     try {
         var url = 'https://corsproxy.io/?'+
-                  encodeURIComponent('https://www.meteochile.gob.cl/PortalDMC-web/rss/avisos.rss');
+                  encodeURIComponent('https://www.meteochile.gob.cl/PortalDMC-web/rss/alertas.rss');
         var r = await fetch(url,{signal:AbortSignal.timeout(12000)});
         if (!r.ok) return [];
         var txt = await r.text();
@@ -724,9 +724,21 @@ async function fetchCSN(lat, lon) {
     try {
         var url = 'https://chilealerta.com/api/query/?user=demo&select=ultimos_sismos_chile&limit=50&minmagnitude=2.0';
         // ChileAlerta tiene CORS abierto — no necesita proxy
-        var r = await fetch(url, {signal: AbortSignal.timeout(12000)});
-        if (!r.ok) throw new Error('ChileAlerta HTTP ' + r.status);
-        var data = await r.json();
+        // ChileAlerta no tiene CORS — necesita proxy
+        var proxies = [
+            'https://corsproxy.io/?',
+            'https://api.codetabs.com/v1/proxy?quest=',
+            'https://thingproxy.freeboard.io/fetch/'
+        ];
+        var data = null;
+        for (var pi = 0; pi < proxies.length; pi++) {
+            try {
+                var r = await fetch(proxies[pi] + encodeURIComponent(url),
+                    {signal: AbortSignal.timeout(10000)});
+                if (r.ok) { data = await r.json(); break; }
+            } catch(pe) { continue; }
+        }
+        if (!data) throw new Error('ChileAlerta: todos los proxies fallaron');
 
         var sismos = data.ultimos_sismos_Chile || data.ultimos_sismos_chile || [];
         var alerts = [];
@@ -889,7 +901,7 @@ async function fetchMeteoAlarm() {
     try {
         // MeteoAlarm RSS feed (cap alerts)
         var url = 'https://corsproxy.io/?'+
-                  encodeURIComponent('https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-europe');
+                  encodeURIComponent('https://feeds.meteoalarm.org/api/v1/warnings/feeds-europe');
         var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
         var alerts = [];
@@ -1091,7 +1103,8 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         fetchNASAFIRMS(lat,lon),                 // NASA FIRMS incendios
         fetchFires(lat,lon),                     // NASA EONET backup
         // ── Ciclones y Tsunamis ──
-        fetchHurricanes(),
+        // fetchHurricanes deshabilitado — NHC bloquea CORS (403)
+        Promise.resolve([]),
         fetchPTWC(),                             // Pacific Tsunami WC
         // ── Desastres globales ──
         fetchGDACS(),
@@ -1103,7 +1116,8 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         // ── Regionales ──
         isUSA   ? fetchWeatherGov(lat,lon) : Promise.resolve([]),
         isChile ? fetchDMCChile(lat,lon)   : Promise.resolve([]),
-        isChile ? fetchSHOA()              : Promise.resolve([]),
+        // fetchSHOA deshabilitado — servidor rechaza CORS (405)
+        Promise.resolve([]),
         isChile ? fetchCSN(lat,lon)        : Promise.resolve([])
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
@@ -1145,7 +1159,8 @@ async function loadGlobalAlerts() {
         fetchUSGS(0,0),
         fetchEMSC(0,0),
         Promise.resolve(getVolcanes(0,0)),
-        fetchHurricanes(),
+        // fetchHurricanes deshabilitado — NHC bloquea CORS (403)
+        Promise.resolve([]),
         fetchNASAFIRMS(0,0),
         fetchFires(0,0),
         fetchGDACS(),

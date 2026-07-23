@@ -818,24 +818,28 @@ async function fetchCSN(lat, lon) {
 
     rows.forEach(function(row) {
         var cells = row.querySelectorAll('td');
-        // La tabla CSN tiene 3 columnas: [fecha+lugar | profundidad | magnitud]
-        if (cells.length < 3) return;
+        // La tabla CSN tiene 4 columnas separadas:
+        // cells[0] = <a href="...">FECHA LOCAL</a>  (solo fecha en el link)
+        // cells[1] = LUGAR  ("41 km al SE de Constitución")
+        // cells[2] = PROFUNDIDAD  ("108")
+        // cells[3] = MAGNITUD  ("3.5")
+        if (cells.length < 4) return;
 
-        // ── Columna 0: fecha + lugar (dentro de un <a>) ──
-        var cell0text = (cells[0].textContent || '').replace(/\s+/g,' ').trim();
-        // Separar por el patrón de fecha "YYYY-MM-DD HH:MM:SS"
-        var fechaMatch = cell0text.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*(.*)/);
+        // ── Columna 0: fecha (dentro del link) ──
+        var fechaText = (cells[0].textContent || '').replace(/\s+/g,' ').trim();
+        var fechaMatch = fechaText.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
         if (!fechaMatch) return;
+        fechaText = fechaMatch[1]; // "2026-07-23 11:04:09"
 
-        var fechaText = fechaMatch[1].trim();  // "2026-07-23 11:04:09"
-        var lugar     = fechaMatch[2].trim();  // "41 km al SE de Constitución"
+        // ── Columna 1: lugar ──
+        var lugar = (cells[1].textContent || '').replace(/\s+/g,' ').trim();
 
-        // ── Columna 1: profundidad (número, puede tener " km" o no) ──
-        var profText = (cells[1].textContent || '').replace(/[^0-9]/g,'').trim();
+        // ── Columna 2: profundidad (km) ──
+        var profText = (cells[2].textContent || '').replace(/[^0-9]/g,'').trim();
         var prof = parseInt(profText) || 0;
 
-        // ── Columna 2: magnitud (número decimal) ──
-        var magText = (cells[2].textContent || '').replace(/[^0-9.]/g,'').trim();
+        // ── Columna 3: magnitud ──
+        var magText = (cells[3].textContent || '').replace(/[^0-9.]/g,'').trim();
         var mag = parseFloat(magText);
         if (isNaN(mag) || mag < 2.0 || mag > 10.0) return; // Validar rango real
 

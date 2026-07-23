@@ -49,6 +49,26 @@ function calcDistance(la1,lo1,la2,lo2) {
 }
 
 // ========== 1. OPEN-METEO — Sin API key, muy preciso ==========
+
+// ── Helper: fetch con proxies en cascada (más robusto que allorigins solo) ──
+async function fetchWithProxy(targetUrl, timeout) {
+    timeout = timeout || 10000;
+    var proxies = [
+        'https://corsproxy.io/?',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest='
+    ];
+    var lastErr;
+    for (var i = 0; i < proxies.length; i++) {
+        try {
+            var r = await fetch(proxies[i] + encodeURIComponent(targetUrl),
+                {signal: AbortSignal.timeout(timeout)});
+            if (r.ok) return r;
+        } catch(e) { lastErr = e; continue; }
+    }
+    throw lastErr || new Error('All proxies failed for: ' + targetUrl);
+}
+
 async function fetchOpenMeteoAlerts(lat, lon, cityName) {
     if (!lat||!lon) return [];
     try {
@@ -425,7 +445,7 @@ function getVolcanes(lat,lon) {
 // ========== 4. HURACANES NOAA ==========
 async function fetchHurricanes() {
     try {
-        var url='https://api.allorigins.win/raw?url='+encodeURIComponent('https://www.nhc.noaa.gov/gis/kml/nhc_active.kml');
+        var url='https://corsproxy.io/?'+encodeURIComponent('https://www.nhc.noaa.gov/gis/kml/nhc_active.kml');
         var txt=await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
         var kml=new DOMParser().parseFromString(txt,'text/xml');
         var alerts=[];
@@ -568,7 +588,7 @@ async function fetchGDACS() {
                   'fromDate='+ new Date(Date.now()-7*86400000).toISOString().split('T')[0] +
                   '&toDate='+ new Date().toISOString().split('T')[0] +
                   '&alertlevel=Red,Orange&eventtype=EQ,TC,FL,VO,WF,TS';
-        var r = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+        var r = await fetch('https://corsproxy.io/?'+encodeURIComponent(url),
                             {signal:AbortSignal.timeout(10000)});
         var d = await r.json();
         var events = d.features||d.results||d||[];
@@ -626,7 +646,7 @@ async function fetchEMSC(lat, lon) {
 // ========== 10. DMC CHILE — Dirección Meteorológica ==========
 async function fetchDMCChile(lat, lon) {
     try {
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://www.meteochile.gob.cl/PortalDMC-web/rss/avisos.rss');
         var r = await fetch(url,{signal:AbortSignal.timeout(12000)});
         if (!r.ok) return [];
@@ -667,7 +687,7 @@ async function fetchDMCChile(lat, lon) {
 // ========== 11. SHOA — Avisos Tsunamis Pacífico ==========
 async function fetchSHOA() {
     try {
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('http://www.shoa.cl/php/infot.php');
         var r = await fetch(url,{signal:AbortSignal.timeout(12000)});
         if (!r.ok) return [];
@@ -697,203 +717,67 @@ async function fetchSHOA() {
     } catch(e) { console.error('SHOA:',e); return []; }
 }
 
-// ========== 11b. CSN — Centro Sismológico Nacional Chile ==========
-// Fuente oficial: www.sismologia.cl — más rápida que USGS para sismos chilenos
-//
-// ESTRUCTURA REAL de la tabla HTML del CSN (3 columnas):
-// <td><a href="/...">2026-07-23 11:04:09\n41 km al SE de Constitución</a></td>
-// <td>46</td>      ← profundidad en km (número solo, sin texto)
-// <td>3.5</td>     ← magnitud (número decimal)
-//
-// El link en cells[0] contiene fecha + salto de línea + descripción del lugar
+// ========== 11b. ChileAlerta API — Sismos Chile con coords exactas ==========
+// API JSON pública: chilealerta.com/api — devuelve lat/lon exactas sin parsear HTML
+// user=demo funciona sin registro, límite 1 req/min (suficiente para nuestro uso)
 async function fetchCSN(lat, lon) {
-    var today = new Date();
-    var y = today.getFullYear();
-    var m = String(today.getMonth()+1).padStart(2,'0');
-    var d = String(today.getDate()).padStart(2,'0');
-    var dateStr = y + m + d;
+    try {
+        var url = 'https://chilealerta.com/api/query/?user=demo&select=ultimos_sismos_chile&limit=50&minmagnitude=2.0';
+        // ChileAlerta tiene CORS abierto — no necesita proxy
+        var r = await fetch(url, {signal: AbortSignal.timeout(12000)});
+        if (!r.ok) throw new Error('ChileAlerta HTTP ' + r.status);
+        var data = await r.json();
 
-    var targetUrl = 'https://www.sismologia.cl/sismicidad/catalogo/'+y+'/'+m+'/'+dateStr+'.html';
+        var sismos = data.ultimos_sismos_Chile || data.ultimos_sismos_chile || [];
+        var alerts = [];
 
-    var proxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://api.codetabs.com/v1/proxy?quest='
-    ];
+        sismos.forEach(function(s) {
+            var mag  = parseFloat(s.magnitude) || 0;
+            if (mag < 2.0 || mag > 10.0) return;
 
-    var html = null;
-    for (var i = 0; i < proxies.length; i++) {
-        try {
-            var r = await fetch(proxies[i] + encodeURIComponent(targetUrl),
-                               {signal: AbortSignal.timeout(12000)});
-            if (r.ok) { html = await r.text(); break; }
-        } catch(e) { continue; }
-    }
+            var sisoLat  = parseFloat(s.latitude)  || null;
+            var sisoLon  = parseFloat(s.longitude) || null;
+            var prof     = parseFloat(s.depth)     || 0;
+            var lugar    = s.reference || '';
+            var distKmCalc = (lat && sisoLat) ? Math.round(calcDistance(lat, lon, sisoLat, sisoLon)) : null;
 
-    if (!html || html.length < 200) return [];
+            // Parsear fecha "2026-07-23 11:04:09" (hora local Chile)
+            var fechaStr = s.local_time || s.chilean_time || s.utc_time || '';
+            var fechaObj;
+            try {
+                fechaObj = new Date(fechaStr.replace(' ','T') + '-03:00');
+                if (isNaN(fechaObj.getTime())) fechaObj = new Date(fechaStr);
+            } catch(e) { fechaObj = new Date(); }
+            var timeMs  = fechaObj.getTime();
+            var timeStr = fechaObj.toLocaleString('es-CL');
 
-    // ── Mapa de referencia: ciudades chilenas → coordenadas ──
-    var CIUDADES = {
-        'santiago':[-33.45,-70.67],'concepcion':[-36.82,-73.04],
-        'valparaiso':[-33.05,-71.61],'temuco':[-38.74,-72.59],
-        'antofagasta':[-23.65,-70.40],'iquique':[-20.21,-70.15],
-        'arica':[-18.49,-70.30],'la serena':[-29.90,-71.25],
-        'puerto montt':[-41.47,-72.94],'coquimbo':[-29.95,-71.34],
-        'rancagua':[-34.17,-70.74],'talca':[-35.43,-71.67],
-        'chillan':[-36.61,-72.10],'los angeles':[-37.47,-72.35],
-        'osorno':[-40.57,-73.13],'valdivia':[-39.81,-73.25],
-        'constitucion':[-35.33,-72.42],'curico':[-34.98,-71.24],
-        'linares':[-35.85,-71.60],'san antonio':[-33.60,-71.62],
-        'pichilemu':[-34.39,-72.00],'ovalle':[-30.60,-71.20],
-        'caldera':[-27.07,-70.82],'copiapo':[-27.37,-70.33],
-        'illapel':[-31.63,-71.17],'punta arenas':[-53.16,-70.92],
-        'coyhaique':[-45.57,-72.07],'cauquenes':[-35.97,-72.32],
-        'parral':[-36.14,-71.83],'santa cruz':[-34.63,-71.36],
-        'calama':[-22.45,-68.93],'tocopilla':[-22.09,-70.20],
-        'mejillones':[-23.10,-70.45],'taltal':[-25.40,-70.49],
-        'papudo':[-32.50,-71.45],'los vilos':[-31.91,-71.51],
-        'vicuna':[-30.03,-70.71],'salamanca':[-31.77,-70.97],
-        'fray jorge':[-30.65,-71.65],'ollague':[-21.23,-68.25],
-        'ollagüe':[-21.23,-68.25],'carrizal bajo':[-28.07,-71.14],
-        'cañete':[-37.80,-73.40],'lebu':[-37.61,-73.65],
-        'arauco':[-37.25,-73.32],'tirua':[-38.35,-73.50],
-        'camarones':[-19.02,-69.86],'camina':[-19.57,-69.42],
-        'vichuquen':[-34.87,-72.02],'pelluhue':[-35.82,-72.57],
-        'empedrado':[-35.60,-72.27],'chanco':[-35.73,-72.53],
-        'quirihue':[-36.28,-72.54],'coelemu':[-36.49,-72.71],
-        'florida':[-37.10,-72.65],'santa barbara':[-37.67,-72.02],
-        'mulchen':[-37.72,-72.24],'nacimiento':[-37.50,-72.67],
-        'angol':[-37.80,-72.71],'victoria':[-38.23,-72.33],
-        'curacautin':[-38.44,-71.88],'lonquimay':[-38.44,-71.24],
-        'villarrica':[-39.28,-72.23],'pucon':[-39.27,-71.96],
-        'loncoche':[-39.37,-72.63],'pitrufquen':[-38.97,-72.65],
-        'panguipulli':[-39.64,-72.34],'la union':[-40.29,-73.08],
-        'rio bueno':[-40.33,-72.97],'mafil':[-39.68,-72.93],
-        'llanquihue':[-41.24,-73.00],'frutillar':[-41.12,-73.07],
-        'puerto varas':[-41.32,-72.98],'calbuco':[-41.77,-73.13],
-        'maullin':[-41.63,-73.59],'ancud':[-41.87,-73.83],
-        'castro':[-42.48,-73.77],'quellon':[-43.12,-73.62],
-        'chaiten':[-42.92,-72.71],'futaleufu':[-43.19,-71.86]
-    };
+            var pri  = mag>=7?96 : mag>=6?88 : mag>=5?76 : mag>=4?62 : mag>=3?50 : 38;
+            var col  = mag>=6?'#ff0000' : mag>=5?'#ff4400' : mag>=4?'#ff9900' : mag>=3?'#ffcc00' : '#ffee88';
+            var icon = mag>=6?'🔴' : mag>=5?'🟠' : mag>=4?'🟡' : '⚪';
 
-    // ── Función para calcular coords del sismo desde descripción ──
-    function lugarACoords(lugarText) {
-        // Formato CSN: "41 km al SE de Constitución" o "2 km al NE de Camiña"
-        var m = lugarText.match(/(\d+)\s*km\s*al\s+([NSEO]+(?:\s*de\s*[NSEO]+)?)\s+de\s+(.+)/i);
-        if (!m) return null;
-        var distRef = parseInt(m[1]);
-        var dir = m[2].trim().toUpperCase()
-            .replace(/\s+DE\s+/i,'')   // "NO de" → "NO"
-            .replace(/NORTE/i,'N').replace(/SUR/i,'S')
-            .replace(/ESTE/i,'E').replace(/OESTE/i,'O');
-        var ciudad = m[3].trim().toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-
-        var coords = null;
-        for (var k in CIUDADES) {
-            var kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-            if (ciudad === kn || ciudad.includes(kn) || kn.includes(ciudad)) {
-                coords = CIUDADES[k]; break;
-            }
-        }
-        if (!coords) return null;
-
-        var kmPerDegLat = 111;
-        var kmPerDegLon = 111 * Math.cos(coords[0] * Math.PI / 180);
-        var dLat = 0, dLon = 0;
-        // Diagonal: componente 0.707
-        var factor = (dir.length >= 2) ? 0.707 : 1.0;
-        if (dir.includes('N')) dLat =  (distRef * factor) / kmPerDegLat;
-        if (dir.includes('S')) dLat = -(distRef * factor) / kmPerDegLat;
-        if (dir.includes('E')) dLon =  (distRef * factor) / kmPerDegLon;
-        if (dir.includes('O') || dir.includes('W')) dLon = -(distRef * factor) / kmPerDegLon;
-
-        return [coords[0] + dLat, coords[1] + dLon];
-    }
-
-    var alerts = [];
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(html, 'text/html');
-    var rows = doc.querySelectorAll('table tr');
-
-    rows.forEach(function(row) {
-        var cells = row.querySelectorAll('td');
-        // La tabla CSN tiene 4 columnas separadas:
-        // cells[0] = <a href="...">FECHA LOCAL</a>  (solo fecha, sin lugar)
-        // cells[1] = LUGAR  ("41 km al SE de Constitución")
-        // cells[2] = PROFUNDIDAD  ("108")
-        // cells[3] = MAGNITUD  ("3.5")
-        if (cells.length < 4) return;
-
-        // ── Columna 0: fecha ──
-        var fechaText = (cells[0].textContent || '').replace(/\s+/g,' ').trim();
-        var fechaMatch = fechaText.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
-        if (!fechaMatch) return;
-        fechaText = fechaMatch[1]; // "2026-07-23 11:04:09"
-
-        // ── Columna 1: lugar ──
-        var lugar = (cells[1].textContent || '').replace(/\s+/g,' ').trim();
-
-        // ── Columna 2: profundidad (km) ──
-        var profText = (cells[2].textContent || '').replace(/[^0-9]/g,'').trim();
-        var prof = parseInt(profText) || 0;
-
-        // ── Columna 3: magnitud ──
-        var magText = (cells[3].textContent || '').replace(/[^0-9.]/g,'').trim();
-        var mag = parseFloat(magText);
-        if (isNaN(mag) || mag < 2.0 || mag > 10.0) return;
-
-        // ── Parsear fecha → timestamp para ordenar y formatear ──
-        // "2026-07-23 11:04:09" → ISO sin zona → interpretar como hora local Chile
-        var fechaISO = fechaText.replace(' ', 'T'); // "2026-07-23T11:04:09"
-        var fechaObj;
-        try {
-            // El CSN reporta en hora LOCAL chilena (CLT = UTC-3, CLST = UTC-4)
-            // Agregamos offset -03:00 para parseo correcto
-            fechaObj = new Date(fechaISO + '-03:00');
-            if (isNaN(fechaObj.getTime())) fechaObj = new Date(fechaISO);
-        } catch(e) { fechaObj = new Date(); }
-
-        var timeMs  = fechaObj.getTime();
-        var timeStr = fechaObj.toLocaleString('es-CL');
-
-        // ── Calcular coordenadas del epicentro ──
-        var coords = lugarACoords(lugar);
-        var sisoLat = coords ? coords[0] : null;
-        var sisoLon = coords ? coords[1] : null;
-        var distKmCalc = (lat && sisoLat) ? Math.round(calcDistance(lat, lon, sisoLat, sisoLon)) : null;
-
-        // ── Link al detalle ──
-        var linkEl = row.querySelector('a');
-        var href   = linkEl ? linkEl.getAttribute('href') : '';
-
-        // ── Prioridad y color según magnitud ──
-        var pri = mag>=7?96 : mag>=6?88 : mag>=5?76 : mag>=4?62 : mag>=3?50 : 38;
-        var col = mag>=6?'#ff0000' : mag>=5?'#ff4400' : mag>=4?'#ff9900' : mag>=3?'#ffcc00' : '#ffee88';
-        var icon = mag>=6?'🔴' : mag>=5?'🟠' : mag>=4?'🟡' : '⚪';
-
-        alerts.push({
-            id: 'csn_' + dateStr + '_' + timeMs,
-            type: 'SISMO', icon: icon,
-            title: 'Sismo M' + mag.toFixed(1) + ' — ' + lugar,
-            description: lugar + ' · Prof. ' + prof + ' km' +
-                         (distKmCalc ? ' · ' + distKmCalc + ' km de ti' : ''),
-            lat: sisoLat, lon: sisoLon,
-            magnitude: mag, depth: prof,
-            distKm: distKmCalc,
-            time: timeStr,
-            _timeMs: timeMs,   // guardamos ms para ordenar
-            source: 'CSN — Chile',
-            priority: pri, color: col,
-            link: 'https://www.sismologia.cl' + (href || '')
+            alerts.push({
+                id: 'ca_' + (s.id || timeMs),
+                type: 'SISMO', icon: icon,
+                title: 'Sismo M' + mag.toFixed(1) + ' — ' + lugar,
+                description: lugar + ' · Prof. ' + Math.round(prof) + ' km' +
+                             (distKmCalc ? ' · ' + distKmCalc + ' km de ti' : ''),
+                lat: sisoLat, lon: sisoLon,
+                magnitude: mag, depth: prof,
+                distKm: distKmCalc,
+                time: timeStr, _timeMs: timeMs,
+                source: 'ChileAlerta / CSN',
+                priority: pri, color: col,
+                link: s.url || 'https://chilealerta.com'
+            });
         });
-    });
 
-    // Ordenar por tiempo descendente (más reciente primero)
-    alerts.sort(function(a,b){ return (b._timeMs||0) - (a._timeMs||0); });
-
-    console.log('🇨🇱 CSN:', alerts.length, 'sismos hoy (M2.0+)');
-    return alerts;
+        alerts.sort(function(a,b){ return (b._timeMs||0) - (a._timeMs||0); });
+        console.log('🇨🇱 ChileAlerta:', alerts.length, 'sismos Chile');
+        return alerts;
+    } catch(e) {
+        console.error('ChileAlerta:', e);
+        return [];
+    }
 }
 
 // ========== 12. NASA FIRMS — Incendios casi en tiempo real ==========
@@ -922,7 +806,7 @@ async function fetchNASAFIRMS(lat, lon) {
 // ========== 13. NOAA Space Weather — Clima espacial ==========
 async function fetchSpaceWeather() {
     try {
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
         var d = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).json();
         var alerts = [];
@@ -948,7 +832,7 @@ async function fetchSpaceWeather() {
         // CME y alertas de la NOAA
         try {
             var alerts2 = await (await fetch(
-                'https://api.allorigins.win/raw?url='+
+                'https://corsproxy.io/?'+
                 encodeURIComponent('https://services.swpc.noaa.gov/products/alerts.json'),
                 {signal:AbortSignal.timeout(8000)}
             )).json();
@@ -1004,7 +888,7 @@ async function fetchOpenSky(lat, lon, radius) {
 async function fetchMeteoAlarm() {
     try {
         // MeteoAlarm RSS feed (cap alerts)
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-europe');
         var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
@@ -1040,7 +924,7 @@ async function fetchMeteoAlarm() {
 async function fetchGloFAS() {
     try {
         // Copernicus GloFAS via GDACS (integrado en API GDACS)
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?'+
                   'fromDate='+new Date(Date.now()-3*86400000).toISOString().split('T')[0]+
                   '&toDate='+new Date().toISOString().split('T')[0]+
@@ -1109,7 +993,7 @@ async function fetchOpenAQ(lat, lon) {
 // ========== 18. NOAA Storm Prediction Center — Tornados USA ==========
 async function fetchSPC() {
     try {
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://www.spc.noaa.gov/products/spcacrss.xml');
         var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
@@ -1149,7 +1033,7 @@ async function fetchSPC() {
 // ========== 19. Pacific Tsunami Warning Center (PTWC) ==========
 async function fetchPTWC() {
     try {
-        var url = 'https://api.allorigins.win/raw?url='+
+        var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://www.tsunami.gov/events/xml/PHEBAtom.xml');
         var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
@@ -1198,7 +1082,7 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         // ── Clima local ──
         fetchOpenMeteoAlerts(lat,lon,cityName),
         fetchAirQuality(lat,lon,cityName),
-        fetchOpenAQ(lat,lon),                    // OpenAQ partículas
+        // fetchOpenAQ deshabilitado — CORS bloqueado en api.openaq.org
         // ── Sismos ──
         fetchUSGS(lat,lon),
         fetchEMSC(lat,lon),

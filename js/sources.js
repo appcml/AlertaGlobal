@@ -388,8 +388,13 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
 // ========== 2. SISMOS USGS ==========
 async function fetchUSGS(lat, lon) {
     try {
-        var since=new Date(Date.now()-86400000).toISOString();
-        var url='https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=250&minmagnitude=2.0&starttime='+since;
+        var isGlobal = (!lat && !lon) || (lat===0 && lon===0);
+        // Global: M4.5+ últimas 48h (más eventos en el mapa mundial)
+        // Local: M2.0+ últimas 24h (más detalle cerca)
+        var hours = isGlobal ? 48 : 24;
+        var minMag = isGlobal ? 4.5 : 2.0;
+        var since = new Date(Date.now() - hours*3600000).toISOString();
+        var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=300&minmagnitude='+minMag+'&starttime='+since;
         var d=await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
         return d.features.map(function(f) {
             var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
@@ -401,6 +406,7 @@ async function fetchUSGS(lat, lon) {
                 lat:c[1],lon:c[0],magnitude:mag,depth:c[2],
                 distKm:lat?Math.round(calcDistance(lat,lon,c[1],c[0])):null,
                 time:new Date(p.time).toLocaleString('es-CL'),
+                _timeMs: p.time,
                 source:'USGS', link:p.url,
                 priority:mag>=7?96:mag>=6?88:mag>=5?76:mag>=4?62:mag>=3?48:35,
                 color:mag>=6?'#ff0000':mag>=5?'#ff4400':mag>=4?'#ff9900':mag>=3?'#ffcc00':'#ffee88'

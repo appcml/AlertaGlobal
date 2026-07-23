@@ -209,39 +209,69 @@
             <div class="error-msg" id="weatherError" style="display:none"></div>
         </section>
 
-        <!-- KIT SOS -->
+        <!-- KIT SOS MEJORADO -->
         <section class="tab-panel" id="panel-sos">
             <div class="sos-header">
                 <div class="sos-connection-banner" id="sosBanner">
                     <span class="sos-conn-icon">📶</span>
-                    <span id="sosConnText">Modo Online — Datos en tiempo real</span>
+                    <span id="sosConnText" data-i18n="sos_online">Modo Online — Datos en tiempo real</span>
                 </div>
             </div>
-            <div class="sos-grid">
-                <div class="sos-card">
-                    <div class="sos-icon">📞</div>
-                    <div class="sos-title">Emergency Contacts</div>
-                    <div class="sos-desc">Quick access to emergency numbers</div>
-                    <button class="sos-btn" id="btnEmergencyContacts">View</button>
+
+            <!-- Botón SOS principal -->
+            <div style="padding:12px 16px 0;">
+                <button id="btnSOSEmergency" onclick="triggerSOS()" style="
+                    width:100%;padding:18px;background:linear-gradient(135deg,#cc0000,#ff3333);
+                    color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:bold;
+                    cursor:pointer;box-shadow:0 4px 15px rgba(255,0,0,0.4);letter-spacing:1px;
+                    animation:pulse 2s infinite;">
+                    🆘 EMERGENCIA — LLAMAR AHORA
+                </button>
+            </div>
+
+            <!-- Números de emergencia por país -->
+            <div style="padding:12px 16px 4px;">
+                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">📞 Números de Emergencia</div>
+                <div id="sosEmergencyNumbers" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <!-- Se llena dinámicamente según el país detectado -->
                 </div>
-                <div class="sos-card">
-                    <div class="sos-icon">📍</div>
-                    <div class="sos-title">Share Location</div>
-                    <div class="sos-desc">Send your location to trusted contacts</div>
-                    <button class="sos-btn" id="btnShareLocation">Share</button>
+            </div>
+
+            <!-- Grid de acciones -->
+            <div style="padding:8px 16px;">
+                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">⚡ Acciones Rápidas</div>
+                <div class="sos-grid">
+                    <div class="sos-card">
+                        <div class="sos-icon">📍</div>
+                        <div class="sos-title" data-i18n="sos_share">Compartir Ubicación</div>
+                        <div class="sos-desc">Envía tus coordenadas exactas por WhatsApp/SMS</div>
+                        <button class="sos-btn" id="btnShareLocation" onclick="shareEmergencyLocation()">📤 Compartir</button>
+                    </div>
+                    <div class="sos-card">
+                        <div class="sos-icon">💉</div>
+                        <div class="sos-title" data-i18n="sos_firstaid">Primeros Auxilios</div>
+                        <div class="sos-desc">Guías rápidas para emergencias comunes</div>
+                        <button class="sos-btn" id="btnFirstAid" onclick="openFirstAid()">📖 Ver guía</button>
+                    </div>
+                    <div class="sos-card">
+                        <div class="sos-icon">🔦</div>
+                        <div class="sos-title">Linterna</div>
+                        <div class="sos-desc">Enciende la linterna de tu dispositivo</div>
+                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">💡 Encender</button>
+                    </div>
+                    <div class="sos-card">
+                        <div class="sos-icon">📻</div>
+                        <div class="sos-title">Modo Offline</div>
+                        <div class="sos-desc">Guías sin conexión a internet</div>
+                        <button class="sos-btn" onclick="openOfflineGuide()">📥 Ver</button>
+                    </div>
                 </div>
-                <div class="sos-card">
-                    <div class="sos-icon">💬</div>
-                    <div class="sos-title">Report Incident</div>
-                    <div class="sos-desc">Send emergency reports from your area</div>
-                    <button class="sos-btn" id="btnReport">Report</button>
-                </div>
-                <div class="sos-card">
-                    <div class="sos-icon">💉</div>
-                    <div class="sos-title">First Aid</div>
-                    <div class="sos-desc">Quick access to first aid guides</div>
-                    <button class="sos-btn" id="btnFirstAid">Read</button>
-                </div>
+            </div>
+
+            <!-- Guía de primeros auxilios (oculta por defecto) -->
+            <div id="firstAidPanel" style="display:none;padding:0 16px 16px;">
+                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">🏥 Primeros Auxilios Rápidos</div>
+                <div id="firstAidContent" style="background:#111;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:#ddd;"></div>
             </div>
         </section>
 
@@ -333,6 +363,65 @@
             <button id="btnAcceptTerms" style="width:100%;padding:14px;background:#ff6666;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:16px;">
                 ✅ Acepto los términos y condiciones
             </button>
+        </div>
+    </div>
+
+    <!-- POPUP IDIOMAS -->
+    <div class="modal" id="langPopup">
+        <div class="modal-content" style="max-width:320px;">
+            <button class="modal-close" onclick="document.getElementById('langPopup').style.display='none'">&times;</button>
+            <h2 style="color:var(--accent);margin-bottom:16px;">🌐 <span data-i18n="lang_select">Seleccionar idioma</span></h2>
+            <div style="display:grid;gap:8px;">
+                <button class="lang-option" data-lang="es" onclick="selectLanguage('es')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇪🇸 Español
+                </button>
+                <button class="lang-option" data-lang="en" onclick="selectLanguage('en')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇺🇸 English
+                </button>
+                <button class="lang-option" data-lang="pt" onclick="selectLanguage('pt')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇧🇷 Português
+                </button>
+                <button class="lang-option" data-lang="fr" onclick="selectLanguage('fr')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇫🇷 Français
+                </button>
+                <button class="lang-option" data-lang="de" onclick="selectLanguage('de')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇩🇪 Deutsch
+                </button>
+                <button class="lang-option" data-lang="zh" onclick="selectLanguage('zh')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
+                    🇨🇳 中文
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUP TEMAS -->
+    <div class="modal" id="themePopup">
+        <div class="modal-content" style="max-width:320px;">
+            <button class="modal-close" onclick="document.getElementById('themePopup').style.display='none'">&times;</button>
+            <h2 style="color:var(--accent);margin-bottom:16px;">🎨 <span data-i18n="theme_select">Seleccionar tema</span></h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <button onclick="applyTheme('dark')" style="padding:16px;background:#0a0a0f;border:2px solid #ff6666;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
+                    🌑 <b>Oscuro</b><br><small style="color:#aaa;">Por defecto</small>
+                </button>
+                <button onclick="applyTheme('light')" style="padding:16px;background:#f0f0f0;border:2px solid #999;color:#111;border-radius:10px;cursor:pointer;font-size:13px;">
+                    ☀️ <b>Claro</b><br><small style="color:#555;">Día</small>
+                </button>
+                <button onclick="applyTheme('blue')" style="padding:16px;background:#0a1628;border:2px solid #4488ff;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
+                    🌊 <b>Marino</b><br><small style="color:#88aaff;">Azul profundo</small>
+                </button>
+                <button onclick="applyTheme('green')" style="padding:16px;background:#0a1a0a;border:2px solid #44cc44;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
+                    🌿 <b>Bosque</b><br><small style="color:#88cc88;">Verde oscuro</small>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUP PRIMEROS AUXILIOS -->
+    <div class="modal" id="firstAidPopup">
+        <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto;">
+            <button class="modal-close" onclick="document.getElementById('firstAidPopup').style.display='none'">&times;</button>
+            <h2 style="color:#ff6666;margin-bottom:16px;">🏥 Primeros Auxilios</h2>
+            <div id="firstAidDetail" style="font-size:13px;line-height:1.8;color:#ddd;"></div>
         </div>
     </div>
 
@@ -574,3 +663,132 @@
             if (radiusPopup) radiusPopup.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
         })();
     </script>
+
+    <script>
+    // ── IDIOMAS ──
+    function selectLanguage(lang) {
+        if (typeof setLanguage === 'function') setLanguage(lang);
+        document.querySelectorAll('.lang-option').forEach(function(b) {
+            b.style.borderColor = b.dataset.lang === lang ? 'var(--accent)' : '#444';
+            b.style.background  = b.dataset.lang === lang ? '#2a1a1a' : '#222';
+        });
+        document.getElementById('langPopup').style.display = 'none';
+        renderSOSNumbers();
+        if (typeof loadAlerts === 'function') loadAlerts();
+    }
+    (function() {
+        var saved = localStorage.getItem('ag_lang') || 'es';
+        document.querySelectorAll('.lang-option').forEach(function(b) {
+            if (b.dataset.lang === saved) { b.style.borderColor='var(--accent)'; b.style.background='#2a1a1a'; }
+        });
+        var btnLang = document.getElementById('btnLang');
+        if (btnLang) btnLang.addEventListener('click', function() { document.getElementById('langPopup').style.display='flex'; });
+        var btnTheme = document.getElementById('btnTheme');
+        if (btnTheme) btnTheme.addEventListener('click', function() { document.getElementById('themePopup').style.display='flex'; });
+        ['langPopup','themePopup','firstAidPopup'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('click', function(e) { if(e.target===this) this.style.display='none'; });
+        });
+    })();
+
+    // ── TEMAS (4) ──
+    var THEMES = {
+        dark:  {'--bg':'#0a0a0f','--bg2':'#111122','--card':'#1a1a2e','--text':'#eee','--accent':'#ff6666','--border':'#333'},
+        light: {'--bg':'#f5f5f5','--bg2':'#ffffff','--card':'#ffffff','--text':'#111','--accent':'#cc2222','--border':'#ddd'},
+        blue:  {'--bg':'#030d1a','--bg2':'#0a1628','--card':'#0d2040','--text':'#e0eeff','--accent':'#4488ff','--border':'#1a3060'},
+        green: {'--bg':'#040d04','--bg2':'#0a1a0a','--card':'#0d220d','--text':'#e0ffe0','--accent':'#44cc44','--border':'#1a401a'}
+    };
+    function applyTheme(name) {
+        var theme = THEMES[name]; if (!theme) return;
+        Object.keys(theme).forEach(function(k) { document.documentElement.style.setProperty(k, theme[k]); });
+        try { localStorage.setItem('ag_theme', name); } catch(e) {}
+        document.getElementById('themePopup').style.display = 'none';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = theme['--bg'];
+    }
+    (function() { var s=localStorage.getItem('ag_theme')||'dark'; if(s!=='dark') applyTheme(s); })();
+
+    // ── KIT SOS — Números de emergencia por país ──
+    var EMERGENCY_NUMBERS = {
+        CL:[{label:'Bomberos',n:'132',icon:'🚒'},{label:'Carabineros',n:'133',icon:'👮'},{label:'SAMU',n:'131',icon:'🚑'},{label:'Emergencias',n:'112',icon:'🆘'},{label:'SENAPRED',n:'1455',icon:'🌊'}],
+        AR:[{label:'Policía',n:'101',icon:'👮'},{label:'Bomberos',n:'100',icon:'🚒'},{label:'Ambulancia',n:'107',icon:'🚑'},{label:'Emergencias',n:'911',icon:'🆘'}],
+        PE:[{label:'Policía',n:'105',icon:'👮'},{label:'Bomberos',n:'116',icon:'🚒'},{label:'Emergencias',n:'117',icon:'🆘'}],
+        BR:[{label:'Polícia',n:'190',icon:'👮'},{label:'Bombeiros',n:'193',icon:'🚒'},{label:'SAMU',n:'192',icon:'🚑'}],
+        US:[{label:'Emergency',n:'911',icon:'🆘'},{label:'FEMA',n:'1-800-621-3362',icon:'🏛️'}],
+        DEFAULT:[{label:'Emergencias',n:'112',icon:'🆘'},{label:'Policía local',n:'101/133',icon:'👮'},{label:'Ambulancia',n:'118/131',icon:'🚑'}]
+    };
+    function renderSOSNumbers() {
+        var c = document.getElementById('sosEmergencyNumbers'); if (!c) return;
+        var country = 'DEFAULT';
+        if (window.focusLocation && window.focusLocation.country) {
+            var cn = window.focusLocation.country.toLowerCase();
+            if (cn.includes('chile')) country='CL';
+            else if (cn.includes('argentina')) country='AR';
+            else if (cn.includes('per')) country='PE';
+            else if (cn.includes('brasil')||cn.includes('brazil')) country='BR';
+            else if (cn.includes('united states')||cn.includes('eeuu')) country='US';
+        }
+        var nums = EMERGENCY_NUMBERS[country]||EMERGENCY_NUMBERS.DEFAULT;
+        c.innerHTML = nums.map(function(n){
+            return '<a href="tel:'+n.n+'" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;text-decoration:none;color:#fff;">'+
+                '<span style="font-size:22px">'+n.icon+'</span>'+
+                '<div><div style="font-size:11px;color:#aaa;text-transform:uppercase">'+n.label+'</div>'+
+                '<div style="font-size:20px;font-weight:bold;color:var(--accent)">'+n.n+'</div></div></a>';
+        }).join('');
+    }
+    document.querySelectorAll('.tab').forEach(function(tab){
+        tab.addEventListener('click',function(){ if(this.dataset.tab==='sos') setTimeout(renderSOSNumbers,100); });
+    });
+    setTimeout(renderSOSNumbers, 600);
+
+    function triggerSOS() {
+        var num = '112';
+        if(confirm('¿Llamar al '+num+' (Número de Emergencias)?')) window.location.href='tel:'+num;
+    }
+    function shareEmergencyLocation() {
+        var lat=window.focusLocation&&window.focusLocation.lat, lon=window.focusLocation&&window.focusLocation.lon;
+        var name=(window.focusLocation&&window.focusLocation.name)||'Mi ubicación';
+        if(!lat||!lon){alert('Activa el GPS primero.');return;}
+        var msg='🆘 EMERGENCIA - Necesito ayuda
+📍 '+name+'
+Lat: '+lat.toFixed(5)+', Lon: '+lon.toFixed(5)+'
+https://maps.google.com/?q='+lat+','+lon;
+        if(navigator.share){navigator.share({title:'🆘 EMERGENCIA',text:msg});}
+        else{navigator.clipboard.writeText(msg).then(function(){alert('Copiado. Pega en WhatsApp.');}).catch(function(){window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');});}
+    }
+    var flashOn=false,flashTrack=null;
+    function toggleFlashlight(){
+        var btn=document.getElementById('btnFlashlight');
+        if(!navigator.mediaDevices){alert('Linterna no disponible');return;}
+        if(!flashOn){
+            navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){
+                flashTrack=s.getVideoTracks()[0];return flashTrack.applyConstraints({advanced:[{torch:true}]});
+            }).then(function(){flashOn=true;if(btn){btn.textContent='🌑 Apagar';btn.style.color='#ff6666';}}).catch(function(){alert('Linterna no disponible en este dispositivo');});
+        }else{
+            if(flashTrack){flashTrack.applyConstraints({advanced:[{torch:false}]});flashTrack.stop();flashTrack=null;}
+            flashOn=false;if(btn){btn.textContent='💡 Encender';btn.style.color='';}
+        }
+    }
+    var FIRST_AID_ES=[
+        {t:'🫀 RCP',s:['Llama al 112 inmediatamente','Acuesta boca arriba en superficie dura','30 compresiones centro del pecho, fuerte y rápido','2 respiraciones de rescate','Repite hasta que llegue ayuda']},
+        {t:'🩸 Hemorragia grave',s:['Presiona con tela limpia firmemente','Mantén 10 min sin soltar','Agrega más tela si se empapa','Eleva la extremidad','Llama al 131 SAMU']},
+        {t:'🔥 Quemaduras',s:['Agua fría corriente por 20 min','No uses hielo ni cremas','Cubre con tela limpia húmeda','No revientes ampollas','Busca atención médica urgente']},
+        {t:'🌍 Terremoto',s:['AGÁCHATE, CÚBRETE, AGÁRRATE','Bajo mesa sólida o junto a muro interior','Lejos de ventanas y objetos que caigan','Si afuera, aleja de edificios y postes','Espera a que pare completamente']},
+        {t:'🌊 Tsunami',s:['ALÉJATE DE LA COSTA INMEDIATAMENTE','Sube a terreno alto (mín. 30m sobre el mar)','No esperes ver el mar retroceder','Sigue instrucciones de SENAPRED','No vuelvas hasta autorización oficial']},
+        {t:'🔴 Atragantamiento',s:['Anima a toser si puede respirar','5 golpes fuertes entre omóplatos','5 compresiones abdominales (Heimlich)','Alterna golpes y compresiones','Llama al 131 si no mejora']}
+    ];
+    function openFirstAid(){
+        var guides=FIRST_AID_ES;
+        var popup=document.getElementById('firstAidPopup'),ct=document.getElementById('firstAidDetail');
+        if(!popup||!ct)return;
+        ct.innerHTML=guides.map(function(g){
+            return '<div style="margin-bottom:16px;padding:12px;background:#1a1a2e;border-radius:8px;border-left:3px solid var(--accent);">'+
+                '<div style="font-weight:bold;font-size:14px;color:var(--accent);margin-bottom:8px;">'+g.t+'</div>'+
+                '<ol style="margin:0;padding-left:18px;">'+g.s.map(function(s){return '<li style="margin-bottom:5px;">'+s+'</li>';}).join('')+'</ol></div>';
+        }).join('');
+        popup.style.display='flex';
+    }
+    function openOfflineGuide(){openFirstAid();}
+    </script>
+</body>
+</html>

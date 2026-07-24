@@ -62,35 +62,36 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
     
     // LÓGICA DE FILTRADO POR ZOOM
     var filteredAlerts = [];
-    
+    var mapRadiusKm = getUserRadiusKm();
+
+    // Función de filtro para el mapa respetando el radio/país seleccionado
+    function passesMapFilter(a) {
+        if (!a.lat || !a.lon) return false;
+        if (mapRadiusKm === 0) return true; // Global
+        if (mapRadiusKm === -1) return isAlertInUserCountry(a); // Solo mi país
+        if (!userLocation || !userLocation.lat) return true;
+        return isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, mapRadiusKm);
+    }
+
     if (currentZoom <= 6) {
-        // ZOOM BAJO (global): mostrar TODAS las alertas que tengan coordenadas
-        // Sin filtro de prioridad — el usuario quiere ver el mapa global completo
-        filteredAlerts = allAlerts.filter(function(a) {
-            return a.lat != null && a.lon != null;
-        });
+        // ZOOM BAJO: respetar filtro seleccionado
+        filteredAlerts = allAlerts.filter(passesMapFilter);
+        // Si filtro es "Mi país" y no hay pins locales, mostrar pin de ubicación al menos
+        if (mapRadiusKm === -1 && filteredAlerts.length === 0) {
+            filteredAlerts = allAlerts.filter(function(a) {
+                return a.lat != null && a.lon != null && a.distKm === 0;
+            });
+        }
     } else if (currentZoom <= 10) {
-        // ZOOM MEDIO: alertas cercanas + importantes
-        if (userLocation && userLocation.lat) {
-            filteredAlerts = allAlerts.filter(function(a) {
-                var isNearby = isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, radiusKm);
-                var isImportant = (a.priority >= 55) || (a.magnitude && a.magnitude >= 2.5);
-                return isNearby || isImportant;
-            });
-        } else {
-            filteredAlerts = allAlerts.filter(function(a) {
-                return (a.priority >= 55) || (a.magnitude && a.magnitude >= 2.5);
-            });
-        }
+        // ZOOM MEDIO: alertas que pasan el filtro + importantes
+        filteredAlerts = allAlerts.filter(function(a) {
+            if (!passesMapFilter(a)) return false;
+            var isImportant = (a.priority >= 55) || (a.magnitude && a.magnitude >= 2.5);
+            return isImportant || (a.distKm === 0);
+        });
     } else {
-        // ZOOM ALTO (11+): Mostrar TODAS las alertas cercanas
-        if (userLocation && userLocation.lat) {
-            filteredAlerts = allAlerts.filter(function(a) {
-                return isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, radiusKm);
-            });
-        } else {
-            filteredAlerts = allAlerts;
-        }
+        // ZOOM ALTO: todas las alertas que pasan el filtro
+        filteredAlerts = allAlerts.filter(passesMapFilter);
     }
 
     // Dibujar marcadores filtrados

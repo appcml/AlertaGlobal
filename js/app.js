@@ -1654,14 +1654,14 @@ function renderForecast(fc) {
     if (!list.length) return;
 
     var now = Date.now();
-    // Próximas 12h → máximo 4 slots de 3h
-    var next12 = list.filter(function(i){ return i.dt*1000 > now && i.dt*1000 < now+43200000; }).slice(0,4);
+    // Próximas 24h → 8 slots de 3h en barra deslizable
+    var next = list.filter(function(i){ return i.dt*1000 > now && i.dt*1000 < now+86400000; }).slice(0,8);
     // Próximos 5 días
     var days = {}, dayKeys = [];
     list.forEach(function(item) {
         var d = new Date(item.dt*1000);
         var key = d.toLocaleDateString('es-CL',{weekday:'short',day:'2-digit',month:'2-digit'});
-        if (!days[key]) { days[key] = {items:[],min:999,max:-999}; dayKeys.push(key); }
+        if (!days[key]) { days[key]={items:[],min:999,max:-999}; dayKeys.push(key); }
         days[key].items.push(item);
         days[key].min = Math.min(days[key].min, item.main.temp_min);
         days[key].max = Math.max(days[key].max, item.main.temp_max);
@@ -1670,46 +1670,77 @@ function renderForecast(fc) {
 
     var html = '<div id="wForecast">';
 
-    // ── PRÓXIMAS 12 HORAS ── línea horizontal compacta
-    if (next12.length) {
-        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">🕐 Próximas 12 horas</div>';
-        html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;">';
-        next12.forEach(function(item) {
+    // ── BARRA DESLIZABLE DE HORAS ──
+    if (next.length) {
+        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;'
+              + 'letter-spacing:1px;margin:14px 0 8px;text-align:center;">🕐 Próximas 24 horas</div>';
+
+        // Contenedor con scroll snap
+        html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;'
+              + 'scroll-snap-type:x mandatory;padding-bottom:6px;">';
+        html += '<div style="display:flex;gap:4px;width:max-content;padding:0 4px;">';
+
+        next.forEach(function(item) {
             var d = new Date(item.dt*1000);
             var hora = d.getHours().toString().padStart(2,'0')+':00';
             var icon = getWeatherIcon(item.weather[0].id);
             var temp = Math.round(item.main.temp);
             var pop  = item.pop!=null ? Math.round(item.pop*100) : 0;
             var rain = (item.rain&&item.rain['3h'])||0;
+            var wind = Math.round((item.wind&&item.wind.speed||0)*3.6);
             var isDia = d.getHours()>=7 && d.getHours()<20;
-            html += '<div style="flex:1;min-width:64px;background:#111a2e;border:1px solid #1e2d4a;border-radius:10px;padding:10px 6px;text-align:center;">'
-                  + '<div style="font-size:11px;font-weight:600;color:'+(isDia?'#ffcc44':'#8899bb')+'">'+hora+'</div>'
-                  + '<div style="font-size:26px;line-height:1.2;margin:4px 0">'+icon+'</div>'
+
+            // Resaltar si hay lluvia probable
+            var cardBorder = pop>=70 ? '#0055cc' : pop>=40 ? '#1e3a6e' : '#1e2d4a';
+
+            html += '<div style="scroll-snap-align:start;flex-shrink:0;width:70px;'
+                  + 'background:#0d1a2e;border:1px solid '+cardBorder+';'
+                  + 'border-radius:10px;padding:10px 6px;text-align:center;">'
+                  // Hora
+                  + '<div style="font-size:12px;font-weight:600;color:'
+                  + (isDia?'#ffcc44':'#7090cc')+'">'+hora+'</div>'
+                  // Ícono
+                  + '<div style="font-size:28px;line-height:1.1;margin:5px 0">'+icon+'</div>'
+                  // Temperatura
                   + '<div style="font-size:16px;font-weight:700;color:#fff">'+temp+'°</div>'
-                  + (pop>10?'<div style="font-size:10px;color:#4d9fff;margin-top:3px">💧'+pop+'%</div>':'<div style="height:17px"></div>')
-                  + (rain>0?'<div style="font-size:9px;color:#4488ff">'+rain.toFixed(1)+'mm</div>':'')
+                  // Prob lluvia (siempre mostrar para consistencia visual)
+                  + '<div style="font-size:11px;margin-top:4px;color:'
+                  + (pop>=70?'#4d9fff':pop>=30?'#6699cc':'#445566')+'">'+
+                  (pop>0?'💧'+pop+'%':'—')+'</div>'
+                  // mm si hay
+                  + (rain>0?'<div style="font-size:9px;color:#4488ff;margin-top:1px">'+rain.toFixed(1)+'mm</div>':'')
+                  // Viento si notable
+                  + (wind>25?'<div style="font-size:9px;color:#88aacc;margin-top:1px">💨'+wind+'</div>':'')
                   + '</div>';
         });
-        html += '</div>';
+
+        html += '</div></div>';
+
+        // Indicador de scroll si hay más de 4
+        if (next.length > 4) {
+            html += '<div style="text-align:center;font-size:10px;color:#445;margin-top:2px">← desliza →</div>';
+        }
     }
 
-    // ── PRÓXIMOS DÍAS ── fila horizontal
+    // ── PRÓXIMOS DÍAS ──
     var dk = dayKeys.slice(0,5);
     if (dk.length) {
-        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">📅 Próximos días</div>';
-        html += '<div style="display:flex;gap:6px;">';
+        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;'
+              + 'letter-spacing:1px;margin:14px 0 8px;text-align:center;">📅 Próximos días</div>';
+        html += '<div style="display:flex;gap:4px;">';
         dk.forEach(function(key) {
             var day  = days[key];
             var item = day.main||day.items[Math.floor(day.items.length/2)];
             var icon = getWeatherIcon(item.weather[0].id);
             var maxP = Math.max.apply(null, day.items.map(function(i){return i.pop||0;}));
             var totR = day.items.reduce(function(a,i){return a+((i.rain&&i.rain['3h'])||0);},0);
-            html += '<div style="flex:1;background:#111a2e;border:1px solid #1e2d4a;border-radius:10px;padding:10px 6px;text-align:center;min-width:0;">'
-                  + '<div style="font-size:10px;color:#aaa;margin-bottom:3px">'+key+'</div>'
-                  + '<div style="font-size:24px;line-height:1.2;margin:2px 0">'+icon+'</div>'
+            html += '<div style="flex:1;background:#0d1a2e;border:1px solid #1e2d4a;'
+                  + 'border-radius:10px;padding:10px 4px;text-align:center;min-width:0;">'
+                  + '<div style="font-size:10px;color:#aaa;margin-bottom:2px">'+key+'</div>'
+                  + '<div style="font-size:24px;line-height:1.1;margin:3px 0">'+icon+'</div>'
                   + '<div style="font-size:14px;font-weight:700;color:#fff">'+Math.round(day.max)+'°</div>'
-                  + '<div style="font-size:11px;color:#778">'+Math.round(day.min)+'°</div>'
-                  + (maxP>0.2?'<div style="font-size:10px;color:#4d9fff;margin-top:3px">'+Math.round(maxP*100)+'%</div>':'')
+                  + '<div style="font-size:11px;color:#556">'+Math.round(day.min)+'°</div>'
+                  + (maxP>0.2?'<div style="font-size:10px;color:#4d9fff;margin-top:2px">'+Math.round(maxP*100)+'%</div>':'')
                   + (totR>0?'<div style="font-size:9px;color:#4488ff">'+totR.toFixed(0)+'mm</div>':'')
                   + '</div>';
         });

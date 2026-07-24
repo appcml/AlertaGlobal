@@ -122,6 +122,7 @@
             <button class="toolbar-btn" id="btnFavorites">⭐</button>
             <button class="toolbar-btn" id="btnTheme">🎨</button>
             <button class="toolbar-btn" id="btnLang">🌐</button>
+            <button class="toolbar-btn" id="btnFeedback" title="Enviar feedback">💬</button>
             <button class="toolbar-btn" id="btnRefresh">🔄</button>
         </div>
     </header>
@@ -888,5 +889,74 @@
         if (e.target === this) closeFeedback();
     });
     </script>
+</body>
+
+    <script>
+    // ── SERVICE WORKER — Notificaciones en background ──
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/AlertaGlobal/sw.js', { scope: '/AlertaGlobal/' })
+            .then(function(reg) {
+                console.log('[App] SW registrado:', reg.scope);
+
+                // Periodic Background Sync (Chrome Android)
+                if ('periodicSync' in reg) {
+                    navigator.permissions.query({ name: 'periodic-background-sync' })
+                        .then(function(status) {
+                            if (status.state === 'granted') {
+                                reg.periodicSync.register('check-alerts', {
+                                    minInterval: 15 * 60 * 1000 // cada 15 minutos
+                                }).then(function() {
+                                    console.log('[App] Periodic sync registrado');
+                                }).catch(function(e) {
+                                    console.log('[App] Periodic sync no disponible:', e);
+                                });
+                            }
+                        });
+                }
+
+                // Solicitar permiso de notificaciones
+                if ('Notification' in window && Notification.permission === 'default') {
+                    // Esperar 5 segundos antes de pedir permiso
+                    setTimeout(function() {
+                        Notification.requestPermission().then(function(perm) {
+                            console.log('[App] Permiso notificaciones:', perm);
+                        });
+                    }, 5000);
+                }
+
+                // Escuchar mensajes del SW
+                navigator.serviceWorker.addEventListener('message', function(e) {
+                    if (e.data && e.data.type === 'ALERTS_UPDATED') {
+                        console.log('[App] SW reporta', e.data.count, 'alertas,', e.data.critical, 'críticas');
+                        // Actualizar badge si hay críticas
+                        if (e.data.critical > 0 && 'setAppBadge' in navigator) {
+                            navigator.setAppBadge(e.data.critical);
+                        }
+                    }
+                });
+            })
+            .catch(function(err) {
+                console.log('[App] SW error:', err);
+            });
+    }
+
+    // Función global para enviar ubicación al SW
+    window.updateSWLocation = function(lat, lon, name, lang) {
+        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SET_LOCATION',
+            lat: lat, lon: lon,
+            name: name || 'Tu zona',
+            lang: lang || localStorage.getItem('ag_lang') || 'es'
+        });
+    };
+
+    // Función para forzar verificación inmediata
+    window.checkAlertsNow = function() {
+        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+        navigator.serviceWorker.controller.postMessage({ type: 'CHECK_NOW' });
+    };
+    </script>
+
 </body>
 </html>

@@ -307,9 +307,23 @@ async function fetchOpenMeteoAlerts(lat, lon, cityName) {
             });
         }
 
-        // ── MAREJADAS COSTERAS (Marine API Open-Meteo — sin key) ──
-        // Detectar si la ubicación es costera: intentar la API marine siempre
-        // Si falla, es tierra adentro → silencioso
+        // ── MAREJADAS COSTERAS — Solo para zonas cercanas al mar (<60km aprox) ──
+        // Heurística geográfica para evitar alertas de "mar agitado" en Santiago, etc.
+        var _isCostal = false;
+        // Pacífico Chile/Perú: lon oeste de -70
+        if (lat>=-56 && lat<=-17 && lon<=-71.0) _isCostal = true;
+        // Atlántico Argentina/Brasil: lon este de -60
+        else if (lat>=-55 && lat<=10 && lon>=-52) _isCostal = true;
+        // Caribe/México/EEUU costa
+        else if (lat>=14 && lat<=35 && (lon<=-85 || lon>=-82)) _isCostal = true;
+        // Europa costera
+        else if (lat>=36 && lat<=65 && (lon<=-5 || lon>=0)) _isCostal = true;
+        // Asia-Pacífico, Australia, Japón
+        else if (lon>=100 || lon<=-120) _isCostal = true;
+        // África costera
+        else if (lat>=-35 && lat<=38 && (lon<=-5 || lon>=35)) _isCostal = true;
+
+        if (_isCostal)
         try {
             var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?' +
                 'latitude='+lat+'&longitude='+lon +

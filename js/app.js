@@ -13,7 +13,7 @@ var CONFIG = {
     MAX_QUERY_RADIUS_KM: 800
 };
 
-CONFIG.USER_RADIUS_KM = parseInt(localStorage.getItem('ag_radius_km') || '500', 10);
+CONFIG.USER_RADIUS_KM = parseInt(localStorage.getItem('ag_radius_km') || '0', 10);
 CONFIG.MIN_LOCATION_ACCURACY_M = 5000;
 
 var deviceLocation = { lat: null, lon: null, name: '', country: '', accuracy: null };
@@ -108,7 +108,7 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
             +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
             +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
                 +a.description.substring(0,150)+'</div>' : '')
-            +(a._farAlert ? '<div style="font-size:10px;color:#4488ff;padding:2px 0">ℹ️ Alerta lejana — monitoreo informativo. Puede generar efectos secundarios.</div>' : '')
+            +(a._farAlert ? '<div style="font-size:11px;color:#4488ff;background:#0a1628;border-radius:4px;padding:4px 6px;margin:3px 0">ℹ️ Evento en otra región — No afecta directamente tu ubicación actual. Se muestra por monitoreo global.</div>' : '')
             +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
             +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
             +'</div>';
@@ -173,7 +173,7 @@ function setUserRadiusKm(km) {
     try { localStorage.setItem('ag_radius_km', String(km)); } catch(e){}
 }
 function getUserRadiusKm() {
-    if (CONFIG.USER_RADIUS_KM != null && CONFIG.USER_RADIUS_KM !== 500) return CONFIG.USER_RADIUS_KM;
+    if (CONFIG.USER_RADIUS_KM != null && CONFIG.USER_RADIUS_KM !== 0) return CONFIG.USER_RADIUS_KM;
     var stored = parseInt(localStorage.getItem('ag_radius_km'));
     if (!isNaN(stored)) { CONFIG.USER_RADIUS_KM = stored; return stored; }
     return 500;

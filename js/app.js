@@ -168,6 +168,52 @@ function updateMapGlobalFixed(allAlerts) {
 }
 
 // ======= Helpers =======
+
+// ── BOUNDING BOXES POR PAÍS ──
+var COUNTRY_BOUNDS = {
+    CL:{ minLat:-56,maxLat:-17,minLon:-76,maxLon:-65 },
+    AR:{ minLat:-55,maxLat:-21,minLon:-74,maxLon:-53 },
+    PE:{ minLat:-18,maxLat:0,  minLon:-82,maxLon:-68 },
+    BR:{ minLat:-34,maxLat:5,  minLon:-74,maxLon:-28 },
+    CO:{ minLat:-5, maxLat:13, minLon:-79,maxLon:-66 },
+    MX:{ minLat:14, maxLat:33, minLon:-118,maxLon:-86 },
+    US:{ minLat:24, maxLat:50, minLon:-125,maxLon:-65 },
+    CA:{ minLat:42, maxLat:84, minLon:-141,maxLon:-52 },
+    ES:{ minLat:36, maxLat:44, minLon:-9,  maxLon:4  },
+    FR:{ minLat:41, maxLat:51, minLon:-5,  maxLon:9  },
+    DE:{ minLat:47, maxLat:55, minLon:6,   maxLon:15 },
+    JP:{ minLat:30, maxLat:46, minLon:129, maxLon:146 },
+    AU:{ minLat:-44,maxLat:-10,minLon:113, maxLon:154 },
+    CN:{ minLat:20, maxLat:54, minLon:73,  maxLon:135 },
+    RU:{ minLat:50, maxLat:78, minLon:26,  maxLon:180 },
+    IN:{ minLat:8,  maxLat:37, minLon:68,  maxLon:97  }
+};
+
+function detectUserCountryCode() {
+    var loc = (deviceLocation && deviceLocation.lat) ? deviceLocation :
+              (focusLocation && focusLocation.lat)   ? focusLocation : null;
+    if (!loc) return null;
+    for (var code in COUNTRY_BOUNDS) {
+        var b = COUNTRY_BOUNDS[code];
+        if (loc.lat>=b.minLat && loc.lat<=b.maxLat && loc.lon>=b.minLon && loc.lon<=b.maxLon)
+            return code;
+    }
+    return null;
+}
+
+function isAlertInUserCountry(a) {
+    // Alertas locales (Open-Meteo distKm=0) → SIEMPRE pasan
+    if (a.distKm === 0 || a.distKm == null) return true;
+    // Sin coords → mostrar
+    if (a.lat == null || a.lon == null) return true;
+    var code = detectUserCountryCode();
+    if (!code) return true;
+    var b = COUNTRY_BOUNDS[code];
+    if (!b) return true;
+    return a.lat >= b.minLat && a.lat <= b.maxLat &&
+           a.lon >= b.minLon && a.lon <= b.maxLon;
+}
+
 function setUserRadiusKm(km) {
     CONFIG.USER_RADIUS_KM = km;
     try { localStorage.setItem('ag_radius_km', String(km)); } catch(e){}

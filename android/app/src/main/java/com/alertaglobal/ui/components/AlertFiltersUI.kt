@@ -75,10 +75,8 @@ fun AlertFiltersBar(
                         labelColor = Color.Gray
                     ),
                     border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = isSelected,
-                        selectedBorderColor = filter.color,
-                        borderColor = Color.DarkGray
+                        borderColor = Color.DarkGray,
+                        selectedBorderColor = filter.color
                     )
                 )
             }

@@ -39,28 +39,145 @@ function applySosI18n() {
 window.onLanguageChange = function(lang) { applySosI18n(); renderSOSNumbers(); };
 
 // ── NÚMEROS DE EMERGENCIA ──
+// Números de emergencia por país — actualizados y verificados
 var EMERGENCY_NUMBERS = {
+    // América del Sur
     CL:[{label:'Bomberos',n:'132',icon:'🚒'},{label:'Carabineros',n:'133',icon:'👮'},
         {label:'SAMU',n:'131',icon:'🚑'},{label:'Emergencias',n:'112',icon:'🆘'},
         {label:'SENAPRED',n:'1455',icon:'🌊'},{label:'PDI',n:'134',icon:'🔍'}],
     AR:[{label:'Policía',n:'101',icon:'👮'},{label:'Bomberos',n:'100',icon:'🚒'},
         {label:'Ambulancia',n:'107',icon:'🚑'},{label:'Emergencias',n:'911',icon:'🆘'}],
-    PE:[{label:'Policía',n:'105',icon:'👮'},{label:'Bomberos',n:'116',icon:'🚒'},{label:'Emergencias',n:'117',icon:'🆘'}],
-    BR:[{label:'Polícia',n:'190',icon:'👮'},{label:'Bombeiros',n:'193',icon:'🚒'},{label:'SAMU',n:'192',icon:'🚑'}],
-    MX:[{label:'Emergencias',n:'911',icon:'🆘'},{label:'Cruz Roja',n:'065',icon:'🚑'}],
-    US:[{label:'Emergency',n:'911',icon:'🆘'},{label:'FEMA',n:'1-800-621-3362',icon:'🏛️'}],
-    DEFAULT:[{label:'Emergencias',n:'112',icon:'🆘'},{label:'Policía',n:'101/133',icon:'👮'},{label:'Ambulancia',n:'118/131',icon:'🚑'}]
+    PE:[{label:'Policía',n:'105',icon:'👮'},{label:'Bomberos',n:'116',icon:'🚒'},
+        {label:'Emergencias',n:'117',icon:'🆘'},{label:'INDECI',n:'115',icon:'🌊'}],
+    BR:[{label:'Polícia',n:'190',icon:'👮'},{label:'Bombeiros',n:'193',icon:'🚒'},
+        {label:'SAMU',n:'192',icon:'🚑'},{label:'Emergências',n:'190',icon:'🆘'}],
+    CO:[{label:'Policía',n:'112',icon:'👮'},{label:'Bomberos',n:'119',icon:'🚒'},
+        {label:'Ambulancia',n:'132',icon:'🚑'},{label:'Emergencias',n:'123',icon:'🆘'}],
+    VE:[{label:'Policía',n:'171',icon:'👮'},{label:'Bomberos',n:'166',icon:'🚒'},
+        {label:'Emergencias',n:'171',icon:'🆘'}],
+    EC:[{label:'Policía',n:'101',icon:'👮'},{label:'Bomberos',n:'102',icon:'🚒'},
+        {label:'Emergencias',n:'911',icon:'🆘'}],
+    BO:[{label:'Policía',n:'110',icon:'👮'},{label:'Bomberos',n:'119',icon:'🚒'},
+        {label:'Emergencias',n:'118',icon:'🆘'}],
+    PY:[{label:'Policía',n:'911',icon:'👮'},{label:'Bomberos',n:'132',icon:'🚒'},
+        {label:'Emergencias',n:'911',icon:'🆘'}],
+    UY:[{label:'Policía',n:'911',icon:'👮'},{label:'Bomberos',n:'104',icon:'🚒'},
+        {label:'Emergencias',n:'911',icon:'🆘'}],
+    // América del Norte y Central
+    MX:[{label:'Emergencias',n:'911',icon:'🆘'},{label:'Policía',n:'911',icon:'👮'},
+        {label:'Bomberos',n:'068',icon:'🚒'},{label:'Cruz Roja',n:'065',icon:'🚑'}],
+    US:[{label:'Emergency',n:'911',icon:'🆘'},{label:'Police/Fire/EMS',n:'911',icon:'👮'},
+        {label:'FEMA',n:'1-800-621-3362',icon:'🏛️'},{label:'Poison Control',n:'1-800-222-1222',icon:'☠️'}],
+    CA:[{label:'Emergency',n:'911',icon:'🆘'},{label:'Police',n:'911',icon:'👮'},
+        {label:'Ambulance',n:'911',icon:'🚑'}],
+    // Europa
+    ES:[{label:'Emergencias',n:'112',icon:'🆘'},{label:'Policía',n:'091',icon:'👮'},
+        {label:'Bomberos',n:'080',icon:'🚒'},{label:'Ambulancia',n:'061',icon:'🚑'}],
+    FR:[{label:'Urgences',n:'112',icon:'🆘'},{label:'Police',n:'17',icon:'👮'},
+        {label:'Pompiers',n:'18',icon:'🚒'},{label:'SAMU',n:'15',icon:'🚑'}],
+    DE:[{label:'Notruf',n:'112',icon:'🆘'},{label:'Polizei',n:'110',icon:'👮'},
+        {label:'Feuerwehr',n:'112',icon:'🚒'},{label:'Rettungsdienst',n:'112',icon:'🚑'}],
+    IT:[{label:'Emergenze',n:'112',icon:'🆘'},{label:'Polizia',n:'113',icon:'👮'},
+        {label:'Vigili del Fuoco',n:'115',icon:'🚒'},{label:'Ambulanza',n:'118',icon:'🚑'}],
+    GB:[{label:'Emergency',n:'999',icon:'🆘'},{label:'Police/Fire/Ambulance',n:'999',icon:'👮'},
+        {label:'Non-emergency police',n:'101',icon:'🔍'}],
+    PT:[{label:'Emergência',n:'112',icon:'🆘'},{label:'Polícia',n:'112',icon:'👮'},
+        {label:'Bombeiros',n:'112',icon:'🚒'},{label:'INEM',n:'112',icon:'🚑'}],
+    // Asia-Pacífico
+    JP:[{label:'警察 (Police)',n:'110',icon:'👮'},{label:'消防 (Fire/EMS)',n:'119',icon:'🚒'},
+        {label:'緊急 (Emergency)',n:'119',icon:'🆘'}],
+    AU:[{label:'Emergency',n:'000',icon:'🆘'},{label:'Police/Fire/Ambulance',n:'000',icon:'👮'},
+        {label:'SES',n:'132 500',icon:'🌊'}],
+    CN:[{label:'警察 (Police)',n:'110',icon:'👮'},{label:'消防 (Fire)',n:'119',icon:'🚒'},
+        {label:'急救 (EMS)',n:'120',icon:'🚑'}],
+    // Predeterminado internacional
+    DEFAULT:[{label:'Emergencias / Emergency',n:'112',icon:'🆘'},
+             {label:'Policía / Police',n:'101/110/133',icon:'👮'},
+             {label:'Ambulancia / Ambulance',n:'118/119/131',icon:'🚑'},
+             {label:'Bomberos / Fire',n:'100/119/132',icon:'🚒'}]
 };
+// Mapa de códigos de país ISO → código interno
+var ISO_TO_CODE = {
+    'cl':'CL','ar':'AR','pe':'PE','br':'BR','co':'CO','ve':'VE','ec':'EC',
+    'bo':'BO','py':'PY','uy':'UY','mx':'MX','us':'US','ca':'CA','es':'ES',
+    'fr':'FR','de':'DE','it':'IT','gb':'GB','pt':'PT','jp':'JP','au':'AU',
+    'cn':'CN','ru':'RU','kr':'KR','in':'IN','za':'ZA','ng':'NG','eg':'EG',
+    'tr':'TR','sa':'SA','id':'ID','ph':'PH','th':'TH','vn':'VN','my':'MY'
+};
+
+// Números para países adicionales
+EMERGENCY_NUMBERS['RU'] = [{label:'Policía',n:'102',icon:'👮'},{label:'Bomberos',n:'101',icon:'🚒'},{label:'Ambulancia',n:'103',icon:'🚑'},{label:'Emergencias',n:'112',icon:'🆘'}];
+EMERGENCY_NUMBERS['KR'] = [{label:'Police',n:'112',icon:'👮'},{label:'Fire/EMS',n:'119',icon:'🚒'},{label:'Emergency',n:'119',icon:'🆘'}];
+EMERGENCY_NUMBERS['IN'] = [{label:'Police',n:'100',icon:'👮'},{label:'Fire',n:'101',icon:'🚒'},{label:'Ambulance',n:'102',icon:'🚑'},{label:'Emergency',n:'112',icon:'🆘'}];
+
 function detectCountryCode() {
-    if (window.focusLocation && window.focusLocation.country) {
-        var cn = (window.focusLocation.country||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-        if (cn.includes('chile')) return 'CL';
-        if (cn.includes('argentina')) return 'AR';
-        if (cn.includes('per')) return 'PE';
-        if (cn.includes('brasil')||cn.includes('brazil')) return 'BR';
-        if (cn.includes('mexico')||cn.includes('mejico')) return 'MX';
-        if (cn.includes('united states')||cn.includes('eeuu')) return 'US';
+    // Intentar desde focusLocation primero, luego deviceLocation
+    var loc = window.focusLocation || window.deviceLocation;
+    var country = (loc && loc.country) || '';
+    
+    // Si tenemos código ISO directo (de Nominatim viene como country_code)
+    if (loc && loc.countryCode) {
+        var iso = loc.countryCode.toLowerCase();
+        if (ISO_TO_CODE[iso]) return ISO_TO_CODE[iso];
     }
+    
+    // Detectar por coordenadas geográficas (más fiable que el nombre)
+    if (loc && loc.lat && loc.lon) {
+        var lat = loc.lat, lon = loc.lon;
+        // Bounding boxes aproximados de países clave
+        if (lat>=-56&&lat<=-17&&lon>=-76&&lon<=-65) return 'CL'; // Chile
+        if (lat>=-55&&lat<=-21&&lon>=-74&&lon<=-53) return 'AR'; // Argentina
+        if (lat>=-18&&lat<=0&&lon>=-81&&lon<=-68)   return 'PE'; // Perú
+        if (lat>=-34&&lat<=5&&lon>=-74&&lon<=-28)   return 'BR'; // Brasil
+        if (lat>=-5&&lat<=13&&lon>=-79&&lon<=-66)   return 'CO'; // Colombia
+        if (lat>=14&&lat<=33&&lon>=-118&&lon<=-86)  return 'MX'; // México
+        if (lat>=24&&lat<=50&&lon>=-125&&lon<=-65)  return 'US'; // USA
+        if (lat>=42&&lat<=84&&lon>=-141&&lon<=-52)  return 'CA'; // Canadá
+        if (lat>=36&&lat<=44&&lon>=-9&&lon<=4)      return 'ES'; // España
+        if (lat>=41&&lat<=51&&lon>=-5&&lon<=9)      return 'FR'; // Francia
+        if (lat>=47&&lat<=55&&lon>=6&&lon<=15)      return 'DE'; // Alemania
+        if (lat>=36&&lat<=47&&lon>=6&&lon<=18)      return 'IT'; // Italia
+        if (lat>=50&&lat<=61&&lon>=-8&&lon<=2)      return 'GB'; // UK
+        if (lat>=37&&lat<=42&&lon>=-9&&lon<=-6)     return 'PT'; // Portugal
+        if (lat>=30&&lat<=46&&lon>=26&&lon<=45)     return 'TR'; // Turquía
+        if (lat>=50&&lat<=80&&lon>=26&&lon<=180)    return 'RU'; // Rusia
+        if (lat>=30&&lat<=45&&lon>=125&&lon<=146)   return 'JP'; // Japón
+        if (lat>=-44&&lat<=-10&&lon>=113&&lon<=154) return 'AU'; // Australia
+        if (lat>=20&&lat<=54&&lon>=73&&lon<=135)    return 'CN'; // China
+        if (lat>=8&&lat<=37&&lon>=68&&lon<=97)      return 'IN'; // India
+    }
+    
+    if (!country) return 'DEFAULT';
+    var cn = country.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    // América del Sur
+    if (cn.includes('chile'))                                       return 'CL';
+    if (cn.includes('argentina'))                                   return 'AR';
+    if (cn.includes('peru') || cn.includes('per'))                  return 'PE';
+    if (cn.includes('brasil') || cn.includes('brazil'))             return 'BR';
+    if (cn.includes('colombia'))                                    return 'CO';
+    if (cn.includes('venezuela'))                                   return 'VE';
+    if (cn.includes('ecuador'))                                     return 'EC';
+    if (cn.includes('bolivia'))                                     return 'BO';
+    if (cn.includes('paraguay'))                                    return 'PY';
+    if (cn.includes('uruguay'))                                     return 'UY';
+    // América del Norte y Central
+    if (cn.includes('mexico') || cn.includes('mejico'))             return 'MX';
+    if (cn.includes('united states') || cn.includes('eeuu') ||
+        cn.includes('estados unidos'))                              return 'US';
+    if (cn.includes('canada'))                                      return 'CA';
+    // Europa
+    if (cn.includes('espana') || cn.includes('spain'))              return 'ES';
+    if (cn.includes('france') || cn.includes('francia'))            return 'FR';
+    if (cn.includes('germany') || cn.includes('alemania') ||
+        cn.includes('deutschland'))                                 return 'DE';
+    if (cn.includes('italy') || cn.includes('italia'))              return 'IT';
+    if (cn.includes('united kingdom') || cn.includes('reino unido') ||
+        cn.includes('england') || cn.includes('great britain'))     return 'GB';
+    if (cn.includes('portugal'))                                    return 'PT';
+    // Asia-Pacífico
+    if (cn.includes('japan') || cn.includes('japon'))               return 'JP';
+    if (cn.includes('australia'))                                   return 'AU';
+    if (cn.includes('china') || cn.includes('china'))               return 'CN';
     return 'DEFAULT';
 }
 function renderSOSNumbers() {

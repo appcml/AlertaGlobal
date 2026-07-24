@@ -1561,28 +1561,81 @@ function renderForecast(fc) {
     var old = document.getElementById('wForecast');
     if (old) old.remove();
 
-    // Take one reading per day (every 8 entries = 24h for 3h intervals)
+    var list = fc.list || [];
+    if (!list.length) return;
+
+    // ── PRONÓSTICO POR HORAS (próximas 12h) ──
+    var now = Date.now();
+    var next12 = list.filter(function(item) {
+        return item.dt * 1000 > now && item.dt * 1000 < now + 43200000;
+    }).slice(0, 4); // máximo 4 slots de 3h = 12h
+
+    var html = '<div id="wForecast" style="margin-top:16px">';
+
+    if (next12.length > 0) {
+        html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:8px;' +
+                'text-transform:uppercase;letter-spacing:0.5px">🕐 Próximas 12 horas</div>';
+        html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;">';
+        next12.forEach(function(item) {
+            var d = new Date(item.dt * 1000);
+            var hora = d.getHours().toString().padStart(2,'0') + ':00';
+            var icon = getWeatherIcon(item.weather[0].id);
+            var rain = (item.rain && item.rain['3h']) || 0;
+            var wind = Math.round(item.wind && item.wind.speed ? item.wind.speed * 3.6 : 0);
+            var rainStr = rain > 0 ? '<div style="font-size:9px;color:#4488ff">💧'+rain.toFixed(1)+'mm</div>' : '';
+            var windStr = wind > 20 ? '<div style="font-size:9px;color:#88aaff">💨'+wind+'km/h</div>' : '';
+            var prob = item.pop != null ? Math.round(item.pop * 100) : 0;
+            var probStr = prob > 20 ? '<div style="font-size:9px;color:#4488ff">☔'+prob+'%</div>' : '';
+            html += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:10px;' +
+                    'padding:10px 8px;text-align:center;min-width:72px;flex-shrink:0;">' +
+                    '<div style="font-size:11px;font-weight:bold;color:var(--accent)">' + hora + '</div>' +
+                    '<div style="font-size:22px;margin:4px 0">' + icon + '</div>' +
+                    '<div style="font-size:14px;font-weight:700">' + Math.round(item.main.temp) + '°</div>' +
+                    rainStr + probStr + windStr +
+                    '</div>';
+        });
+        html += '</div>';
+    }
+
+    // ── PRONÓSTICO POR DÍAS (5 días) ──
     var days = {};
-    (fc.list || []).forEach(function(item) {
+    list.forEach(function(item) {
         var d = new Date(item.dt * 1000);
         var key = d.toLocaleDateString('es-CL', { weekday:'short', day:'2-digit', month:'2-digit' });
-        if (!days[key]) days[key] = item;
+        if (!days[key]) days[key] = { items: [], min: 999, max: -999 };
+        days[key].items.push(item);
+        days[key].min = Math.min(days[key].min, item.main.temp_min);
+        days[key].max = Math.max(days[key].max, item.main.temp_max);
+        // Usar el item de mediodía como representativo
+        var h = d.getHours();
+        if (h >= 11 && h <= 14) days[key].main = item;
     });
 
     var keys = Object.keys(days).slice(0, 5);
-    if (!keys.length) return;
+    if (!keys.length) { html += '</div>'; cont.insertAdjacentHTML('beforeend', html); return; }
 
-    var html = '<div id="wForecast" style="margin-top:16px">'
-        +'<div style="font-weight:700;font-size:13px;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Próximos días</div>'
-        +'<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">';
+    html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:8px;' +
+            'text-transform:uppercase;letter-spacing:0.5px">📅 Próximos días</div>';
+    html += '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">';
+
     keys.forEach(function(key) {
-        var item = days[key];
+        var day = days[key];
+        var item = day.main || day.items[Math.floor(day.items.length/2)];
         var icon = getWeatherIcon(item.weather[0].id);
-        html += '<div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;min-width:70px;flex-shrink:0">'
-            +'<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">'+key+'</div>'
-            +'<div style="font-size:20px">'+icon+'</div>'
-            +'<div style="font-size:13px;font-weight:700;margin-top:4px">'+Math.round(item.main.temp)+'°</div>'
-            +'</div>';
+        var maxRain = day.items.reduce(function(acc, i) {
+            return acc + ((i.rain && i.rain['3h']) || 0);
+        }, 0);
+        var maxPop = Math.max.apply(null, day.items.map(function(i){ return i.pop || 0; }));
+        var rainStr = maxRain > 0 ? '<div style="font-size:9px;color:#4488ff">💧'+maxRain.toFixed(0)+'mm</div>' : '';
+        var probStr = maxPop > 0.2 ? '<div style="font-size:9px;color:#4488ff">☔'+Math.round(maxPop*100)+'%</div>' : '';
+        html += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:10px;' +
+                'padding:10px 8px;text-align:center;min-width:72px;flex-shrink:0;">' +
+                '<div style="font-size:10px;color:#aaa;margin-bottom:3px">' + key + '</div>' +
+                '<div style="font-size:22px">' + icon + '</div>' +
+                '<div style="font-size:13px;font-weight:700;margin-top:3px">' + Math.round(day.max) + '°</div>' +
+                '<div style="font-size:11px;color:#888">' + Math.round(day.min) + '°</div>' +
+                rainStr + probStr +
+                '</div>';
     });
     html += '</div></div>';
     cont.insertAdjacentHTML('beforeend', html);
@@ -1590,7 +1643,7 @@ function renderForecast(fc) {
 
 // ========== SMART TIPS ==========
 function refreshSmartTips() {
-    var el = document.getElementById('tipsList');
+    var el = document.getElementById('tipsContainer');
     if (!el) return;
     var tips = generateTips();
     el.innerHTML = tips.map(function(t) {
@@ -1735,6 +1788,124 @@ function generateTips() {
                 'Cierra ventanas que dan al viento'
             ]});
         }
+    }
+
+    // ── TIPS CLIMÁTICOS DETALLADOS según alertas activas ══
+    var hasRain = false, hasWind = false, hasUV = false, hasCold = false, hasHeat = false;
+    var rainMm = 0, windKmh = 0, uviVal = 0, tempVal = 0;
+
+    externalAlerts.forEach(function(a) {
+        var t = (a.type||'').toLowerCase();
+        var title = (a.title||'').toLowerCase();
+        // Lluvia
+        if (t.includes('lluvia') || t.includes('chubascos') || t.includes('llovizna')) {
+            hasRain = true;
+            var mm = parseFloat(title.match(/(\d+(?:\.\d+)?)\s*mm/)?.[1] || 0);
+            if (mm > rainMm) rainMm = mm;
+        }
+        // Viento
+        if (t.includes('viento')) {
+            hasWind = true;
+            var km = parseFloat(title.match(/(\d+(?:\.\d+)?)\s*km\/h/)?.[1] || 0);
+            if (km > windKmh) windKmh = km;
+        }
+        // UV
+        if (t.includes('uv')) {
+            hasUV = true;
+            var uv = parseFloat(title.match(/uvi?\s*(\d+)/i)?.[1] || 0);
+            if (uv > uviVal) uviVal = uv;
+        }
+        // Temperatura
+        if (t.includes('frío') || t.includes('helada') || t.includes('nieve')) hasCold = true;
+        if (t.includes('calor') || t.includes('temperatura extrema')) hasHeat = true;
+    });
+
+    if (hasRain) {
+        var rainTips = ['🌂 Lleva paraguas o impermeable al salir'];
+        if (rainMm >= 50) {
+            rainTips = [
+                '🌊 Lluvia intensa de ' + rainMm.toFixed(0) + 'mm esperada — evita zonas bajas',
+                '🚗 Maneja con precaución, reduce velocidad en curvas',
+                '🏠 No se recomienda salir durante el peak de lluvia',
+                '⚠️ Riesgo de inundaciones en sectores con mala evacuación',
+                '📱 Mantén cargado el celular por si hay emergencia'
+            ];
+        } else if (rainMm >= 20) {
+            rainTips = [
+                '☔ Lluvia moderada de ' + rainMm.toFixed(0) + 'mm — lleva paraguas',
+                '🚗 Precaución al manejar, calzadas húmedas',
+                '👟 Usa calzado impermeable si vas a salir'
+            ];
+        } else {
+            rainTips = [
+                '🌂 Llovizna o lluvia leve — lleva paraguas por las dudas',
+                '🛣️ Carreteras húmedas, aumenta distancia de frenado'
+            ];
+        }
+        tips.push({ icon:'🌧️', title:'Consejos — Lluvia activa', color:'#4488ff', tips: rainTips });
+    }
+
+    if (hasWind) {
+        var windTips;
+        if (windKmh >= 89) {
+            windTips = [
+                '🔴 PELIGRO EXTREMO — No salga bajo ningún motivo',
+                '🏠 Aléjese de ventanas y puertas de vidrio',
+                '🌲 Riesgo de caída de árboles y postes eléctricos',
+                '🚗 No conduzca — vientos huracanados pueden voltear vehículos',
+                '📱 Siga instrucciones de autoridades'
+            ];
+        } else if (windKmh >= 62) {
+            windTips = [
+                '🟠 Viento muy fuerte ' + windKmh.toFixed(0) + ' km/h — límite el tiempo afuera',
+                '🪑 Asegure muebles y objetos sueltos en exteriores',
+                '🚗 Maneje con precaución, especialmente vehículos altos',
+                '⛵ No salga en embarcaciones pequeñas'
+            ];
+        } else if (windKmh >= 39) {
+            windTips = [
+                '🟡 Viento fuerte ' + windKmh.toFixed(0) + ' km/h — tome precauciones',
+                '☂️ Paraguas puede volarse — use impermeable',
+                '🌊 Precaución en actividades marítimas y pesca',
+                '🏕️ No acampar en zonas expuestas'
+            ];
+        } else {
+            windTips = [
+                '💨 Viento moderado ' + windKmh.toFixed(0) + ' km/h — condiciones normales',
+                '🏖️ Arena vuela en playas, proteja ojos y cara'
+            ];
+        }
+        tips.push({ icon:'💨', title:'Consejos — Viento activo', color:'#87CEEB', tips: windTips });
+    }
+
+    if (hasUV) {
+        var uvTips;
+        if (uviVal >= 11) {
+            uvTips = [
+                '🔴 UV EXTREMO (UVI ' + uviVal.toFixed(0) + ') — Evite salir entre 10:00-16:00',
+                '🧴 Protector solar 50+ obligatorio, reaplicar cada 2h',
+                '🕶️ Gafas de sol con protección UV400',
+                '👒 Sombrero de ala ancha, ropa que cubra brazos',
+                '🏠 Permanezca a la sombra o bajo techo'
+            ];
+        } else {
+            uvTips = [
+                '🟡 UV muy alto (UVI ' + uviVal.toFixed(0) + ') — limite exposición al mediodía',
+                '🧴 Protector solar 30+ al salir',
+                '🕶️ Use gafas de sol al aire libre'
+            ];
+        }
+        tips.push({ icon:'☀️', title:'Consejos — Radiación UV', color:'#FF8C00', tips: uvTips });
+    }
+
+    if (hasCold) {
+        tips.push({ icon:'❄️', title:'Consejos — Frío / Helada', color:'#aaddff', tips:[
+            '🧥 Ropa en capas: base térmica, capa media y cortaviento',
+            '🧤 Cubre extremidades: guantes, gorro y bufanda',
+            '🚗 Cuidado con hielo en calzada, especialmente al amanecer',
+            '🏠 Ventila los espacios si usas calefacción a gas',
+            '💧 Aísla cañerías expuestas para evitar congelamiento'
+        ]});
     }
 
     // ── TIPS DE PRIMEROS AUXILIOS (siempre al final, como referencia) ──

@@ -27,10 +27,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # ✅ Acción actualizada (la anterior está deprecada)
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
-        with:
-          gradle-version: wrapper
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Decode Keystore
         env:
@@ -40,12 +39,25 @@ jobs:
           python3 << 'PYEOF'
           import base64, os
           data = os.environ.get('KEYSTORE_B64', '')
+          if not data:
+              print("ERROR: El secret KEYSTORE_BASE64 está vacío")
+              exit(1)
           data = ''.join(data.split())
           if len(data) % 4:
               data += '=' * (4 - len(data) % 4)
           with open('android/app/mis-juegos.keystore', 'wb') as f:
               f.write(base64.b64decode(data))
+          print("Keystore decodificado correctamente")
           PYEOF
+
+      # 🔍 DEBUG: Verificamos que el keystore exista
+      - name: Verificar keystore y archivos
+        working-directory: android
+        run: |
+          echo "=== Archivos en android/app/ ==="
+          ls -la app/
+          echo "=== Info del keystore ==="
+          stat app/mis-juegos.keystore
 
       - name: Dar permisos a Gradle
         working-directory: android
@@ -58,7 +70,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         working-directory: android
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease --stacktrace \
             -Dorg.gradle.internal.http.connectionTimeout=180000 \
             -Dorg.gradle.internal.http.socketTimeout=180000 \
             -Dorg.gradle.daemon=false

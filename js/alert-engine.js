@@ -14,6 +14,37 @@ var LEVELS = {
     NONE:   { label:'NORMAL',   color:'#95a5a6', bg:'#f0efec', text:'#52514e', priority:0,   icon:'⚪' },
 };
 
+
+// ── NIVELES DE ALERTA (sistema unificado 4 niveles) ──
+// 🟢 INFORMATIVO (priority 30-49): sepa esto, planifique su día
+// 🟡 ADVERTENCIA (priority 50-69): tome precauciones
+// 🟠 ALERTA      (priority 70-84): acción recomendada
+// 🔴 CRÍTICO     (priority 85+):   peligro inmediato, actúe ahora
+
+function getAlertLevel(priority) {
+    if (priority >= 85) return { label:'CRÍTICO',     color:'#ff0000', bg:'#2a0000', emoji:'🔴' };
+    if (priority >= 70) return { label:'ALERTA',      color:'#ff6600', bg:'#2a1000', emoji:'🟠' };
+    if (priority >= 50) return { label:'ADVERTENCIA', color:'#ffcc00', bg:'#2a2000', emoji:'🟡' };
+    return                     { label:'INFORMATIVO', color:'#00cc88', bg:'#002a1a', emoji:'🟢' };
+}
+
+function makeAlert(id, type, icon, title, desc, lat, lon, time, source, priority, color) {
+    var level = getAlertLevel(priority);
+    return {
+        id: id, type: type, icon: icon,
+        title: title, description: desc,
+        lat: lat, lon: lon, distKm: 0,
+        time: time || new Date().toLocaleString('es-CL'),
+        _timeMs: Date.now(),
+        source: source, priority: priority, color: color,
+        // Nivel explícito
+        level: level.label,
+        levelColor: level.color,
+        levelBg: level.bg,
+        levelEmoji: level.emoji
+    };
+}
+
 // ── 1. ANÁLISIS DE VIENTO — Escala Beaufort ──
 function analyzeWind(ws, wg, city) {
     // ws = velocidad km/h, wg = ráfagas km/h
@@ -452,8 +483,11 @@ window.runAlertEngine = async function(lat, lon, cityName, radiusKm) {
             'latitude='+lat+'&longitude='+lon +
             '&current=temperature_2m,relative_humidity_2m,apparent_temperature,' +
             'precipitation,rain,showers,snowfall,wind_speed_10m,wind_gusts_10m,' +
-            'weather_code,surface_pressure,visibility,is_day' +
-            '&timezone=auto&wind_speed_unit=kmh';
+            'weather_code,surface_pressure,visibility,is_day,' +
+            'cloud_cover,uv_index,dew_point_2m,soil_temperature_0cm' +
+            '&hourly=precipitation_probability,cape' +
+            '&daily=precipitation_sum,wind_speed_10m_max,uv_index_max,sunrise,sunset' +
+            '&forecast_days=1&timezone=auto&wind_speed_unit=kmh';
 
         var d = await (await fetch(url, {signal:AbortSignal.timeout(12000)})).json();
 
@@ -478,6 +512,114 @@ window.runAlertEngine = async function(lat, lon, cityName, radiusKm) {
 
             var fr = analyzeFireRisk(c.temperature_2m, c.relative_humidity_2m, c.wind_speed_10m, city);
             if (fr) alerts.push(fr);
+
+            // ── ANÁLISIS ADICIONALES ──
+
+            // UV Index
+            if (c.uv_index != null && c.is_day) {
+                var uvi = c.uv_index;
+                if (uvi >= 11) alerts.push({
+                    id:'eng_uv_ex_'+Date.now(), type:'UV EXTREMO', icon:'☀️',
+                    title:'Radiación UV extrema (UVI '+uvi.toFixed(0)+') — '+city,
+                    description:'Índice UV '+uvi.toFixed(0)+'. Evitar exposición 10:00-16:00. Protector 50+, gafas y sombrero.',
+                    lat:lat, lon:lon, distKm:0, time:new Date().toLocaleString('es-CL'),
+                    source:'Open-Meteo / OMS', priority:70, color:'#FF4500'
+                });
+                else if (uvi >= 8) alerts.push({
+                    id:'eng_uv_hi_'+Date.now(), type:'UV ALTO', icon:'☀️',
+                    title:'Radiación UV muy alta (UVI '+uvi.toFixed(0)+') — '+city,
+                    description:'Índice UV muy alto. Protector solar 30+ obligatorio al salir.',
+                    lat:lat, lon:lon, distKm:0, time:new Date().toLocaleString('es-CL'),
+                    source:'Open-Meteo / OMS', priority:52, color:'#FF8C00'
+                });
+            }
+
+            // Humedad extrema
+            var hum = c.relative_humidity_2m;
+            var temp = c.temperature_2m;
+            if (hum != null) {
+                if (hum >= 95 && temp > 15) alerts.push({
+                    id:'eng_hum_hi_'+Date.now(), type:'HUMEDAD EXTREMA', icon:'💧',
+                    title:'Humedad extrema '+hum+'% — '+city,
+                    description:'Humedad muy alta. Riesgo de hongos, enfermedades respiratorias y malestar general.',
+                    lat:lat, lon:lon, distKm:0, time:new Date().toLocaleString('es-CL'),
+                    source:'Open-Meteo / WMO', priority:45, color:'#0088cc'
+                });
+                else if (hum <= 15 && temp > 20) alerts.push({
+                    id:'eng_hum_lo_'+Date.now(), type:'SEQUÍA EXTREMA', icon:'🏜️',
+                    title:'Humedad muy baja '+hum+'% — '+city,
+                    description:'Ambiente muy seco. Riesgo alto de incendios. Hidratación frecuente.',
+                    lat:lat, lon:lon, distKm:0, time:new Date().toLocaleString('es-CL'),
+                    source:'Open-Meteo / WMO', priority:58, color:'#FF6600'
+                });
+            }
+
+            // Punto de rocío (sensación térmica real)
+            if (c.dew_point_2m != null && temp != null) {
+                var dewDiff = temp - c.dew_point_2m;
+                if (dewDiff <= 2 && temp > 10) alerts.push({
+                    id:'eng_dew_'+Date.now(), type:'NIEBLA PROBABLE', icon:'🌫️',
+                    title:'Niebla probable — '+city,
+                    description:'Temperatura próxima al punto de rocío. Niebla posible. Maneja con precaución.',
+                    lat:lat, lon:lon, distKm:0, time:new Date().toLocaleString('es-CL'),
+                    source:'Open-Meteo', priority:42, color:'#aaaaaa'
+                });
+            }
+
+            // Pronóstico precipitación próximas horas
+            if (d.hourly && d.hourly.precipitation_probability) {
+                var maxProb = Math.max.apply(null, d.hourly.precipitation_probability.slice(0,6));
+                if (maxProb >= 80) alerts.push({
+                    id:'eng_rain_prob_'+Date.now(), type:'LLUVIA PROBABLE', icon:'🌧️',
+                    title:'Lluvia probable '+maxProb+'% — '+city+' (próx. 6h)',
+                    description:'Alta probabilidad de lluvia en las próximas 6 horas. Lleva paraguas.',
+                    lat:lat, lon:lon, distKm:0, time:'Próx. 6h',
+                    source:'Open-Meteo Forecast', priority:38, color:'#4169E1'
+                });
+            }
+
+            // CAPE (energía convectiva — riesgo de tormentas eléctricas)
+            if (d.hourly && d.hourly.cape) {
+                var maxCape = Math.max.apply(null, d.hourly.cape.slice(0,6));
+                if (maxCape >= 2000) alerts.push({
+                    id:'eng_cape_'+Date.now(), type:'TORMENTA ELÉCTRICA', icon:'⚡',
+                    title:'Riesgo de tormenta eléctrica — '+city,
+                    description:'Energía convectiva alta (CAPE '+Math.round(maxCape)+' J/kg). Posibles rayos y granizo.',
+                    lat:lat, lon:lon, distKm:0, time:'Próx. 6h',
+                    source:'Open-Meteo / CAPE', priority:68, color:'#FFD700'
+                });
+                else if (maxCape >= 1000) alerts.push({
+                    id:'eng_cape_md_'+Date.now(), type:'TORMENTA POSIBLE', icon:'⛈️',
+                    title:'Condiciones para tormenta — '+city,
+                    description:'Energía convectiva moderada. Posibles chubascos y tormentas locales.',
+                    lat:lat, lon:lon, distKm:0, time:'Próx. 6h',
+                    source:'Open-Meteo / CAPE', priority:55, color:'#FFA500'
+                });
+            }
+
+            // Lluvia diaria acumulada
+            if (d.daily && d.daily.precipitation_sum && d.daily.precipitation_sum[0] > 0) {
+                var dailyRain = d.daily.precipitation_sum[0];
+                if (dailyRain >= 50) alerts.push({
+                    id:'eng_rain_d_'+Date.now(), type:'LLUVIA INTENSA HOY', icon:'🌊',
+                    title:'Lluvia intensa hoy: '+dailyRain.toFixed(0)+'mm — '+city,
+                    description:'Se esperan '+dailyRain.toFixed(0)+'mm acumulados hoy. Riesgo de inundaciones.',
+                    lat:lat, lon:lon, distKm:0, time:'Hoy',
+                    source:'Open-Meteo Forecast', priority:72, color:'#0055AA'
+                });
+            }
+
+            // Viento máximo diario
+            if (d.daily && d.daily.wind_speed_10m_max && d.daily.wind_speed_10m_max[0] > 60) {
+                var maxWind = d.daily.wind_speed_10m_max[0];
+                alerts.push({
+                    id:'eng_wind_d_'+Date.now(), type:'VIENTO FUERTE HOY', icon:'🌬️',
+                    title:'Viento fuerte hoy: hasta '+maxWind.toFixed(0)+' km/h — '+city,
+                    description:'Ráfagas de hasta '+maxWind.toFixed(0)+' km/h previstas. Asegura objetos sueltos.',
+                    lat:lat, lon:lon, distKm:0, time:'Hoy',
+                    source:'Open-Meteo Forecast', priority:58, color:'#87CEEB'
+                });
+            }
         }
 
         // Calidad del aire

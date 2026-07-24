@@ -144,6 +144,17 @@ function setupMapZoomListener() {
         var userLoc = getActiveLocation();
         var allForMap = externalAlerts.concat(window._globalMapAlerts || []);
         updateMapMarkersSmartZoom(allForMap, userLoc);
+        // Agregar pins climáticos al hacer zoom medio-alto
+        var z = leafletMap.getZoom();
+        if (z >= 8 && userLoc && userLoc.lat && typeof window.ZoneEngine !== 'undefined') {
+            var deg = z >= 10 ? 0.3 : 0.6;
+            window.ZoneEngine.generateGridPins(userLoc.lat, userLoc.lon, deg).then(function(pins) {
+                if (!pins || !pins.length) return;
+                window._climatePins = pins;
+                var combined = allForMap.concat(pins);
+                updateMapMarkersSmartZoom(combined, userLoc);
+            });
+        }
     });
 }
 
@@ -737,6 +748,23 @@ function updateLocationUI() {
 
     // Actualizar números de emergencia del Kit SOS según país detectado
     if (typeof renderSOSNumbers === 'function') renderSOSNumbers();
+
+    // Detectar tipo de zona geográfica y actualizar tips
+    if (focusLocation.lat && typeof window.ZoneEngine !== 'undefined') {
+        window.ZoneEngine.detect(focusLocation.lat, focusLocation.lon).then(function(zone) {
+            window.currentZone = zone;
+            // Mostrar indicador de zona en la UI
+            var zoneEl = document.getElementById('zoneIndicator');
+            if (zoneEl && zone && zone.type) {
+                zoneEl.textContent = zone.type.icon + ' ' + zone.type.label +
+                    (zone.elevation > 0 ? ' · ' + Math.round(zone.elevation) + 'm' : '');
+                zoneEl.style.color = zone.type.color;
+                zoneEl.style.display = 'block';
+            }
+            // Regenerar tips con info de zona
+            if (typeof refreshSmartTips === 'function') refreshSmartTips();
+        });
+    }
 
     // Enviar ubicación real (deviceLocation) al Service Worker para notificaciones
     var swLoc = deviceLocation && deviceLocation.lat ? deviceLocation :
@@ -1718,6 +1746,13 @@ function refreshSmartTips() {
 
 function generateTips() {
     var tips = [];
+
+    // ── Tips específicos de zona geográfica ──
+    if (window.currentZone && typeof window.ZoneEngine !== 'undefined') {
+        var zoneTips = window.ZoneEngine.getZoneTips(window.currentZone, externalAlerts);
+        zoneTips.forEach(function(t) { tips.push(t); });
+    }
+
     var hasEq = false, hasFlood = false, hasFire = false, hasTsunami = false, hasStorm = false, hasCyclone = false, hasVolcano = false;
 
     externalAlerts.forEach(function(a) {
@@ -2228,4 +2263,4 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
         setInterval(loadExternalSourcesData, 180000);
     }, 5000);
-});
+});v

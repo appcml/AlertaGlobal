@@ -27,7 +27,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 🔧 FIX: Cachea la distribución de Gradle y evita timeout en la descarga
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
         with:
@@ -44,7 +43,7 @@ jobs:
           data = ''.join(data.split())
           if len(data) % 4:
               data += '=' * (4 - len(data) % 4)
-          with open('android/app/keystore.jks', 'wb') as f:
+          with open('android/app/mis-juegos.keystore', 'wb') as f:
               f.write(base64.b64decode(data))
           PYEOF
 
@@ -52,7 +51,6 @@ jobs:
         working-directory: android
         run: chmod +x ./gradlew
 
-      # 🔧 FIX: Aumenta timeout de red para la descarga de dependencias
       - name: Build APK
         env:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}

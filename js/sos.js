@@ -238,9 +238,17 @@ function shareEmergencyLocation() {
     var msg = '🆘 EMERGENCIA - Necesito ayuda\n📍 '+(loc.name||'Mi ubicación')+
               '\nLat: '+loc.lat.toFixed(5)+', Lon: '+loc.lon.toFixed(5)+
               '\nhttps://maps.google.com/?q='+loc.lat+','+loc.lon;
-    if (navigator.share) navigator.share({title:'🆘 EMERGENCIA',text:msg}).catch(function(){});
-    else navigator.clipboard.writeText(msg).then(function(){alert('📋 Copiado. Pega en WhatsApp o SMS.');})
-        .catch(function(){window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');});
+    if (navigator.share) {
+        navigator.share({title:'🆘 EMERGENCIA', text:msg}).catch(function(){});
+    } else if (window.AndroidBridge && window.AndroidBridge.copyToClipboard) {
+        // APK: usar clipboard nativo Android (evita el "file://" en el alert)
+        window.AndroidBridge.copyToClipboard(msg);
+        alert('📋 Copiado al portapapeles. Pega en WhatsApp o SMS.');
+    } else {
+        navigator.clipboard.writeText(msg)
+            .then(function(){ alert('📋 Copiado. Pega en WhatsApp o SMS.'); })
+            .catch(function(){ window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank'); });
+    }
 }
 
 // ── LINTERNA SOS INTERMITENTE ──
@@ -402,6 +410,25 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnLang) btnLang.addEventListener('click', function() {
         applySosI18n();
         document.getElementById('langPopup').style.display='flex';
+    });
+
+    // Botón feedback 💬 — siempre disponible desde el toolbar
+    var btnFeedback = document.getElementById('btnFeedback');
+    if (btnFeedback) btnFeedback.addEventListener('click', function() {
+        // Reset para nueva sesión de feedback
+        window._fbStars = 0;
+        window._fbTags  = [];
+        document.querySelectorAll('.star').forEach(function(st) {
+            st.style.filter  = 'grayscale(1)';
+            st.style.opacity = '0.3';
+        });
+        document.querySelectorAll('.fb-tag').forEach(function(b) {
+            b.classList.remove('active');
+        });
+        var ft = document.getElementById('feedbackText');
+        if (ft) ft.value = '';
+        var fp = document.getElementById('feedbackPopup');
+        if (fp) fp.style.display = 'flex';
     });
     // Botón tema
     var btnTheme = document.getElementById('btnTheme');

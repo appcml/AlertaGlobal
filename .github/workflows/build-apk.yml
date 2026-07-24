@@ -1,7 +1,5 @@
 name: Build AlertaGlobal APK
 
-# ✅ SOLO se ejecuta MANUALMENTE desde GitHub Actions
-# Para construir: ve a Actions → Build AlertaGlobal APK → Run workflow
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: Build & Sign APK Release
 
     steps:
@@ -28,13 +27,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
+      # 🔧 FIX: Cachea la distribución de Gradle y evita timeout en la descarga
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          gradle-version: wrapper
 
       - name: Decode Keystore
         env:
@@ -42,7 +39,7 @@ jobs:
         run: |
           mkdir -p android/app
           python3 << 'PYEOF'
-          import base64, os, sys
+          import base64, os
           data = os.environ.get('KEYSTORE_B64', '')
           data = ''.join(data.split())
           if len(data) % 4:
@@ -51,18 +48,22 @@ jobs:
               f.write(base64.b64decode(data))
           PYEOF
 
-      # 🔧 FIX: Permisos de ejecución para gradlew
       - name: Dar permisos a Gradle
         working-directory: android
         run: chmod +x ./gradlew
 
+      # 🔧 FIX: Aumenta timeout de red para la descarga de dependencias
       - name: Build APK
         env:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease \
+            -Dorg.gradle.internal.http.connectionTimeout=180000 \
+            -Dorg.gradle.internal.http.socketTimeout=180000 \
+            -Dorg.gradle.daemon=false
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

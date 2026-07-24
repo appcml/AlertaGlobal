@@ -171,6 +171,15 @@ function updateMapGlobalFixed(allAlerts) {
 function setUserRadiusKm(km) {
     CONFIG.USER_RADIUS_KM = km;
     try { localStorage.setItem('ag_radius_km', String(km)); } catch(e){}
+    // Notificar al Service Worker para sincronizar filtro de notificaciones
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        var filter = km === 0 ? 'global' : km === -1 ? 'country' : 'radius';
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SET_FILTER',
+            filter: filter,
+            radius: km > 0 ? km : 200
+        });
+    }
 }
 function getUserRadiusKm() {
     if (CONFIG.USER_RADIUS_KM != null && CONFIG.USER_RADIUS_KM !== 0) return CONFIG.USER_RADIUS_KM;
@@ -194,8 +203,12 @@ function getActiveLocation() {
 }
 function isWithinRadius(eventLat, eventLon, centerLat, centerLon, radiusKm) {
     if (!centerLat || !centerLon || !eventLat || !eventLon) return true;
+    if (radiusKm === 0) return true; // Global
+    if (radiusKm === -1) {           // Solo mi país
+        var mockAlert = { lat: eventLat, lon: eventLon, distKm: null };
+        return isAlertInUserCountry(mockAlert);
+    }
     var d = calcDistance(centerLat, centerLon, eventLat, eventLon);
-    if (radiusKm === 0) return true;
     return d <= (radiusKm || getUserRadiusKm());
 }
 
@@ -456,7 +469,7 @@ function setupLocationButtons() {
     var radiusPopup = document.getElementById('radiusPopup');
     if (lbl) {
         var storedKm = localStorage.getItem('ag_radius_km') || '500';
-        lbl.textContent = storedKm === '0' ? 'Global' : storedKm + ' km';
+        lbl.textContent = storedKm === '0' ? 'Global' : storedKm === '-1' ? '🏳️ Mi país' : storedKm + ' km';
     }
     if (sel) sel.value = String(localStorage.getItem('ag_radius_km') || '500');
     var btnRadius = document.getElementById('btnRadius');
@@ -467,7 +480,7 @@ function setupLocationButtons() {
     if (saveRadius) saveRadius.addEventListener('click', function(){
         var v = document.getElementById('radiusSelect').value;
         setUserRadiusKm(parseInt(v,10));
-        if (lbl) lbl.textContent = (v==='0') ? 'Global' : v + ' km';
+        if (lbl) lbl.textContent = (v==='0') ? 'Global' : (v==='-1') ? '🏳️ Mi país' : v + ' km';
         if (radiusPopup) radiusPopup.style.display='none';
         loadAlerts();
         showToast('📏 Radio: '+(v==='0'?'Global':v+' km'));
@@ -1251,6 +1264,8 @@ function loadAlerts() {
             if (!loc.lat) return true;
             // Radio global → mostrar todo
             if (radius === 0) return true;
+            // Solo mi país (radius === -1)
+            if (radius === -1) return isAlertInUserCountry(a);
             // Alertas climáticas locales (distKm=0) → siempre mostrar
             if (a.distKm === 0) return true;
             // Alertas de Open-Meteo/OpenWeather son siempre locales
@@ -1353,7 +1368,7 @@ function loadAlerts() {
         });
 
         if (!filtered.length) {
-            if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()+' km')+'</small></div>';
+            if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()===-1?'🏳️ Mi país':getUserRadiusKm()+' km')+'</small></div>';
             updateStatus(false, 'Entorno Seguro');
             var cnt = document.getElementById('alertCount'); if (cnt) cnt.textContent = '0';
             return;

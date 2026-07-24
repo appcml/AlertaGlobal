@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
@@ -20,6 +19,7 @@ data class AlertFilterItem(
     val color: Color
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlertFiltersBar(
     selectedFilters: Set<String>,
@@ -75,6 +75,8 @@ fun AlertFiltersBar(
                         labelColor = Color.Gray
                     ),
                     border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
                         selectedBorderColor = filter.color,
                         borderColor = Color.DarkGray
                     )

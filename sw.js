@@ -72,6 +72,9 @@ var NOTIFY_RULES = {
     'ALERTA LLUVIA 24H':  { minPriority: 60,  always: false, timeFilter: null },
     'HURACÁN':            { minPriority: 85,  always: true,  timeFilter: null },
     'TORMENTA POSIBLE':   { minPriority: 55,  always: false, timeFilter: null },
+    'MAR AGITADO':        { minPriority: 52,  always: false, timeFilter: null },
+    'MAREJADA':           { minPriority: 60,  always: false, timeFilter: null },
+    'MAREJADA PELIGROSA': { minPriority: 85,  always: true,  timeFilter: null },
     'DEFAULT':            { minPriority: 75,  always: false, timeFilter: null }
 };
 
@@ -333,7 +336,7 @@ async function checkAlertsInBackground() {
                             Math.cos((coords[0] - lon) * Math.PI/180)
                         )
                     );
-                    if (dist <= 500 && p.mag >= 3.5) {
+                    if (dist <= 200 && p.mag >= 3.5) {
                         var level, priority;
                         if (p.mag >= 7.0)      { level = 'CRITICO';     priority = 96; }
                         else if (p.mag >= 5.5) { level = 'ALERTA';      priority = 84; }
@@ -350,6 +353,43 @@ async function checkAlertsInBackground() {
                 });
             }
         } catch(eqErr) {}
+
+        // ── Consultar Open-Meteo Marine para marejadas ──
+        try {
+            var marineUrl = 'https://marine-api.open-meteo.com/v1/marine?' +
+                'latitude='+lat+'&longitude='+lon +
+                '&current=wave_height,swell_wave_height,wave_period&timezone=auto';
+            var mr = await fetch(marineUrl, { signal: AbortSignal.timeout(8000) });
+            if (mr.ok) {
+                var md = await mr.json();
+                if (md && md.current && md.current.wave_height != null) {
+                    var wh = md.current.wave_height || 0;
+                    var swh = md.current.swell_wave_height || 0;
+                    if (wh >= 4.0) {
+                        alertsToNotify.push({
+                            type: 'MAREJADA PELIGROSA', priority: 88,
+                            title: '🔴 Marejada peligrosa ' + wh.toFixed(1) + 'm — ' + name,
+                            body: 'Olas de ' + wh.toFixed(1) + 'm. PELIGRO EXTREMO. No acercarse a la costa.',
+                            level: 'CRITICO'
+                        });
+                    } else if (wh >= 2.5) {
+                        alertsToNotify.push({
+                            type: 'MAREJADA', priority: 72,
+                            title: '🟠 Marejada ' + wh.toFixed(1) + 'm — ' + name,
+                            body: 'Olas de ' + wh.toFixed(1) + 'm. Playas peligrosas. Evitar costa.',
+                            level: 'ALERTA'
+                        });
+                    } else if (wh >= 1.5) {
+                        alertsToNotify.push({
+                            type: 'MAR AGITADO', priority: 52,
+                            title: '🟡 Mar agitado ' + wh.toFixed(1) + 'm — ' + name,
+                            body: 'Olas moderadas. Precaución en actividades marítimas.',
+                            level: 'ADVERTENCIA'
+                        });
+                    }
+                }
+            }
+        } catch(marErr) { /* ubicación sin datos marinos */ }
 
         // ── Filtrar: solo notificar lo que supera el umbral ──
         // Evitar spam: guardar últimas notificaciones enviadas

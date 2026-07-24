@@ -390,6 +390,12 @@ function setupTabs() {
             if (this.dataset.tab === 'mapa' && !mapInitialized) initMap();
             else if (this.dataset.tab === 'mapa' && leafletMap) setTimeout(function(){leafletMap.invalidateSize();},200);
             if (this.dataset.tab === 'tips') refreshSmartTips();
+            // Puente APK Android: notificar cambio de tab para intersticial AdMob
+            try {
+                if (window.AndroidBridge && typeof window.AndroidBridge.onTabChange === 'function') {
+                    window.AndroidBridge.onTabChange(this.dataset.tab);
+                }
+            } catch(e) {}
         });
     });
 }
@@ -667,6 +673,9 @@ function updateLocationUI() {
         var b = document.getElementById(id);
         if (b) b.textContent = focusLocation.lat ? '⭐' : '☆';
     });
+
+    // Actualizar números de emergencia del Kit SOS según país detectado
+    if (typeof renderSOSNumbers === 'function') renderSOSNumbers();
 }
 
 // ========== RESTAURAR ÚLTIMA UBICACIÓN ==========

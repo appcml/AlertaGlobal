@@ -1654,37 +1654,109 @@ function renderForecast(fc) {
     var list = fc.list || [];
     if (!list.length) return;
 
-    // ── PRONÓSTICO POR HORAS (próximas 12h) ──
+    // ── PRONÓSTICO POR HORAS — estilo visual extendido ──
     var now = Date.now();
-    var next12 = list.filter(function(item) {
-        return item.dt * 1000 > now && item.dt * 1000 < now + 43200000;
-    }).slice(0, 4); // máximo 4 slots de 3h = 12h
+    // Tomar las próximas 24h (8 slots de 3h)
+    var next24 = list.filter(function(item) {
+        return item.dt * 1000 > now && item.dt * 1000 < now + 86400000;
+    }).slice(0, 8);
 
     var html = '<div id="wForecast" style="margin-top:16px">';
 
-    if (next12.length > 0) {
-        html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:8px;' +
-                'text-transform:uppercase;letter-spacing:0.5px">🕐 Próximas 12 horas</div>';
-        html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;">';
-        next12.forEach(function(item) {
+    if (next24.length > 0) {
+        // Calcular rango de temperatura para la barra visual
+        var temps = next24.map(function(i){ return Math.round(i.main.temp); });
+        var minT = Math.min.apply(null, temps);
+        var maxT = Math.max.apply(null, temps);
+        var rangeT = Math.max(maxT - minT, 4);
+
+        html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:10px;' +
+                'text-transform:uppercase;letter-spacing:0.5px">🕐 Próximas 24 horas</div>';
+
+        // Contenedor scrollable horizontal
+        html += '<div style="overflow-x:auto;margin-bottom:16px;padding-bottom:4px;">';
+        html += '<div style="display:flex;min-width:max-content;gap:0;">';
+
+        next24.forEach(function(item, idx) {
             var d = new Date(item.dt * 1000);
             var hora = d.getHours().toString().padStart(2,'0') + ':00';
+            var esMedianoche = d.getHours() === 0;
+            var esTurno = (idx > 0 && esMedianoche);
             var icon = getWeatherIcon(item.weather[0].id);
+            var temp = Math.round(item.main.temp);
+            var prob = item.pop != null ? Math.round(item.pop * 100) : 0;
             var rain = (item.rain && item.rain['3h']) || 0;
             var wind = Math.round(item.wind && item.wind.speed ? item.wind.speed * 3.6 : 0);
-            var rainStr = rain > 0 ? '<div style="font-size:9px;color:#4488ff">💧'+rain.toFixed(1)+'mm</div>' : '';
-            var windStr = wind > 20 ? '<div style="font-size:9px;color:#88aaff">💨'+wind+'km/h</div>' : '';
-            var prob = item.pop != null ? Math.round(item.pop * 100) : 0;
-            var probStr = prob > 20 ? '<div style="font-size:9px;color:#4488ff">☔'+prob+'%</div>' : '';
-            html += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:10px;' +
-                    'padding:10px 8px;text-align:center;min-width:72px;flex-shrink:0;">' +
-                    '<div style="font-size:11px;font-weight:bold;color:var(--accent)">' + hora + '</div>' +
-                    '<div style="font-size:22px;margin:4px 0">' + icon + '</div>' +
-                    '<div style="font-size:14px;font-weight:700">' + Math.round(item.main.temp) + '°</div>' +
-                    rainStr + probStr + windStr +
-                    '</div>';
+
+            // Barra de temperatura relativa
+            var barHeight = Math.round(((temp - minT) / rangeT) * 40) + 10; // 10-50px
+            var barColor = temp >= 30 ? '#ff4400' : temp >= 20 ? '#ffaa00' :
+                           temp >= 10 ? '#4488ff' : temp >= 0 ? '#88ccff' : '#aaddff';
+
+            // Color de prob lluvia
+            var probColor = prob >= 70 ? '#0055cc' : prob >= 40 ? '#4488ff' : '#88aacc';
+
+            html += '<div style="display:flex;flex-direction:column;align-items:center;' +
+                    'min-width:68px;padding:0 4px;' +
+                    (esTurno ? 'border-left:1px dashed #444;' : '') + '>';
+
+            // Etiqueta de día si es medianoche
+            if (esTurno) {
+                html += '<div style="font-size:9px;color:#ff6666;font-weight:bold;' +
+                        'background:#2a1a1a;padding:1px 4px;border-radius:4px;margin-bottom:2px;">' +
+                        d.toLocaleDateString('es-CL',{weekday:'short'}).toUpperCase() + '</div>';
+            } else {
+                html += '<div style="height:16px;"></div>';
+            }
+
+            // Hora
+            html += '<div style="font-size:11px;font-weight:bold;color:' +
+                    (d.getHours() >= 6 && d.getHours() < 20 ? '#ffcc44' : '#8899bb') +
+                    '">' + hora + '</div>';
+
+            // Ícono clima
+            html += '<div style="font-size:24px;margin:4px 0">' + icon + '</div>';
+
+            // Temperatura
+            html += '<div style="font-size:14px;font-weight:700;color:#fff">' + temp + '°</div>';
+
+            // Barra visual de temperatura
+            html += '<div style="width:6px;height:'+barHeight+'px;background:'+barColor+';' +
+                    'border-radius:3px;margin:4px auto;opacity:0.8;"></div>';
+
+            // Probabilidad de lluvia
+            if (prob > 0) {
+                html += '<div style="font-size:10px;color:'+probColor+';font-weight:bold">'+prob+'%</div>';
+                html += '<div style="font-size:9px;color:#4488ff">💧</div>';
+            } else {
+                html += '<div style="height:28px;"></div>';
+            }
+
+            // Lluvia mm si hay
+            if (rain > 0) {
+                html += '<div style="font-size:9px;color:#4488ff">'+rain.toFixed(1)+'mm</div>';
+            }
+
+            // Viento si es notable
+            if (wind > 20) {
+                html += '<div style="font-size:9px;color:#88aaff">💨'+wind+'</div>';
+            }
+
+            html += '</div>';
         });
-        html += '</div>';
+
+        html += '</div></div>';
+
+        // Barra de alertas como MSN (si hay alertas activas para las próximas horas)
+        var hasRain = next24.some(function(i){ return (i.pop||0) > 0.4; });
+        var hasWind = next24.some(function(i){ return ((i.wind&&i.wind.speed)||0)*3.6 > 50; });
+        if (hasRain || hasWind) {
+            html += '<div style="background:#2a2200;border:1px solid #ffaa00;border-radius:6px;' +
+                    'padding:8px 12px;margin-bottom:12px;font-size:12px;color:#ffcc44;">';
+            if (hasRain) html += '⚠️ Lluvia probable en las próximas 24h · ';
+            if (hasWind) html += '💨 Viento fuerte previsto';
+            html += '</div>';
+        }
     }
 
     // ── PRONÓSTICO POR DÍAS (5 días) ──
@@ -2263,4 +2335,4 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
         setInterval(loadExternalSourcesData, 180000);
     }, 5000);
-});v
+});

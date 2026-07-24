@@ -40,14 +40,21 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          python3 -c "
+          mkdir -p android/app
+          python3 << 'PYEOF'
           import base64, os, sys
           data = os.environ.get('KEYSTORE_B64', '')
           data = ''.join(data.split())
-          if len(data) % 4: data += '=' * (4 - len(data) % 4)
+          if len(data) % 4:
+              data += '=' * (4 - len(data) % 4)
           with open('android/app/keystore.jks', 'wb') as f:
               f.write(base64.b64decode(data))
-          "
+          PYEOF
+
+      # 🔧 FIX: Permisos de ejecución para gradlew
+      - name: Dar permisos a Gradle
+        working-directory: android
+        run: chmod +x ./gradlew
 
       - name: Build APK
         env:

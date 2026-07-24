@@ -143,6 +143,12 @@ self.addEventListener('periodicsync', function(e) {
 self.addEventListener('message', function(e) {
     if (!e.data) return;
 
+    if (e.data.type === 'SET_FILTER') {
+        self._notifFilter = e.data.filter; // 'global', 'radius', 'country'
+        self._notifRadius = e.data.radius || 200;
+        console.log('[SW] Filtro notif:', self._notifFilter, self._notifRadius);
+    }
+
     if (e.data.type === 'SET_LOCATION') {
         // La app nos pasa la ubicación GPS real del usuario
         self._deviceLat = e.data.lat;
@@ -189,6 +195,35 @@ self.addEventListener('notificationclick', function(e) {
         })
     );
 });
+
+// ── Bounding boxes por país para filtro de notificaciones ──
+var SW_COUNTRY_BOUNDS = {
+    CL:{ minLat:-56,maxLat:-17,minLon:-76,maxLon:-65 },
+    AR:{ minLat:-55,maxLat:-21,minLon:-74,maxLon:-53 },
+    PE:{ minLat:-18,maxLat:0,  minLon:-82,maxLon:-68 },
+    BR:{ minLat:-34,maxLat:5,  minLon:-74,maxLon:-28 },
+    MX:{ minLat:14, maxLat:33, minLon:-118,maxLon:-86 },
+    US:{ minLat:24, maxLat:50, minLon:-125,maxLon:-65 },
+    ES:{ minLat:36, maxLat:44, minLon:-9,  maxLon:4  },
+    JP:{ minLat:30, maxLat:46, minLon:129, maxLon:146 },
+    AU:{ minLat:-44,maxLat:-10,minLon:113, maxLon:154 },
+    RU:{ minLat:50, maxLat:78, minLon:26,  maxLon:180 }
+};
+
+function getCountryFromCoords(lat, lon) {
+    for (var code in SW_COUNTRY_BOUNDS) {
+        var b = SW_COUNTRY_BOUNDS[code];
+        if (lat>=b.minLat && lat<=b.maxLat && lon>=b.minLon && lon<=b.maxLon) return code;
+    }
+    return null;
+}
+
+function isEventInUserCountry(eventLat, eventLon, userLat, userLon) {
+    var userCountry = getCountryFromCoords(userLat, userLon);
+    if (!userCountry) return true; // país no mapeado → mostrar todo
+    var eventCountry = getCountryFromCoords(eventLat, eventLon);
+    return eventCountry === userCountry;
+}
 
 // ── Función principal: verificar alertas en background ──
 async function checkAlertsInBackground() {
@@ -336,7 +371,15 @@ async function checkAlertsInBackground() {
                             Math.cos((coords[0] - lon) * Math.PI/180)
                         )
                     );
-                    if (dist <= 200 && p.mag >= 3.5) {
+                    // Obtener preferencia de filtro guardada
+                    var notifFilter = self._notifFilter || 'radius';
+                    var passFilter = false;
+                    if (notifFilter === 'country') {
+                        passFilter = isEventInUserCountry(coords[1], coords[0], lat, lon);
+                    } else {
+                        passFilter = dist <= 200;
+                    }
+                    if (passFilter && p.mag >= 3.5) {
                         var level, priority;
                         if (p.mag >= 7.0)      { level = 'CRITICO';     priority = 96; }
                         else if (p.mag >= 5.5) { level = 'ALERTA';      priority = 84; }

@@ -677,6 +677,17 @@ function updateLocationUI() {
 
     // Actualizar números de emergencia del Kit SOS según país detectado
     if (typeof renderSOSNumbers === 'function') renderSOSNumbers();
+
+    // Enviar ubicación real (deviceLocation) al Service Worker para notificaciones
+    var swLoc = deviceLocation && deviceLocation.lat ? deviceLocation :
+                focusLocation && focusLocation.lat ? focusLocation : null;
+    if (swLoc && typeof window.updateSWLocation === 'function') {
+        window.updateSWLocation(
+            swLoc.lat, swLoc.lon,
+            swLoc.name || 'Tu zona',
+            localStorage.getItem('ag_lang') || 'es'
+        );
+    }
 }
 
 // ========== RESTAURAR ÚLTIMA UBICACIÓN ==========
@@ -1387,20 +1398,48 @@ function loadAlerts() {
 function renderAlertCard(a, loc) {
     var dist = '';
     if (loc && loc.lat && a.lat != null && a.lon != null) {
-        var d = Math.round(calcDistance(loc.lat, loc.lon, a.lat, a.lon));
+        var d = a.distKm != null ? a.distKm : Math.round(calcDistance(loc.lat, loc.lon, a.lat, a.lon));
         dist = '<span class="alert-dist">📏 '+d+' km</span>';
     }
-    var levelClass = a.priority >= 90 ? 'critical' : a.priority >= 70 ? 'high' : 'medium';
-    var timeStr = a.time ? formatTime(a.time) : '';
+
+    // ── Nivel de alerta (4 niveles) ──
+    var level, levelColor, levelBg, levelEmoji;
+    if (a.level && a.levelColor) {
+        // Ya calculado por alert-engine
+        level = a.level; levelColor = a.levelColor;
+        levelBg = a.levelBg; levelEmoji = a.levelEmoji;
+    } else {
+        // Calcular desde priority
+        if (a.priority >= 85)      { level='CRÍTICO';     levelColor='#ff3333'; levelBg='#2a0000'; levelEmoji='🔴'; }
+        else if (a.priority >= 70) { level='ALERTA';      levelColor='#ff8800'; levelBg='#2a1500'; levelEmoji='🟠'; }
+        else if (a.priority >= 50) { level='ADVERTENCIA'; levelColor='#ffcc00'; levelBg='#2a2200'; levelEmoji='🟡'; }
+        else                       { level='INFORMATIVO'; levelColor='#00cc88'; levelBg='#002a1a'; levelEmoji='🟢'; }
+    }
+
+    var levelClass = a.priority >= 85 ? 'critical' : a.priority >= 70 ? 'high' : a.priority >= 50 ? 'medium' : 'low';
+    var timeStr   = a.time ? formatTime(a.time) : '';
     var localLabel = a._localLabel ? '<span class="alert-local-label">'+a._localLabel+'</span>' : '';
-    var shareBtn = '<button class="share-alert-btn" onclick="shareAlert('+JSON.stringify(a).replace(/"/g,"'")+')">📤</button>';
-    return '<div class="alert-card '+levelClass+'" style="border-left-color:'+a.color+'">'
+    var shareBtn  = '<button class="share-alert-btn" onclick="shareAlert('+JSON.stringify(a).replace(/"/g,"'")+')" >📤</button>';
+
+    // Nota para alertas lejanas
+    var farNote = a._farAlert
+        ? '<div style="font-size:11px;color:#4488ff;background:#0a1628;border-radius:4px;padding:4px 6px;margin:3px 0">ℹ️ Evento en otra región — Monitoreo global, puede no afectar tu zona.</div>'
+        : '';
+
+    return '<div class="alert-card '+levelClass+'" style="border-left:3px solid '+a.color+';background:'+levelBg+'22;">'
+        // Header: tipo + nivel + distancia + hora
         +'<div class="alert-header">'
         +'<span class="alert-type" style="color:'+a.color+'">'+a.icon+' '+a.type+'</span>'
-        +'<div style="display:flex;align-items:center;gap:6px">'+localLabel+dist+'<span class="alert-time">'+timeStr+'</span>'+shareBtn+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;">'+localLabel+dist+'<span class="alert-time">'+timeStr+'</span>'+shareBtn+'</div>'
         +'</div>'
+        // Etiqueta de nivel
+        +'<div style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold;'
+        +'color:'+levelColor+';border:1px solid '+levelColor+'44;margin-bottom:4px;letter-spacing:0.5px;">'
+        +levelEmoji+' '+level+'</div>'
+        // Contenido
         +'<div class="alert-title">'+a.title+'</div>'
         +(a.description ? '<div class="alert-desc">'+a.description+'</div>' : '')
+        +farNote
         +'<div class="alert-source">📡 '+a.source+'</div>'
         +'</div>';
 }

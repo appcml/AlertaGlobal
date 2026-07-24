@@ -27,7 +27,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ✅ Acción actualizada (la anterior está deprecada)
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -50,14 +49,38 @@ jobs:
           print("Keystore decodificado correctamente")
           PYEOF
 
-      # 🔍 DEBUG: Verificamos que el keystore exista
+      # ── COPIAR ARCHIVOS WEB AL APK ──
+      # Copia index.html, js/, css/, img/ a assets/www/
+      - name: Copiar archivos web a assets
+        run: |
+          mkdir -p android/app/src/main/assets/www/js
+          mkdir -p android/app/src/main/assets/www/css
+          mkdir -p android/app/src/main/assets/www/img
+
+          # Archivos raíz
+          cp index.html      android/app/src/main/assets/www/
+          cp manifest.json   android/app/src/main/assets/www/
+          cp sw.js           android/app/src/main/assets/www/ 2>/dev/null || echo "sw.js no encontrado, omitiendo"
+
+          # JavaScript
+          cp js/*.js android/app/src/main/assets/www/js/
+
+          # CSS
+          cp css/*.css android/app/src/main/assets/www/css/ 2>/dev/null || echo "No hay archivos CSS"
+
+          # Imágenes
+          cp img/* android/app/src/main/assets/www/img/ 2>/dev/null || echo "No hay imágenes"
+
+          echo "=== Archivos copiados a assets/www/ ==="
+          find android/app/src/main/assets/www/ -type f | sort
+
       - name: Verificar keystore y archivos
         working-directory: android
         run: |
           echo "=== Archivos en android/app/ ==="
           ls -la app/
-          echo "=== Info del keystore ==="
-          stat app/mis-juegos.keystore
+          echo "=== Assets www ==="
+          ls -la app/src/main/assets/www/ 2>/dev/null || echo "Sin assets"
 
       - name: Dar permisos a Gradle
         working-directory: android

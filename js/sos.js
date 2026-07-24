@@ -118,6 +118,13 @@ EMERGENCY_NUMBERS['IN'] = [{label:'Police',n:'100',icon:'👮'},{label:'Fire',n:
 function detectCountryCode() {
     // Intentar desde focusLocation primero, luego deviceLocation
     var loc = window.focusLocation || window.deviceLocation;
+    
+    // Si focusLocation tiene coords → usarlas directamente (más fiable)
+    if (window.focusLocation && window.focusLocation.lat) {
+        loc = window.focusLocation;
+    } else if (window.deviceLocation && window.deviceLocation.lat) {
+        loc = window.deviceLocation;
+    }
     var country = (loc && loc.country) || '';
     
     // Si tenemos código ISO directo (de Nominatim viene como country_code)
@@ -187,7 +194,25 @@ function detectCountryCode() {
 }
 function renderSOSNumbers() {
     var c = document.getElementById('sosEmergencyNumbers'); if (!c) return;
-    var nums = EMERGENCY_NUMBERS[detectCountryCode()]||EMERGENCY_NUMBERS.DEFAULT;
+    var code = detectCountryCode();
+    var nums = EMERGENCY_NUMBERS[code] || EMERGENCY_NUMBERS.DEFAULT;
+    var countryNames = {
+        CL:'Chile',AR:'Argentina',PE:'Perú',BR:'Brasil',CO:'Colombia',
+        MX:'México',US:'USA',CA:'Canadá',ES:'España',FR:'Francia',
+        DE:'Alemania',IT:'Italia',GB:'Reino Unido',PT:'Portugal',
+        JP:'Japón',AU:'Australia',CN:'China',RU:'Rusia',IN:'India',
+        DEFAULT:'Internacional'
+    };
+    var countryName = countryNames[code] || 'Internacional';
+    
+    // Mostrar país detectado en el header
+    var header = c.parentElement && c.parentElement.querySelector('[data-i18n="sos_numbers_title"], span');
+    var headerDiv = c.previousElementSibling;
+    if (headerDiv) {
+        headerDiv.innerHTML = '📞 <span data-i18n="sos_numbers_title">Números de Emergencia</span>' +
+            ' <span style="color:var(--accent);font-weight:bold;">— ' + countryName + '</span>';
+    }
+    
     c.innerHTML = nums.map(function(n) {
         return '<a href="tel:'+n.n+'" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:#1a1a2e;border:1px solid #333;border-radius:8px;text-decoration:none;color:#fff;">' +
             '<span style="font-size:22px">'+n.icon+'</span>' +
@@ -195,6 +220,8 @@ function renderSOSNumbers() {
             '<div style="font-size:20px;font-weight:bold;color:var(--accent)">'+n.n+'</div></div>' +
             '<span style="margin-left:auto;font-size:16px;opacity:0.5">📞</span></a>';
     }).join('');
+    
+    console.log('🆘 SOS: país detectado =', code, countryName, '| nums:', nums.length);
 }
 
 // ── EMERGENCIA PRINCIPAL ──

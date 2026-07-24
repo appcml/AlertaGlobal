@@ -42,9 +42,14 @@ window.onLanguageChange = function(lang) { applySosI18n(); renderSOSNumbers(); }
 // Números de emergencia por país — actualizados y verificados
 var EMERGENCY_NUMBERS = {
     // América del Sur
-    CL:[{label:'Bomberos',n:'132',icon:'🚒'},{label:'Carabineros',n:'133',icon:'👮'},
-        {label:'SAMU',n:'131',icon:'🚑'},{label:'Emergencias',n:'112',icon:'🆘'},
-        {label:'SENAPRED',n:'1455',icon:'🌊'},{label:'PDI',n:'134',icon:'🔍'}],
+    CL:[
+        {label:'Bomberos',     n:'132',  icon:'🚒'},
+        {label:'Carabineros',  n:'133',  icon:'👮'},
+        {label:'SAMU',         n:'131',  icon:'🚑'},
+        {label:'Emergencias',  n:'112',  icon:'🆘'},
+        {label:'SENAPRED',     n:'1455', icon:'🌊'},
+        {label:'PDI',          n:'134',  icon:'🔍'}
+    ],
     AR:[{label:'Policía',n:'101',icon:'👮'},{label:'Bomberos',n:'100',icon:'🚒'},
         {label:'Ambulancia',n:'107',icon:'🚑'},{label:'Emergencias',n:'911',icon:'🆘'}],
     PE:[{label:'Policía',n:'105',icon:'👮'},{label:'Bomberos',n:'116',icon:'🚒'},
@@ -400,4 +405,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     setTimeout(applySosI18n, 200);
     setTimeout(renderSOSNumbers, 300);
+    // Reintentar después de que geolocalización tenga tiempo de completarse
+    setTimeout(renderSOSNumbers, 2000);
+    setTimeout(renderSOSNumbers, 5000);
+    
+    // Observer: re-renderizar cuando cambie el nombre de ubicación
+    var _locObserver = new MutationObserver(function() {
+        renderSOSNumbers();
+    });
+    var _locEl = document.getElementById('currentLocationName');
+    if (_locEl) _locObserver.observe(_locEl, { childList: true, characterData: true, subtree: true });
 });

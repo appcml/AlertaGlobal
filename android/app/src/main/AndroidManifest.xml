@@ -1,27 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.alertaglobal">
+
     <!-- Red e Internet -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    <!-- Geolocalización — GPS + Red móvil + WiFi -->
+    <!-- Geolocalización -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <!-- Notificaciones y servicio en background -->
+    <!-- Notificaciones y background -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- SAE Cell Broadcast — alertas SENAPRED/SUBTEL sin internet -->
+    <!-- SAE Cell Broadcast — alertas SENAPRED sin internet -->
     <uses-permission android:name="android.permission.RECEIVE_EMERGENCY_BROADCAST" />
-    <!-- WiFi Direct — red mesh offline entre dispositivos -->
+    <!-- WiFi Direct / mesh -->
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    <!-- Vibración para alertas críticas -->
+    <!-- Vibración -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Cámara para linterna SOS -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+
     <application
         android:name=".AlertaGlobalApp"
         android:allowBackup="true"
@@ -31,10 +36,20 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AlertaGlobal"
         android:usesCleartextTraffic="true">
-        <!-- Google AdMob - Test ID (reemplazar con tu ID real en producción) -->
+
+        <!-- ══════════════════════════════════════════════════ -->
+        <!-- ADMOB APP ID — REEMPLAZAR CON TU APP ID REAL      -->
+        <!-- Formato: ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX   -->
+        <!-- ══════════════════════════════════════════════════ -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-6387207876125603~9875105107" />
+
+        <!-- Optimización AdMob: deshabilitar inicialización automática -->
+        <meta-data
+            android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
+            android:value="true" />
+
         <!-- Activity principal -->
         <activity
             android:name=".MainActivity"
@@ -47,13 +62,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <!-- Servicio de monitoreo en background -->
         <service
             android:name=".service.AlertMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
-        <!-- Receptor SAE Cell Broadcast (alertas SENAPRED) -->
+
+        <!-- SAE Cell Broadcast -->
         <receiver
             android:name=".receiver.CellBroadcastReceiver"
             android:enabled="true"
@@ -64,7 +81,8 @@
                 <action android:name="android.provider.Telephony.SMS_EMERGENCY_CB_RECEIVED" />
             </intent-filter>
         </receiver>
-        <!-- Receptor arranque automático -->
+
+        <!-- Arranque automático -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
@@ -74,5 +92,6 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
     </application>
 </manifest>

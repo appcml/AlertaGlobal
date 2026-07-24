@@ -142,7 +142,7 @@
                 <button class="location-btn" id="btnMyLocation">📍 <span id="currentLocationName">Detectar mi ubicación</span></button>
                 <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
                 <button class="location-btn fav-btn" id="btnStarAlert">☆</button>
-                <button class="location-btn" id="btnRadius">📏 <span id="radiusLabel">500 km</span></button>
+                <button class="location-btn" id="btnRadius">📏 <span id="radiusLabel">Global</span></button>
             </div>
 
             <!-- FILTROS MINIMALISTAS EN UNA LÍNEA -->
@@ -735,7 +735,7 @@
             var btnRadius   = document.getElementById('btnRadius');
 
             // Cargar radio guardado
-            var savedRadius = parseInt(localStorage.getItem('ag_radius_km')) || 500;
+            var savedRadius = parseInt(localStorage.getItem('ag_radius_km')) || 0;
             if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = savedRadius;
             if (radiusLabel) radiusLabel.textContent = savedRadius === 0 ? 'Global' : savedRadius + ' km';
 

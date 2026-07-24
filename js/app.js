@@ -1650,156 +1650,73 @@ function renderForecast(fc) {
     if (!cont) return;
     var old = document.getElementById('wForecast');
     if (old) old.remove();
-
     var list = fc.list || [];
     if (!list.length) return;
 
-    // ── PRONÓSTICO POR HORAS — estilo visual extendido ──
     var now = Date.now();
-    // Tomar las próximas 24h (8 slots de 3h)
-    var next24 = list.filter(function(item) {
-        return item.dt * 1000 > now && item.dt * 1000 < now + 86400000;
-    }).slice(0, 8);
-
-    var html = '<div id="wForecast" style="margin-top:16px">';
-
-    if (next24.length > 0) {
-        // Calcular rango de temperatura para la barra visual
-        var temps = next24.map(function(i){ return Math.round(i.main.temp); });
-        var minT = Math.min.apply(null, temps);
-        var maxT = Math.max.apply(null, temps);
-        var rangeT = Math.max(maxT - minT, 4);
-
-        html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:10px;' +
-                'text-transform:uppercase;letter-spacing:0.5px">🕐 Próximas 24 horas</div>';
-
-        // Contenedor scrollable horizontal
-        html += '<div style="overflow-x:auto;margin-bottom:16px;padding-bottom:4px;">';
-        html += '<div style="display:flex;min-width:max-content;gap:0;">';
-
-        next24.forEach(function(item, idx) {
-            var d = new Date(item.dt * 1000);
-            var hora = d.getHours().toString().padStart(2,'0') + ':00';
-            var esMedianoche = d.getHours() === 0;
-            var esTurno = (idx > 0 && esMedianoche);
-            var icon = getWeatherIcon(item.weather[0].id);
-            var temp = Math.round(item.main.temp);
-            var prob = item.pop != null ? Math.round(item.pop * 100) : 0;
-            var rain = (item.rain && item.rain['3h']) || 0;
-            var wind = Math.round(item.wind && item.wind.speed ? item.wind.speed * 3.6 : 0);
-
-            // Barra de temperatura relativa
-            var barHeight = Math.round(((temp - minT) / rangeT) * 40) + 10; // 10-50px
-            var barColor = temp >= 30 ? '#ff4400' : temp >= 20 ? '#ffaa00' :
-                           temp >= 10 ? '#4488ff' : temp >= 0 ? '#88ccff' : '#aaddff';
-
-            // Color de prob lluvia
-            var probColor = prob >= 70 ? '#0055cc' : prob >= 40 ? '#4488ff' : '#88aacc';
-
-            html += '<div style="display:flex;flex-direction:column;align-items:center;' +
-                    'min-width:68px;padding:0 4px;' +
-                    (esTurno ? 'border-left:1px dashed #444;' : '') + '>';
-
-            // Etiqueta de día si es medianoche
-            if (esTurno) {
-                html += '<div style="font-size:9px;color:#ff6666;font-weight:bold;' +
-                        'background:#2a1a1a;padding:1px 4px;border-radius:4px;margin-bottom:2px;">' +
-                        d.toLocaleDateString('es-CL',{weekday:'short'}).toUpperCase() + '</div>';
-            } else {
-                html += '<div style="height:16px;"></div>';
-            }
-
-            // Hora
-            html += '<div style="font-size:11px;font-weight:bold;color:' +
-                    (d.getHours() >= 6 && d.getHours() < 20 ? '#ffcc44' : '#8899bb') +
-                    '">' + hora + '</div>';
-
-            // Ícono clima
-            html += '<div style="font-size:24px;margin:4px 0">' + icon + '</div>';
-
-            // Temperatura
-            html += '<div style="font-size:14px;font-weight:700;color:#fff">' + temp + '°</div>';
-
-            // Barra visual de temperatura
-            html += '<div style="width:6px;height:'+barHeight+'px;background:'+barColor+';' +
-                    'border-radius:3px;margin:4px auto;opacity:0.8;"></div>';
-
-            // Probabilidad de lluvia
-            if (prob > 0) {
-                html += '<div style="font-size:10px;color:'+probColor+';font-weight:bold">'+prob+'%</div>';
-                html += '<div style="font-size:9px;color:#4488ff">💧</div>';
-            } else {
-                html += '<div style="height:28px;"></div>';
-            }
-
-            // Lluvia mm si hay
-            if (rain > 0) {
-                html += '<div style="font-size:9px;color:#4488ff">'+rain.toFixed(1)+'mm</div>';
-            }
-
-            // Viento si es notable
-            if (wind > 20) {
-                html += '<div style="font-size:9px;color:#88aaff">💨'+wind+'</div>';
-            }
-
-            html += '</div>';
-        });
-
-        html += '</div></div>';
-
-        // Barra de alertas como MSN (si hay alertas activas para las próximas horas)
-        var hasRain = next24.some(function(i){ return (i.pop||0) > 0.4; });
-        var hasWind = next24.some(function(i){ return ((i.wind&&i.wind.speed)||0)*3.6 > 50; });
-        if (hasRain || hasWind) {
-            html += '<div style="background:#2a2200;border:1px solid #ffaa00;border-radius:6px;' +
-                    'padding:8px 12px;margin-bottom:12px;font-size:12px;color:#ffcc44;">';
-            if (hasRain) html += '⚠️ Lluvia probable en las próximas 24h · ';
-            if (hasWind) html += '💨 Viento fuerte previsto';
-            html += '</div>';
-        }
-    }
-
-    // ── PRONÓSTICO POR DÍAS (5 días) ──
-    var days = {};
+    // Próximas 12h → máximo 4 slots de 3h
+    var next12 = list.filter(function(i){ return i.dt*1000 > now && i.dt*1000 < now+43200000; }).slice(0,4);
+    // Próximos 5 días
+    var days = {}, dayKeys = [];
     list.forEach(function(item) {
-        var d = new Date(item.dt * 1000);
-        var key = d.toLocaleDateString('es-CL', { weekday:'short', day:'2-digit', month:'2-digit' });
-        if (!days[key]) days[key] = { items: [], min: 999, max: -999 };
+        var d = new Date(item.dt*1000);
+        var key = d.toLocaleDateString('es-CL',{weekday:'short',day:'2-digit',month:'2-digit'});
+        if (!days[key]) { days[key] = {items:[],min:999,max:-999}; dayKeys.push(key); }
         days[key].items.push(item);
         days[key].min = Math.min(days[key].min, item.main.temp_min);
         days[key].max = Math.max(days[key].max, item.main.temp_max);
-        // Usar el item de mediodía como representativo
-        var h = d.getHours();
-        if (h >= 11 && h <= 14) days[key].main = item;
+        if (new Date(item.dt*1000).getHours()===12) days[key].main = item;
     });
 
-    var keys = Object.keys(days).slice(0, 5);
-    if (!keys.length) { html += '</div>'; cont.insertAdjacentHTML('beforeend', html); return; }
+    var html = '<div id="wForecast">';
 
-    html += '<div style="font-weight:700;font-size:12px;color:#aaa;margin-bottom:8px;' +
-            'text-transform:uppercase;letter-spacing:0.5px">📅 Próximos días</div>';
-    html += '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">';
+    // ── PRÓXIMAS 12 HORAS ── línea horizontal compacta
+    if (next12.length) {
+        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">🕐 Próximas 12 horas</div>';
+        html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;">';
+        next12.forEach(function(item) {
+            var d = new Date(item.dt*1000);
+            var hora = d.getHours().toString().padStart(2,'0')+':00';
+            var icon = getWeatherIcon(item.weather[0].id);
+            var temp = Math.round(item.main.temp);
+            var pop  = item.pop!=null ? Math.round(item.pop*100) : 0;
+            var rain = (item.rain&&item.rain['3h'])||0;
+            var isDia = d.getHours()>=7 && d.getHours()<20;
+            html += '<div style="flex:1;min-width:64px;background:#111a2e;border:1px solid #1e2d4a;border-radius:10px;padding:10px 6px;text-align:center;">'
+                  + '<div style="font-size:11px;font-weight:600;color:'+(isDia?'#ffcc44':'#8899bb')+'">'+hora+'</div>'
+                  + '<div style="font-size:26px;line-height:1.2;margin:4px 0">'+icon+'</div>'
+                  + '<div style="font-size:16px;font-weight:700;color:#fff">'+temp+'°</div>'
+                  + (pop>10?'<div style="font-size:10px;color:#4d9fff;margin-top:3px">💧'+pop+'%</div>':'<div style="height:17px"></div>')
+                  + (rain>0?'<div style="font-size:9px;color:#4488ff">'+rain.toFixed(1)+'mm</div>':'')
+                  + '</div>';
+        });
+        html += '</div>';
+    }
 
-    keys.forEach(function(key) {
-        var day = days[key];
-        var item = day.main || day.items[Math.floor(day.items.length/2)];
-        var icon = getWeatherIcon(item.weather[0].id);
-        var maxRain = day.items.reduce(function(acc, i) {
-            return acc + ((i.rain && i.rain['3h']) || 0);
-        }, 0);
-        var maxPop = Math.max.apply(null, day.items.map(function(i){ return i.pop || 0; }));
-        var rainStr = maxRain > 0 ? '<div style="font-size:9px;color:#4488ff">💧'+maxRain.toFixed(0)+'mm</div>' : '';
-        var probStr = maxPop > 0.2 ? '<div style="font-size:9px;color:#4488ff">☔'+Math.round(maxPop*100)+'%</div>' : '';
-        html += '<div style="background:#1a1a2e;border:1px solid #333;border-radius:10px;' +
-                'padding:10px 8px;text-align:center;min-width:72px;flex-shrink:0;">' +
-                '<div style="font-size:10px;color:#aaa;margin-bottom:3px">' + key + '</div>' +
-                '<div style="font-size:22px">' + icon + '</div>' +
-                '<div style="font-size:13px;font-weight:700;margin-top:3px">' + Math.round(day.max) + '°</div>' +
-                '<div style="font-size:11px;color:#888">' + Math.round(day.min) + '°</div>' +
-                rainStr + probStr +
-                '</div>';
-    });
-    html += '</div></div>';
+    // ── PRÓXIMOS DÍAS ── fila horizontal
+    var dk = dayKeys.slice(0,5);
+    if (dk.length) {
+        html += '<div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">📅 Próximos días</div>';
+        html += '<div style="display:flex;gap:6px;">';
+        dk.forEach(function(key) {
+            var day  = days[key];
+            var item = day.main||day.items[Math.floor(day.items.length/2)];
+            var icon = getWeatherIcon(item.weather[0].id);
+            var maxP = Math.max.apply(null, day.items.map(function(i){return i.pop||0;}));
+            var totR = day.items.reduce(function(a,i){return a+((i.rain&&i.rain['3h'])||0);},0);
+            html += '<div style="flex:1;background:#111a2e;border:1px solid #1e2d4a;border-radius:10px;padding:10px 6px;text-align:center;min-width:0;">'
+                  + '<div style="font-size:10px;color:#aaa;margin-bottom:3px">'+key+'</div>'
+                  + '<div style="font-size:24px;line-height:1.2;margin:2px 0">'+icon+'</div>'
+                  + '<div style="font-size:14px;font-weight:700;color:#fff">'+Math.round(day.max)+'°</div>'
+                  + '<div style="font-size:11px;color:#778">'+Math.round(day.min)+'°</div>'
+                  + (maxP>0.2?'<div style="font-size:10px;color:#4d9fff;margin-top:3px">'+Math.round(maxP*100)+'%</div>':'')
+                  + (totR>0?'<div style="font-size:9px;color:#4488ff">'+totR.toFixed(0)+'mm</div>':'')
+                  + '</div>';
+        });
+        html += '</div>';
+    }
+
+    html += '</div>';
     cont.insertAdjacentHTML('beforeend', html);
 }
 

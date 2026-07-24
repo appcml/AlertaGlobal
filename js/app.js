@@ -108,6 +108,7 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
             +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
             +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
                 +a.description.substring(0,150)+'</div>' : '')
+            +(a._farAlert ? '<div style="font-size:10px;color:#4488ff;padding:2px 0">ℹ️ Alerta lejana — monitoreo informativo. Puede generar efectos secundarios.</div>' : '')
             +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
             +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
             +'</div>';
@@ -1243,8 +1244,13 @@ function loadAlerts() {
             if (a.distKm === 0) return true;
             // Alertas de Open-Meteo/OpenWeather son siempre locales
             if (/Open.?Meteo|OpenWeather/i.test(a.source||'')) return true;
-            // Tsunamis/Huracanes/Alertas críticas → siempre mostrar (afectan zonas amplias)
-            if (/TSUNAMI|HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return true;
+            // Tsunamis: siempre mostrar pero marcar los muy lejanos como informativos
+            if (/TSUNAMI/.test(a.type||'')) {
+                if (a.distKm != null && a.distKm > 5000) a._farAlert = true;
+                return true;
+            }
+            // Huracanes/ciclones → siempre mostrar
+            if (/HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return true;
             if ((a.priority||0) >= 90) return true;
             // Con distancia calculada → usar radio seleccionado
             if (a.distKm != null) return a.distKm <= radius;

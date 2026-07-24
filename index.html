@@ -434,6 +434,67 @@
         </div>
     </div>
 
+    <!-- POPUP FEEDBACK -->
+    <div class="modal" id="feedbackPopup">
+        <div class="modal-content" style="max-width:420px;">
+            <h2 style="color:var(--accent);margin-bottom:6px;">💬 ¿Cómo podemos mejorar?</h2>
+            <p style="color:#aaa;font-size:12px;margin-bottom:16px;">Tu opinión nos ayuda a hacer AlertaGlobal mejor. Es opcional y anónimo.</p>
+
+            <!-- Calificación con estrellas -->
+            <div style="margin-bottom:14px;">
+                <div style="color:#ccc;font-size:12px;margin-bottom:6px;">¿Qué te parece la app?</div>
+                <div id="starRating" style="display:flex;gap:8px;font-size:28px;cursor:pointer;">
+                    <span class="star" data-val="1">⭐</span>
+                    <span class="star" data-val="2">⭐</span>
+                    <span class="star" data-val="3">⭐</span>
+                    <span class="star" data-val="4">⭐</span>
+                    <span class="star" data-val="5">⭐</span>
+                </div>
+            </div>
+
+            <!-- Categorías rápidas -->
+            <div style="margin-bottom:14px;">
+                <div style="color:#ccc;font-size:12px;margin-bottom:6px;">¿Qué mejorarías? (opcional)</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;" id="feedbackTags">
+                    <button class="fb-tag" data-tag="alertas">🚨 Alertas</button>
+                    <button class="fb-tag" data-tag="mapa">🗺️ Mapa</button>
+                    <button class="fb-tag" data-tag="velocidad">⚡ Velocidad</button>
+                    <button class="fb-tag" data-tag="diseño">🎨 Diseño</button>
+                    <button class="fb-tag" data-tag="idioma">🌐 Idiomas</button>
+                    <button class="fb-tag" data-tag="sos">🦺 Kit SOS</button>
+                    <button class="fb-tag" data-tag="nada">✅ Todo bien</button>
+                </div>
+            </div>
+
+            <!-- Comentario libre -->
+            <textarea id="feedbackText" placeholder="Cuéntanos más (opcional)..."
+                style="width:100%;height:70px;padding:8px;border-radius:6px;border:1px solid #444;
+                background:#1a1a2e;color:#fff;font-size:13px;resize:none;box-sizing:border-box;margin-bottom:12px;"></textarea>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button id="btnSkipFeedback" style="padding:12px;background:#222;border:1px solid #444;
+                    color:#aaa;border-radius:6px;cursor:pointer;font-size:13px;">
+                    Omitir por ahora
+                </button>
+                <button id="btnSendFeedback" style="padding:12px;background:var(--accent);border:none;
+                    color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px;">
+                    📤 Enviar
+                </button>
+            </div>
+            <p style="color:#555;font-size:10px;text-align:center;margin-top:8px;">Anónimo · No almacenamos datos personales</p>
+        </div>
+    </div>
+
+    <style>
+    .fb-tag {
+        padding:5px 10px;background:#1a1a2e;border:1px solid #444;color:#ccc;
+        border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.2s;
+    }
+    .fb-tag.active {
+        background:#2a1a1a;border-color:var(--accent);color:var(--accent);
+    }
+    </style>
+
     <!-- SCRIPTS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="js/ai.js?v=1784420200"></script>
@@ -450,7 +511,41 @@
         // ── TÉRMINOS Y CONDICIONES ──
         var termsPopup = document.getElementById('termsPopup');
         var btnAcceptTerms = document.getElementById('btnAcceptTerms');
-        if (!localStorage.getItem('ag_terms_v1')) {
+
+        // Mostrar selector de idioma al primer inicio (antes que los términos)
+        if (!localStorage.getItem('ag_lang_selected')) {
+            // Primer inicio: mostrar popup de idioma
+            setTimeout(function() {
+                var lp = document.getElementById('langPopup');
+                if (lp) {
+                    // Personalizar popup para primer inicio
+                    var h2 = lp.querySelector('h2');
+                    if (h2) h2.innerHTML = '🌍 Bienvenido a Alerta Global<br><small style="font-size:13px;color:#aaa;font-weight:normal">Selecciona tu idioma / Select your language</small>';
+                    // Agregar botón continuar
+                    var mc = lp.querySelector('.modal-content');
+                    if (mc && !mc.querySelector('#btnLangContinue')) {
+                        var btn = document.createElement('button');
+                        btn.id = 'btnLangContinue';
+                        btn.textContent = '✓ Continuar / Continue';
+                        btn.style.cssText = 'width:100%;padding:14px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:12px;';
+                        btn.onclick = function() {
+                            localStorage.setItem('ag_lang_selected', '1');
+                            lp.style.display = 'none';
+                            // Mostrar términos después
+                            if (!localStorage.getItem('ag_terms_v1') && termsPopup) {
+                                termsPopup.style.display = 'flex';
+                            }
+                        };
+                        mc.appendChild(btn);
+                    }
+                    lp.style.display = 'flex';
+                    // Ocultar el X del primer inicio
+                    var closeBtn = lp.querySelector('.modal-close');
+                    if (closeBtn) closeBtn.style.display = 'none';
+                }
+            }, 500);
+            if (termsPopup) termsPopup.style.display = 'none';
+        } else if (!localStorage.getItem('ag_terms_v1')) {
             if (termsPopup) termsPopup.style.display = 'flex';
         } else {
             if (termsPopup) termsPopup.style.display = 'none';
@@ -459,6 +554,13 @@
             btnAcceptTerms.addEventListener('click', function() {
                 localStorage.setItem('ag_terms_v1', '1');
                 if (termsPopup) termsPopup.style.display = 'none';
+                // Mostrar feedback solo la primera vez
+                if (!localStorage.getItem('ag_feedback_shown')) {
+                    setTimeout(function() {
+                        var fp = document.getElementById('feedbackPopup');
+                        if (fp) fp.style.display = 'flex';
+                    }, 800);
+                }
             });
         }
 
@@ -674,5 +776,117 @@
         })();
     </script>
 
+    <script>
+    // ── FEEDBACK → Google Forms ──
+    var GFORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfHfDP-0VGtKj2E6C8RL9POabcdUEqjdCDNnoYvtZtci1n2ig/formResponse';
+    var GFORM_FIELDS = {
+        stars:   'entry.470287973',   // Calificación 1-5
+        tags:    'entry.1308844205',  // ¿Qué mejorarías?
+        comment: 'entry.287835020'    // Comentarios
+    };
+
+    var _fbStars = 0;
+    var _fbTags  = [];
+
+    // ── Estrellas ──
+    document.querySelectorAll('.star').forEach(function(s) {
+        s.addEventListener('click', function() {
+            _fbStars = parseInt(this.dataset.val);
+            document.querySelectorAll('.star').forEach(function(st, i) {
+                st.style.filter  = i < _fbStars ? 'none' : 'grayscale(1)';
+                st.style.opacity = i < _fbStars ? '1' : '0.3';
+            });
+        });
+    });
+
+    // ── Tags ──
+    document.querySelectorAll('.fb-tag').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var tag = this.dataset.tag;
+            if (this.classList.contains('active')) {
+                this.classList.remove('active');
+                _fbTags = _fbTags.filter(function(t){ return t !== tag; });
+            } else {
+                this.classList.add('active');
+                _fbTags.push(tag);
+            }
+        });
+    });
+
+    // ── Enviar a Google Forms ──
+    function sendFeedbackToGForms(stars, tags, comment) {
+        // Construir FormData para envío silencioso (no redirige)
+        var lang = localStorage.getItem('ag_lang') || 'es';
+        var commentFull = comment +
+            (comment ? ' | ' : '') +
+            'Lang:' + lang + ' | v2.0 | ' + new Date().toLocaleDateString('es-CL');
+
+        var params = new URLSearchParams();
+        params.append(GFORM_FIELDS.stars,   stars || '0');
+        // Google Forms casillas: enviar cada tag por separado
+        if (tags && tags.length > 0) {
+            tags.forEach(function(tag) {
+                params.append(GFORM_FIELDS.tags, tag);
+            });
+        } else {
+            params.append(GFORM_FIELDS.tags, 'Sin selección');
+        }
+        params.append(GFORM_FIELDS.comment, commentFull);
+
+        // Enviar con no-cors (Google Forms no necesita respuesta)
+        fetch(GFORM_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+        }).catch(function() {
+            // Si falla el envío, guardar localmente como respaldo
+            try {
+                var prev = JSON.parse(localStorage.getItem('ag_feedbacks_pending') || '[]');
+                prev.push({ stars: stars, tags: tags, comment: commentFull, ts: Date.now() });
+                localStorage.setItem('ag_feedbacks_pending', JSON.stringify(prev));
+            } catch(e) {}
+        });
+    }
+
+    function showThanks(msg) {
+        var thanks = document.createElement('div');
+        thanks.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
+            'background:#1a1a2e;border:1px solid var(--accent);color:var(--accent);' +
+            'padding:12px 24px;border-radius:20px;font-size:13px;z-index:9999;' +
+            'box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;';
+        thanks.textContent = msg || '✅ ¡Gracias por tu feedback!';
+        document.body.appendChild(thanks);
+        setTimeout(function(){ thanks.remove(); }, 3500);
+    }
+
+    function closeFeedback() {
+        localStorage.setItem('ag_feedback_shown', '1');
+        document.getElementById('feedbackPopup').style.display = 'none';
+    }
+
+    // ── Botón Enviar ──
+    document.getElementById('btnSendFeedback').addEventListener('click', function() {
+        var comment = (document.getElementById('feedbackText').value || '').trim();
+        if (_fbStars === 0) {
+            // Si no seleccionó estrellas, recordarle
+            document.getElementById('starRating').style.animation = 'pulse 0.4s 2';
+            return;
+        }
+        sendFeedbackToGForms(_fbStars, _fbTags.slice(), comment);
+        closeFeedback();
+        showThanks('✅ ¡Gracias! Tu opinión llegará a nuestro equipo.');
+    });
+
+    // ── Botón Omitir ──
+    document.getElementById('btnSkipFeedback').addEventListener('click', function() {
+        closeFeedback();
+    });
+
+    // ── Cerrar al click fuera ──
+    document.getElementById('feedbackPopup').addEventListener('click', function(e) {
+        if (e.target === this) closeFeedback();
+    });
+    </script>
 </body>
 </html>

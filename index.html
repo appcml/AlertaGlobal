@@ -144,6 +144,8 @@
                 <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
                 <button class="location-btn fav-btn" id="btnStarAlert">☆</button>
                 <button class="location-btn" id="btnRadius">📏 <span id="radiusLabel">Global</span></button>
+            <div id="zoneIndicator" style="display:none;font-size:11px;color:#aaa;padding:2px 8px;
+                border-radius:10px;background:#1a1a2e;border:1px solid #333;white-space:nowrap;"></div>
             </div>
 
             <!-- FILTROS MINIMALISTAS EN UNA LÍNEA -->
@@ -505,6 +507,7 @@
     <script src="js/locations.js?v=1784395434"></script>
     <script src="js/AlertFiltering_FIX.js"></script>
     <script src="js/alert-engine.js?v=1784395434"></script>
+    <script src="js/zone-engine.js?v=1784925278"></script>
     <script src="js/app.js?v=1784395434"></script>
     <script src="js/map-layers.js?v=1784395434"></script>
     <script src="js/sos.js?v=1784835138"></script>
@@ -961,6 +964,12 @@
     };
 
     // Función para forzar verificación inmediata
+    // Hook de zona — notifica cuando cambia el tipo de zona
+    window.onZoneDetected = function(zone) {
+        console.log('🗺️ Zona actualizada:', zone.type.label, zone.elevation+'m');
+        if (typeof refreshSmartTips === 'function') refreshSmartTips();
+    };
+
     window.checkAlertsNow = function() {
         if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
         navigator.serviceWorker.controller.postMessage({ type: 'CHECK_NOW' });

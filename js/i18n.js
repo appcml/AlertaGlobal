@@ -26,6 +26,16 @@ var TRANSLATIONS = {
         sos_emergency:"Contactos de Emergencia", sos_share:"Compartir Ubicación",
         sos_report:"Reportar Incidente", sos_firstaid:"Primeros Auxilios",
         sos_online:"Modo Online — Datos en tiempo real",
+        
+        sos_emergency_btn:"EMERGENCIA — LLAMAR AHORA",
+        sos_numbers_title:"📞 Números de Emergencia",
+        sos_actions_title:"⚡ Acciones Rápidas",
+        sos_flashlight:"Señal SOS",
+        sos_flashlight_desc:"Linterna en morse SOS para ser localizado",
+        sos_flashlight_btn:"Señal SOS",
+        sos_radio:"Radio / Walkie",
+        sos_radio_desc:"Frecuencias de emergencia y apps walkie-talkie",
+        sos_radio_btn:"Ver canales",
         lang_select:"Seleccionar idioma", theme_select:"Seleccionar tema"
     },
     en: {
@@ -50,6 +60,16 @@ var TRANSLATIONS = {
         sos_emergency:"Emergency Contacts", sos_share:"Share Location",
         sos_report:"Report Incident", sos_firstaid:"First Aid",
         sos_online:"Online Mode — Real-time data",
+        
+        sos_emergency_btn:"EMERGENCY — CALL NOW",
+        sos_numbers_title:"📞 Emergency Numbers",
+        sos_actions_title:"⚡ Quick Actions",
+        sos_flashlight:"SOS Signal",
+        sos_flashlight_desc:"Morse SOS flashlight to be located",
+        sos_flashlight_btn:"SOS Signal",
+        sos_radio:"Radio / Walkie",
+        sos_radio_desc:"Emergency frequencies and walkie-talkie apps",
+        sos_radio_btn:"View channels",
         lang_select:"Select language", theme_select:"Select theme"
     },
     pt: {
@@ -74,6 +94,16 @@ var TRANSLATIONS = {
         sos_emergency:"Contatos de Emergência", sos_share:"Compartilhar Localização",
         sos_report:"Reportar Incidente", sos_firstaid:"Primeiros Socorros",
         sos_online:"Modo Online — Dados em tempo real",
+        
+        sos_emergency_btn:"EMERGÊNCIA — LIGAR AGORA",
+        sos_numbers_title:"📞 Números de Emergência",
+        sos_actions_title:"⚡ Ações Rápidas",
+        sos_flashlight:"Sinal SOS",
+        sos_flashlight_desc:"Lanterna morse SOS para ser localizado",
+        sos_flashlight_btn:"Sinal SOS",
+        sos_radio:"Rádio / Walkie",
+        sos_radio_desc:"Frequências de emergência e apps walkie-talkie",
+        sos_radio_btn:"Ver canais",
         lang_select:"Selecionar idioma", theme_select:"Selecionar tema"
     },
     fr: {
@@ -98,6 +128,16 @@ var TRANSLATIONS = {
         sos_emergency:"Contacts d'urgence", sos_share:"Partager la position",
         sos_report:"Signaler un incident", sos_firstaid:"Premiers secours",
         sos_online:"Mode en ligne — Données en temps réel",
+        
+        sos_emergency_btn:"URGENCE — APPELER MAINTENANT",
+        sos_numbers_title:"📞 Numéros d'urgence",
+        sos_actions_title:"⚡ Actions rapides",
+        sos_flashlight:"Signal SOS",
+        sos_flashlight_desc:"Lampe torche morse SOS pour être localisé",
+        sos_flashlight_btn:"Signal SOS",
+        sos_radio:"Radio / Walkie",
+        sos_radio_desc:"Fréquences d'urgence et apps walkie-talkie",
+        sos_radio_btn:"Voir canaux",
         lang_select:"Choisir la langue", theme_select:"Choisir le thème"
     },
     de: {
@@ -122,6 +162,16 @@ var TRANSLATIONS = {
         sos_emergency:"Notfallkontakte", sos_share:"Standort teilen",
         sos_report:"Vorfall melden", sos_firstaid:"Erste Hilfe",
         sos_online:"Online-Modus — Echtzeit-Daten",
+        
+        sos_emergency_btn:"NOTFALL — JETZT ANRUFEN",
+        sos_numbers_title:"📞 Notrufnummern",
+        sos_actions_title:"⚡ Schnellaktionen",
+        sos_flashlight:"SOS-Signal",
+        sos_flashlight_desc:"Morse SOS Taschenlampe zur Ortung",
+        sos_flashlight_btn:"SOS-Signal",
+        sos_radio:"Radio / Walkie",
+        sos_radio_desc:"Notfallfrequenzen und Walkie-Talkie-Apps",
+        sos_radio_btn:"Kanäle anzeigen",
         lang_select:"Sprache wählen", theme_select:"Thema wählen"
     },
     zh: {
@@ -146,6 +196,16 @@ var TRANSLATIONS = {
         sos_emergency:"紧急联系人", sos_share:"共享位置",
         sos_report:"报告事件", sos_firstaid:"急救",
         sos_online:"在线模式 — 实时数据",
+        
+        sos_emergency_btn:"紧急情况 — 立即拨打",
+        sos_numbers_title:"📞 紧急电话",
+        sos_actions_title:"⚡ 快速操作",
+        sos_flashlight:"SOS信号",
+        sos_flashlight_desc:"摩尔斯SOS手电筒信号以便被定位",
+        sos_flashlight_btn:"SOS信号",
+        sos_radio:"无线电/对讲机",
+        sos_radio_desc:"紧急频率和对讲机应用",
+        sos_radio_btn:"查看频道",
         lang_select:"选择语言", theme_select:"选择主题"
     }
 };

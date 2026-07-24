@@ -225,13 +225,13 @@
                     color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:bold;
                     cursor:pointer;box-shadow:0 4px 15px rgba(255,0,0,0.4);letter-spacing:1px;
                     animation:pulse 2s infinite;">
-                    🆘 EMERGENCIA — LLAMAR AHORA
+                    🆘 <span data-i18n="sos_emergency_btn">EMERGENCIA — LLAMAR AHORA</span>
                 </button>
             </div>
 
             <!-- Números de emergencia por país -->
             <div style="padding:12px 16px 4px;">
-                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">📞 Números de Emergencia</div>
+                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><span data-i18n="sos_numbers_title">📞 Números de Emergencia</span></div>
                 <div id="sosEmergencyNumbers" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                     <!-- Se llena dinámicamente según el país detectado -->
                 </div>
@@ -239,7 +239,7 @@
 
             <!-- Grid de acciones -->
             <div style="padding:8px 16px;">
-                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">⚡ Acciones Rápidas</div>
+                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><span data-i18n="sos_actions_title">⚡ Acciones Rápidas</span></div>
                 <div class="sos-grid">
                     <div class="sos-card">
                         <div class="sos-icon">📍</div>
@@ -255,15 +255,15 @@
                     </div>
                     <div class="sos-card">
                         <div class="sos-icon">🔦</div>
-                        <div class="sos-title">Señal SOS</div>
-                        <div class="sos-desc">Linterna en morse SOS (···−−−···) para ser localizado</div>
-                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">🔦 Señal SOS</button>
+                        <div class="sos-title" data-i18n="sos_flashlight">Señal SOS</div>
+                        <div class="sos-desc" data-i18n="sos_flashlight_desc">Linterna en morse SOS (···−−−···) para ser localizado</div>
+                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">🔦 <span data-i18n="sos_flashlight_btn">Señal SOS</span></button>
                     </div>
                     <div class="sos-card">
                         <div class="sos-icon">📻</div>
-                        <div class="sos-title">Radio / Walkie</div>
-                        <div class="sos-desc">Frecuencias de emergencia y apps walkie-talkie</div>
-                        <button class="sos-btn" onclick="openRadioPanel()">📡 Ver canales</button>
+                        <div class="sos-title" data-i18n="sos_radio">Radio / Walkie</div>
+                        <div class="sos-desc" data-i18n="sos_radio_desc">Frecuencias de emergencia y apps walkie-talkie</div>
+                        <button class="sos-btn" onclick="openRadioPanel()">📡 <span data-i18n="sos_radio_btn">Ver canales</span></button>
                     </div>
                 </div>
             </div>

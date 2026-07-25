@@ -1256,18 +1256,35 @@ function loadAlerts() {
                 //   Evita que Open-Meteo y alert-engine generen 2 "CHUBASCOS FUERTES" para la misma ciudad
                 // - Alertas con coords: dedup por tipo + grilla ~25km
                 //   Permite que sismo en Constitución y sismo en Caldera sean distintos
+                // ── Deduplicación de sismos por epicentro ──
+                // Elimina el mismo terremoto reportado por USGS + EMSC + CSN simultáneamente
+                // Criterio: mismo tipo SISMO, epicentro <50km, diferencia tiempo <5min, magnitud ±0.3
+                var sismos = all.filter(function(a){ return a.type==='SISMO' && a.lat!=null; });
+                var otrosTipos = all.filter(function(a){ return a.type!=='SISMO' || a.lat==null; });
+                var sismosFiltrados = [];
+                sismos.sort(function(a,b){ return (b.priority||0)-(a.priority||0); }); // mejor primero
+                sismos.forEach(function(a) {
+                    var esDup = sismosFiltrados.some(function(b) {
+                        var distEpi = calcDistance(a.lat,a.lon,b.lat,b.lon);
+                        var difTiempo = Math.abs((a._timeMs||0)-(b._timeMs||0));
+                        var difMag = Math.abs((a.magnitude||0)-(b.magnitude||0));
+                        return distEpi < 50 && difTiempo < 300000 && difMag < 0.3;
+                    });
+                    if (!esDup) sismosFiltrados.push(a);
+                });
+                all = sismosFiltrados.concat(otrosTipos);
+
+                // ── Deduplicación general por tipo+ubicación ──
                 var seen = {};
                 all = all.filter(function(a) {
                     var typeKey = (a.type||'').toUpperCase().replace(/\s+/g,'').substring(0,12);
                     var isLocal = (a.distKm === 0 || (a.lat == null && a.lon == null));
                     var key;
                     if (isLocal) {
-                        // Para locales: tipo + primeras 3 palabras del título (captura ciudad)
                         var titleWords = (a.title||'').split(' ').slice(0,3).join('_').toLowerCase()
                             .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
                         key = typeKey + '_' + titleWords;
                     } else {
-                        // Para geolocalizadas: tipo + grilla ~25km
                         var latKey = Math.round((a.lat||0) * 4);
                         var lonKey = Math.round((a.lon||0) * 4);
                         key = typeKey + '_' + latKey + '_' + lonKey;
@@ -1457,22 +1474,8 @@ function loadAlerts() {
         var hasCritical = filtered.some(function(a) { return a.priority >= 90; });
         if (hasCritical) {
             updateStatus(true, 'AMENAZA DETECTADA');
-            // Notificar SOLO alertas de la zona del usuario (≤50km o sin coords propias)
-            // Las alertas globales se muestran en el mapa/lista pero NO generan notificación
-            var notifRadius = 200; // km máximo para notificar
-            filtered.filter(function(a) {
-                if (a.priority < 85) return false;
-                // Tsunamis y prioridad extrema: notificar siempre (pueden afectar zonas costeras)
-                if (a.priority >= 95 || /TSUNAMI/i.test(a.type||'')) return true;
-                // Solo notificar si está dentro del radio de notificación del usuario
-                if (a.distKm != null) return a.distKm <= notifRadius;
-                // Si no tiene distancia calculada y tiene coords, calcular
-                if (loc.lat && a.lat != null && a.lon != null) {
-                    return calcDistance(loc.lat, loc.lon, a.lat, a.lon) <= notifRadius;
-                }
-                // Sin coordenadas: NO notificar (son alertas globales sin ubicación precisa)
-                return false;
-            }).forEach(function(a) {
+            // Check for new alerts
+            filtered.filter(function(a) { return a.priority >= 85; }).forEach(function(a) {
                 var id = (a.source_id || a.title || '').substring(0,50);
                 if (!seenAlertIds[id]) {
                     seenAlertIds[id] = true;
@@ -1566,6 +1569,18 @@ function shareAlert(alertData) {
 
 // ========== WEATHER ==========
 function loadWeather(lat, lon) {
+    // Usar Open-Meteo (gratis, sin API key) si está disponible
+    if (typeof window.loadWeatherOpenMeteo === 'function') {
+        var cityLabel = (window.focusLocation && window.focusLocation.name)
+                     || (window.deviceLocation && window.deviceLocation.name)
+                     || 'Tu zona';
+        window.loadWeatherOpenMeteo(lat, lon, cityLabel).then(function() {
+            dataReady.weather = true;
+            refreshSmartTips();
+        });
+        return;
+    }
+    // Fallback: OpenWeatherMap
     var loading = document.getElementById('weatherLoading');
     var container = document.getElementById('weatherContainer');
     var errEl = document.getElementById('weatherError');

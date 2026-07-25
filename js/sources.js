@@ -1074,19 +1074,42 @@ async function fetchPTWC() {
             var title   = (e.querySelector('title')||{}).textContent||'';
             var summary = (e.querySelector('summary')||{}).textContent||'';
             var updated = (e.querySelector('updated')||{}).textContent||'';
+            var content = title+' '+summary;
             if (!title||title.length<3) return;
-            var isCancelled = /cancel|no.*threat/i.test(title+summary);
-            var pri = isCancelled?20:(/warning/i.test(title)?98:/watch/i.test(title)?88:70);
-            var icon = isCancelled?'✅':'🌊';
+
+            // Clasificar por nivel real del PTWC
+            var isCancelled    = /cancel|no.*threat|all.*clear/i.test(content);
+            var isWarning      = /tsunami warning/i.test(content);       // amenaza confirmada
+            var isWatch        = /tsunami watch/i.test(content);         // vigilancia
+            var isAdvisory     = /advisory/i.test(content);              // precaución
+            var isInformation  = /information.*bulletin|bulletin/i.test(content); // solo info
+
+            // InformationBulletin = NO es amenaza, solo aviso informativo → prioridad baja
+            var pri, tipo, icon;
+            if (isCancelled)   { pri=15;  tipo='SIN AMENAZA TSUNAMI'; icon='✅'; }
+            else if (isWarning){ pri=99;  tipo='ALERTA TSUNAMI';      icon='🚨'; }
+            else if (isWatch)  { pri=90;  tipo='VIGILANCIA TSUNAMI';  icon='🌊'; }
+            else if (isAdvisory){ pri=75; tipo='AVISO TSUNAMI';       icon='⚠️'; }
+            else if (isInformation){ pri=35; tipo='INFORMATIVO TSUNAMI'; icon='ℹ️'; }
+            else               { pri=65;  tipo='ALERTA TSUNAMI';      icon='🌊'; }
+
+            // Extraer coordenadas si aparecen en el texto (ej: "Lat/Lon: 18.869 / -67.356")
+            var lat = null, lon = null;
+            var coordMatch = content.match(/Lat[\/\s]*Lon[:\s]+([-\d.]+)\s*[\/,]\s*([-\d.]+)/i);
+            if (coordMatch) {
+                lat = parseFloat(coordMatch[1]);
+                lon = parseFloat(coordMatch[2]);
+            }
+
             alerts.push({
-                id:'ptwc_'+alerts.length+'_'+Date.now(),
-                type:isCancelled?'SIN AMENAZA TSUNAMI':'ALERTA TSUNAMI', icon:icon,
+                id:'ptwc_'+(lat||'')+'_'+(lon||'')+'_'+pri,
+                type:tipo, icon:icon,
                 title:icon+' PTWC: '+title.substring(0,80),
                 description:summary.replace(/<[^>]+>/g,'').substring(0,200),
-                lat:null, lon:null, distKm:null,
+                lat:lat, lon:lon, distKm:null,
                 time:updated?new Date(updated).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
                 source:'Pacific Tsunami Warning Center',
-                priority:pri, color:pri>=85?'#0000ff':'#4169E1'
+                priority:pri, color:pri>=90?'#ff0000':pri>=75?'#0066ff':'#4169E188'
             });
         });
         return alerts.slice(0,5);
@@ -1149,7 +1172,10 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
                 var src = a.source||'';
                 var tipo = a.type||'';
                 // Tsunamis, clima espacial y huracanes siempre
-                if(/TSUNAMI|GEOMAGNÉTICA|CLIMA ESPACIAL|SOLAR|HURACÁN|TIFÓN/i.test(tipo)) return true;
+                // Tsunamis: solo mostrar siempre si son WARNING o WATCH reales (pri>=75)
+                // InformationBulletin (pri<50) NO se fuerza — se filtra como cualquier otra alerta
+                if(/GEOMAGNÉTICA|CLIMA ESPACIAL|SOLAR/i.test(tipo)) return true;
+                if(/TSUNAMI|HURACÁN|TIFÓN/i.test(tipo) && (a.priority||0)>=75) return true;
                 // Alertas de MeteoAlarm y SPC: solo si la ubicación es Europa o EEUU
                 if(/MeteoAlarm/i.test(src)) {
                     var isEurope = lat&&lat>35&&lat<72&&lon>-10&&lon<45;
@@ -1165,7 +1191,8 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
                 if(/PTWC|GDACS|GloFAS/i.test(src)) return (a.priority||0)>=70;
                 return (a.priority||0)>=75;
             }
-            if(/TSUNAMI|HURACÁN|CICLÓN|ALERTA TSUNAMI/.test(a.type||'')) return true;
+            // Tsunamis con coords: solo si son realmente peligrosos (warning/watch)
+            if(/TSUNAMI|HURACÁN|CICLÓN/.test(a.type||'') && (a.priority||0)>=75) return true;
             return a.distKm<=radiusKm;
         })
         .sort(function(a,b){return (b.priority||0)-(a.priority||0);});

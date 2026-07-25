@@ -917,39 +917,134 @@ async function fetchOpenSky(lat, lon, radius) {
 }
 
 // ========== 15. MeteoAlarm — Alertas oficiales Europa ==========
+// Coordenadas centrales de cada país europeo para filtrado por distancia
+var EU_COUNTRY_COORDS = {
+    ES:{lat:40.0,  lon:-3.7,  name:'España'},
+    PT:{lat:39.5,  lon:-8.0,  name:'Portugal'},
+    FR:{lat:46.2,  lon:2.2,   name:'Francia'},
+    DE:{lat:51.2,  lon:10.4,  name:'Alemania'},
+    IT:{lat:41.9,  lon:12.5,  name:'Italia'},
+    GB:{lat:52.4,  lon:-1.9,  name:'Reino Unido'},
+    GR:{lat:39.1,  lon:21.8,  name:'Grecia'},
+    TR:{lat:38.9,  lon:35.2,  name:'Turquía'},
+    HR:{lat:45.1,  lon:15.2,  name:'Croacia'},
+    RS:{lat:44.0,  lon:21.0,  name:'Serbia'},
+    BG:{lat:42.7,  lon:25.5,  name:'Bulgaria'},
+    RO:{lat:45.9,  lon:24.9,  name:'Rumanía'},
+    PL:{lat:51.9,  lon:19.1,  name:'Polonia'},
+    NO:{lat:60.5,  lon:8.5,   name:'Noruega'},
+    SE:{lat:59.3,  lon:18.1,  name:'Suecia'},
+    FI:{lat:64.0,  lon:26.0,  name:'Finlandia'},
+    CH:{lat:46.8,  lon:8.2,   name:'Suiza'},
+    AT:{lat:47.5,  lon:14.5,  name:'Austria'},
+    NL:{lat:52.1,  lon:5.3,   name:'Países Bajos'},
+    BE:{lat:50.5,  lon:4.5,   name:'Bélgica'},
+    CZ:{lat:49.8,  lon:15.5,  name:'República Checa'},
+    HU:{lat:47.2,  lon:19.5,  name:'Hungría'},
+    SK:{lat:48.7,  lon:19.7,  name:'Eslovaquia'},
+    DK:{lat:56.3,  lon:11.0,  name:'Dinamarca'},
+    IE:{lat:53.4,  lon:-8.2,  name:'Irlanda'},
+};
+
 async function fetchMeteoAlarm() {
     try {
-        // MeteoAlarm RSS feed (cap alerts)
         var url = 'https://corsproxy.io/?'+
                   encodeURIComponent('https://feeds.meteoalarm.org/api/v1/warnings/feeds-europe');
         var txt = await (await fetch(url,{signal:AbortSignal.timeout(10000)})).text();
         var xml = new DOMParser().parseFromString(txt,'text/xml');
         var alerts = [];
         xml.querySelectorAll('entry').forEach(function(e){
-            var title = (e.querySelector('title')||{}).textContent||'';
+            var title   = (e.querySelector('title')||{}).textContent||'';
             var summary = (e.querySelector('summary')||{}).textContent||'';
             var updated = (e.querySelector('updated')||{}).textContent||'';
+            var content = title+' '+summary;
             if (!title||title.length<3) return;
-            var severity = /extreme/i.test(summary)?95:/severe/i.test(summary)?82:/moderate/i.test(summary)?65:50;
-            var tipo = 'ALERTA METEOROLÓGICA', icono = '⚠️';
-            if (/wind/i.test(title+summary))     { tipo='VIENTO FUERTE';     icono='💨'; }
-            if (/rain|flood/i.test(title+summary)){ tipo='LLUVIA/INUNDACIÓN'; icono='🌧️'; }
-            if (/snow|ice/i.test(title+summary))  { tipo='NIEVE/HIELO';      icono='❄️'; }
-            if (/thunder/i.test(title+summary))   { tipo='TORMENTA';         icono='⛈️'; }
-            if (/heat/i.test(title+summary))      { tipo='CALOR EXTREMO';    icono='🔥'; }
-            if (/fog/i.test(title+summary))       { tipo='NIEBLA';           icono='🌫️'; }
+
+            var severity = /extreme/i.test(content)?95:/severe/i.test(content)?82:/moderate/i.test(content)?65:50;
+            var tipo='ALERTA METEOROLÓGICA', icono='⚠️';
+            if (/fire|wildfire|incendi/i.test(content)) { tipo='INCENDIO FORESTAL'; icono='🔥'; severity=Math.max(severity,80); }
+            else if (/heat|calor|high.*temp/i.test(content)) { tipo='CALOR EXTREMO';    icono='🌡️'; }
+            else if (/wind|viento/i.test(content))     { tipo='VIENTO FUERTE';     icono='💨'; }
+            else if (/rain|flood|lluvia|inund/i.test(content)){ tipo='LLUVIA/INUNDACIÓN'; icono='🌧️'; }
+            else if (/snow|ice|nieve/i.test(content))  { tipo='NIEVE/HIELO';       icono='❄️'; }
+            else if (/thunder|tormenta/i.test(content)){ tipo='TORMENTA';          icono='⛈️'; }
+            else if (/fog|niebla/i.test(content))      { tipo='NIEBLA';            icono='🌫️'; }
+            else if (/storm|temporal/i.test(content))  { tipo='TEMPORAL';          icono='🌀'; }
+
+            // Extraer código de país del título (ej: "Spain: Heat warning")
+            var countryCode = null;
+            var countryMatch = Object.keys(EU_COUNTRY_COORDS).find(function(cc){
+                return new RegExp(EU_COUNTRY_COORDS[cc].name+'|\b'+cc+'\b','i').test(content);
+            });
+            if (countryMatch) countryCode = countryMatch;
+
+            // Banderas por país
+            var flags = {ES:'🇪🇸',PT:'🇵🇹',FR:'🇫🇷',DE:'🇩🇪',IT:'🇮🇹',GB:'🇬🇧',GR:'🇬🇷',
+                         TR:'🇹🇷',HR:'🇭🇷',BG:'🇧🇬',RO:'🇷🇴',PL:'🇵🇱',NO:'🇳🇴',SE:'🇸🇪',
+                         FI:'🇫🇮',CH:'🇨🇭',AT:'🇦🇹',NL:'🇳🇱',BE:'🇧🇪',CZ:'🇨🇿',HU:'🇭🇺',
+                         DK:'🇩🇰',IE:'🇮🇪',SK:'🇸🇰'};
+            var flag = (countryCode && flags[countryCode]) || '🇪🇺';
+            var coords = countryCode ? EU_COUNTRY_COORDS[countryCode] : null;
+
             alerts.push({
-                id:'ma_'+alerts.length+'_'+Date.now(),
+                id:'ma_'+(countryCode||'eu')+'_'+tipo.substring(0,8)+'_'+severity,
                 type:tipo, icon:icono,
-                title:'🇪🇺 MeteoAlarm: '+title.substring(0,80),
+                title:flag+' MeteoAlarm '+((coords&&coords.name)||'Europa')+': '+tipo,
                 description:summary.replace(/<[^>]+>/g,'').substring(0,200),
-                lat:null, lon:null, distKm:null,
+                lat:coords?coords.lat:null,
+                lon:coords?coords.lon:null,
+                distKm:null,
                 time:updated?new Date(updated).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
-                source:'MeteoAlarm (Europa)', priority:severity, color:'#FF6B35'
+                source:'MeteoAlarm — '+(coords?coords.name:'Europa'),
+                priority:severity, color:severity>=90?'#ff3300':severity>=80?'#ff6600':'#FF6B35'
             });
         });
-        return alerts.slice(0,15);
+        return alerts.slice(0,20);
     } catch(e) { console.error('MeteoAlarm:',e); return []; }
+}
+
+// ========== 15b. EFFIS — Sistema Europeo de Información sobre Incendios ==========
+// European Forest Fire Information System (Copernicus/JRC) — RSS público sin CORS
+async function fetchEFFIS() {
+    try {
+        var url = 'https://corsproxy.io/?'+
+                  encodeURIComponent('https://effis.jrc.ec.europa.eu/applications/fire-news/fire-news-rss.xml');
+        var txt = await (await fetch(url,{signal:AbortSignal.timeout(8000)})).text();
+        var xml = new DOMParser().parseFromString(txt,'text/xml');
+        var alerts = [];
+        xml.querySelectorAll('item').forEach(function(e){
+            var title = (e.querySelector('title')||{}).textContent||'';
+            var desc  = (e.querySelector('description')||{}).textContent||'';
+            var pubDate = (e.querySelector('pubDate')||{}).textContent||'';
+            if (!title||title.length<3) return;
+            var content = title+' '+desc;
+
+            // Intentar extraer país del título
+            var countryCode = Object.keys(EU_COUNTRY_COORDS).find(function(cc){
+                return new RegExp(EU_COUNTRY_COORDS[cc].name,'i').test(content);
+            });
+            var coords = countryCode ? EU_COUNTRY_COORDS[countryCode] : null;
+            var flags = {ES:'🇪🇸',PT:'🇵🇹',FR:'🇫🇷',DE:'🇩🇪',IT:'🇮🇹',GR:'🇬🇷',TR:'🇹🇷'};
+            var flag = (countryCode && flags[countryCode]) || '🇪🇺';
+
+            var pri = /major|extreme|large/i.test(content) ? 88 :
+                      /severe|serious/i.test(content)       ? 78 : 65;
+
+            alerts.push({
+                id:'effis_'+(countryCode||'eu')+'_'+pri+'_'+title.substring(0,15).replace(/\s/g,''),
+                type:'INCENDIO FORESTAL', icon:'🔥',
+                title:flag+' EFFIS: '+title.substring(0,80),
+                description:desc.replace(/<[^>]+>/g,'').substring(0,200),
+                lat:coords?coords.lat:null,
+                lon:coords?coords.lon:null,
+                distKm:null,
+                time:pubDate?new Date(pubDate).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
+                source:'EFFIS — Copernicus/JRC Europa',
+                priority:pri, color:'#ff4400'
+            });
+        });
+        return alerts.slice(0,10);
+    } catch(e) { console.error('EFFIS:',e); return []; }
 }
 
 // ========== 16. Global Flood Awareness System (GloFAS) ==========
@@ -1074,42 +1169,19 @@ async function fetchPTWC() {
             var title   = (e.querySelector('title')||{}).textContent||'';
             var summary = (e.querySelector('summary')||{}).textContent||'';
             var updated = (e.querySelector('updated')||{}).textContent||'';
-            var content = title+' '+summary;
             if (!title||title.length<3) return;
-
-            // Clasificar por nivel real del PTWC
-            var isCancelled    = /cancel|no.*threat|all.*clear/i.test(content);
-            var isWarning      = /tsunami warning/i.test(content);       // amenaza confirmada
-            var isWatch        = /tsunami watch/i.test(content);         // vigilancia
-            var isAdvisory     = /advisory/i.test(content);              // precaución
-            var isInformation  = /information.*bulletin|bulletin/i.test(content); // solo info
-
-            // InformationBulletin = NO es amenaza, solo aviso informativo → prioridad baja
-            var pri, tipo, icon;
-            if (isCancelled)   { pri=15;  tipo='SIN AMENAZA TSUNAMI'; icon='✅'; }
-            else if (isWarning){ pri=99;  tipo='ALERTA TSUNAMI';      icon='🚨'; }
-            else if (isWatch)  { pri=90;  tipo='VIGILANCIA TSUNAMI';  icon='🌊'; }
-            else if (isAdvisory){ pri=75; tipo='AVISO TSUNAMI';       icon='⚠️'; }
-            else if (isInformation){ pri=35; tipo='INFORMATIVO TSUNAMI'; icon='ℹ️'; }
-            else               { pri=65;  tipo='ALERTA TSUNAMI';      icon='🌊'; }
-
-            // Extraer coordenadas si aparecen en el texto (ej: "Lat/Lon: 18.869 / -67.356")
-            var lat = null, lon = null;
-            var coordMatch = content.match(/Lat[\/\s]*Lon[:\s]+([-\d.]+)\s*[\/,]\s*([-\d.]+)/i);
-            if (coordMatch) {
-                lat = parseFloat(coordMatch[1]);
-                lon = parseFloat(coordMatch[2]);
-            }
-
+            var isCancelled = /cancel|no.*threat/i.test(title+summary);
+            var pri = isCancelled?20:(/warning/i.test(title)?98:/watch/i.test(title)?88:70);
+            var icon = isCancelled?'✅':'🌊';
             alerts.push({
-                id:'ptwc_'+(lat||'')+'_'+(lon||'')+'_'+pri,
-                type:tipo, icon:icon,
+                id:'ptwc_'+alerts.length+'_'+Date.now(),
+                type:isCancelled?'SIN AMENAZA TSUNAMI':'ALERTA TSUNAMI', icon:icon,
                 title:icon+' PTWC: '+title.substring(0,80),
                 description:summary.replace(/<[^>]+>/g,'').substring(0,200),
-                lat:lat, lon:lon, distKm:null,
+                lat:null, lon:null, distKm:null,
                 time:updated?new Date(updated).toLocaleString('es-CL'):new Date().toLocaleString('es-CL'),
                 source:'Pacific Tsunami Warning Center',
-                priority:pri, color:pri>=90?'#ff0000':pri>=75?'#0066ff':'#4169E188'
+                priority:pri, color:pri>=85?'#0000ff':'#4169E1'
             });
         });
         return alerts.slice(0,5);
@@ -1155,7 +1227,8 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         fetchSpaceWeather(),                     // Clima espacial
         // ── Tormentas severas ──
         fetchSPC(),                              // NOAA SPC tornados
-        fetchMeteoAlarm(),                       // Alertas Europa
+        fetchMeteoAlarm(),                       // Alertas Europa (MeteoAlarm)
+        fetchEFFIS(),                            // Incendios Europa (Copernicus EFFIS)
         // ── Regionales ──
         isUSA   ? fetchWeatherGov(lat,lon) : Promise.resolve([]),
         isChile ? fetchDMCChile(lat,lon)   : Promise.resolve([]),
@@ -1172,12 +1245,12 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
                 var src = a.source||'';
                 var tipo = a.type||'';
                 // Tsunamis, clima espacial y huracanes siempre
-                // Tsunamis: solo mostrar siempre si son WARNING o WATCH reales (pri>=75)
-                // InformationBulletin (pri<50) NO se fuerza — se filtra como cualquier otra alerta
-                if(/GEOMAGNÉTICA|CLIMA ESPACIAL|SOLAR/i.test(tipo)) return true;
-                if(/TSUNAMI|HURACÁN|TIFÓN/i.test(tipo) && (a.priority||0)>=75) return true;
+                if(/TSUNAMI|GEOMAGNÉTICA|CLIMA ESPACIAL|SOLAR|HURACÁN|TIFÓN/i.test(tipo)) return true;
                 // Alertas de MeteoAlarm y SPC: solo si la ubicación es Europa o EEUU
-                if(/MeteoAlarm/i.test(src)) {
+                if(/MeteoAlarm|EFFIS/i.test(src)) {
+                    // Si tiene coordenadas del país, filtrar por distancia normal
+                    if (a.lat != null && a.lon != null) return true; // distKm se calculará
+                    // Si no tiene coords, solo mostrar si el usuario está en Europa
                     var isEurope = lat&&lat>35&&lat<72&&lon>-10&&lon<45;
                     return isEurope;
                 }
@@ -1191,8 +1264,7 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
                 if(/PTWC|GDACS|GloFAS/i.test(src)) return (a.priority||0)>=70;
                 return (a.priority||0)>=75;
             }
-            // Tsunamis con coords: solo si son realmente peligrosos (warning/watch)
-            if(/TSUNAMI|HURACÁN|CICLÓN/.test(a.type||'') && (a.priority||0)>=75) return true;
+            if(/TSUNAMI|HURACÁN|CICLÓN|ALERTA TSUNAMI/.test(a.type||'')) return true;
             return a.distKm<=radiusKm;
         })
         .sort(function(a,b){return (b.priority||0)-(a.priority||0);});
@@ -1215,6 +1287,7 @@ async function loadGlobalAlerts() {
         fetchSpaceWeather(),
         fetchSPC(),
         fetchMeteoAlarm(),
+        fetchEFFIS(),
         fetchPTWC(),
         fetchSHOA()
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});

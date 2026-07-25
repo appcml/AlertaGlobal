@@ -1607,6 +1607,39 @@ function renderWeather(d) {
     if (wWind) wWind.textContent = Math.round((d.wind&&d.wind.speed||0)*3.6)+' km/h';
     if (wFeels) wFeels.textContent = Math.round(d.main.feels_like)+'°C';
     if (wPressure) wPressure.textContent = (d.main.pressure||'—')+' hPa';
+
+    // Nubosidad
+    var wClouds = document.getElementById('wClouds');
+    if (wClouds) wClouds.textContent = (d.clouds && d.clouds.all != null) ? d.clouds.all+'%' : '—';
+
+    // Visibilidad (viene en metros desde OWM)
+    var wVisibility = document.getElementById('wVisibility');
+    if (wVisibility) {
+        var vis = d.visibility;
+        if (vis != null) {
+            wVisibility.textContent = vis >= 1000 ? (vis/1000).toFixed(0)+' km' : vis+' m';
+        } else {
+            wVisibility.textContent = '—';
+        }
+    }
+
+    // AQI — llamada separada a OWM Air Pollution API
+    var wAQI = document.getElementById('wAQI');
+    if (wAQI && d.coord) {
+        fetch('https://api.openweathermap.org/data/2.5/air_pollution?lat='+d.coord.lat+'&lon='+d.coord.lon+'&appid='+CONFIG.WEATHER_API_KEY)
+            .then(function(r){ return r.json(); })
+            .then(function(aq){
+                if (aq && aq.list && aq.list[0]) {
+                    var idx = aq.list[0].main.aqi;
+                    var labels = {1:'Bueno',2:'Aceptable',3:'Moderado',4:'Pobre',5:'Muy Pobre'};
+                    wAQI.textContent = idx ? idx+' — '+(labels[idx]||'') : '—';
+                } else {
+                    wAQI.textContent = '—';
+                }
+            })
+            .catch(function(){ wAQI.textContent = '—'; });
+    }
+
     if (wRec) wRec.innerHTML = getWeatherRecommendation(d);
 }
 

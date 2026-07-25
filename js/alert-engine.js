@@ -483,7 +483,7 @@ window.runAlertEngine = async function(lat, lon, cityName, radiusKm) {
             'latitude='+lat+'&longitude='+lon +
             '&current=temperature_2m,relative_humidity_2m,apparent_temperature,' +
             'precipitation,rain,showers,snowfall,wind_speed_10m,wind_gusts_10m,' +
-            'weather_code,surface_pressure,visibility,is_day,' +
+            'weather_code,surface_pressure,pressure_msl,visibility,is_day,' +
             'cloud_cover,uv_index,dew_point_2m,soil_temperature_0cm' +
             '&hourly=precipitation_probability,cape' +
             '&daily=precipitation_sum,wind_speed_10m_max,uv_index_max,sunrise,sunset' +
@@ -507,7 +507,7 @@ window.runAlertEngine = async function(lat, lon, cityName, radiusKm) {
             var va = analyzeVisibility(c.visibility, c.weather_code, city);
             if (va) alerts.push(va);
 
-            var pa = analyzePressure(c.surface_pressure, city);
+            var pa = analyzePressure(c.pressure_msl != null ? c.pressure_msl : c.surface_pressure, city);
             if (pa) alerts.push(pa);
 
             var fr = analyzeFireRisk(c.temperature_2m, c.relative_humidity_2m, c.wind_speed_10m, city);

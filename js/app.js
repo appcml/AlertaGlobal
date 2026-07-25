@@ -1457,8 +1457,22 @@ function loadAlerts() {
         var hasCritical = filtered.some(function(a) { return a.priority >= 90; });
         if (hasCritical) {
             updateStatus(true, 'AMENAZA DETECTADA');
-            // Check for new alerts
-            filtered.filter(function(a) { return a.priority >= 85; }).forEach(function(a) {
+            // Notificar SOLO alertas de la zona del usuario (≤50km o sin coords propias)
+            // Las alertas globales se muestran en el mapa/lista pero NO generan notificación
+            var notifRadius = 200; // km máximo para notificar
+            filtered.filter(function(a) {
+                if (a.priority < 85) return false;
+                // Tsunamis y prioridad extrema: notificar siempre (pueden afectar zonas costeras)
+                if (a.priority >= 95 || /TSUNAMI/i.test(a.type||'')) return true;
+                // Solo notificar si está dentro del radio de notificación del usuario
+                if (a.distKm != null) return a.distKm <= notifRadius;
+                // Si no tiene distancia calculada y tiene coords, calcular
+                if (loc.lat && a.lat != null && a.lon != null) {
+                    return calcDistance(loc.lat, loc.lon, a.lat, a.lon) <= notifRadius;
+                }
+                // Sin coordenadas: NO notificar (son alertas globales sin ubicación precisa)
+                return false;
+            }).forEach(function(a) {
                 var id = (a.source_id || a.title || '').substring(0,50);
                 if (!seenAlertIds[id]) {
                     seenAlertIds[id] = true;
@@ -1607,39 +1621,6 @@ function renderWeather(d) {
     if (wWind) wWind.textContent = Math.round((d.wind&&d.wind.speed||0)*3.6)+' km/h';
     if (wFeels) wFeels.textContent = Math.round(d.main.feels_like)+'°C';
     if (wPressure) wPressure.textContent = (d.main.pressure||'—')+' hPa';
-
-    // Nubosidad
-    var wClouds = document.getElementById('wClouds');
-    if (wClouds) wClouds.textContent = (d.clouds && d.clouds.all != null) ? d.clouds.all+'%' : '—';
-
-    // Visibilidad (viene en metros desde OWM)
-    var wVisibility = document.getElementById('wVisibility');
-    if (wVisibility) {
-        var vis = d.visibility;
-        if (vis != null) {
-            wVisibility.textContent = vis >= 1000 ? (vis/1000).toFixed(0)+' km' : vis+' m';
-        } else {
-            wVisibility.textContent = '—';
-        }
-    }
-
-    // AQI — llamada separada a OWM Air Pollution API
-    var wAQI = document.getElementById('wAQI');
-    if (wAQI && d.coord) {
-        fetch('https://api.openweathermap.org/data/2.5/air_pollution?lat='+d.coord.lat+'&lon='+d.coord.lon+'&appid='+CONFIG.WEATHER_API_KEY)
-            .then(function(r){ return r.json(); })
-            .then(function(aq){
-                if (aq && aq.list && aq.list[0]) {
-                    var idx = aq.list[0].main.aqi;
-                    var labels = {1:'Bueno',2:'Aceptable',3:'Moderado',4:'Pobre',5:'Muy Pobre'};
-                    wAQI.textContent = idx ? idx+' — '+(labels[idx]||'') : '—';
-                } else {
-                    wAQI.textContent = '—';
-                }
-            })
-            .catch(function(){ wAQI.textContent = '—'; });
-    }
-
     if (wRec) wRec.innerHTML = getWeatherRecommendation(d);
 }
 

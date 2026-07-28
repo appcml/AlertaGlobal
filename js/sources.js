@@ -1205,22 +1205,26 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
     var isChile = lat&&lat<-17&&lat>-56&&lon>-76&&lon<-65;
     var isUSA   = lat&&lat>18&&lat<72&&lon>-180&&lon<-65;
     var all=[];
+
+    // ── Cargar sismos/tsunamis desde SeismicSources (módulo dedicado) ──────
+    // Reemplaza fetchUSGS + fetchEMSC + fetchCSN + fetchPTWC individuales
+    var seismicPromise = (typeof window.SeismicSources !== 'undefined')
+        ? window.SeismicSources.load(lat, lon)
+        : Promise.resolve([]);
+
     (await Promise.allSettled([
         // ── Clima local ──
         fetchOpenMeteoAlerts(lat,lon,cityName),
         fetchAirQuality(lat,lon,cityName),
-        // fetchOpenAQ deshabilitado — CORS bloqueado en api.openaq.org
-        // ── Sismos ──
-        fetchUSGS(lat,lon),
-        fetchEMSC(lat,lon),
+        // ── Sismos y Tsunamis — ahora via SeismicSources ──
+        seismicPromise,
         // ── Volcanes e Incendios ──
         Promise.resolve(getVolcanes(lat,lon)),
         fetchNASAFIRMS(lat,lon),                 // NASA FIRMS incendios
         fetchFires(lat,lon),                     // NASA EONET backup
-        // ── Ciclones y Tsunamis ──
+        // ── Ciclones y Tsunamis adicionales ──
         // fetchHurricanes deshabilitado — NHC bloquea CORS (403)
         Promise.resolve([]),
-        fetchPTWC(),                             // Pacific Tsunami WC
         // ── Desastres globales ──
         fetchGDACS(),
         fetchGloFAS(),                           // Inundaciones
@@ -1233,8 +1237,7 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
         isUSA   ? fetchWeatherGov(lat,lon) : Promise.resolve([]),
         isChile ? fetchDMCChile(lat,lon)   : Promise.resolve([]),
         // fetchSHOA deshabilitado — servidor rechaza CORS (405)
-        Promise.resolve([]),
-        isChile ? fetchCSN(lat,lon)        : Promise.resolve([])
+        Promise.resolve([])
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
 
     return all
@@ -1274,9 +1277,12 @@ async function loadAlertsForLocation(locationInput, radiusKm) {
 async function loadGlobalAlerts() {
     console.log('🌍 Cargando alertas globales...');
     var all=[];
+    // SeismicSources cubre USGS global + EMSC + PTWC + fuentes regionales
+    var seismicGlobal = (typeof window.SeismicSources !== 'undefined')
+        ? window.SeismicSources.load(null, null)
+        : Promise.resolve([]);
     (await Promise.allSettled([
-        fetchUSGS(0,0),
-        fetchEMSC(0,0),
+        seismicGlobal,                           // Sismos/Tsunamis — módulo dedicado
         Promise.resolve(getVolcanes(0,0)),
         // fetchHurricanes deshabilitado — NHC bloquea CORS (403)
         Promise.resolve([]),
@@ -1288,7 +1294,6 @@ async function loadGlobalAlerts() {
         fetchSPC(),
         fetchMeteoAlarm(),
         fetchEFFIS(),
-        fetchPTWC(),
         fetchSHOA()
     ])).forEach(function(r){if(r.status==='fulfilled')all=all.concat(r.value||[]);});
     return all.filter(function(a){return (a.priority||0)>=30;})

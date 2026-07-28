@@ -773,7 +773,7 @@
                     if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = km;
                     if (typeof setUserRadiusKm === 'function') setUserRadiusKm(km);
                     if (radiusLabel) radiusLabel.textContent = km === 0 ? 'Global' : km === -1 ? '🏳️ Mi país' : km + ' km';
-                    updateActiveBtn(km === 0 ? 2000 : km);
+                    updateActiveBtn(km);
                     if (radiusPopup) radiusPopup.style.display = 'none';
                     if (typeof loadAlerts === 'function') loadAlerts();
                 });

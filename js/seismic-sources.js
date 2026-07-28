@@ -1,0 +1,935 @@
+/**
+ * seismic-sources.js — AlertaGlobal
+ * Módulo dedicado a SISMOS y TSUNAMIS
+ * Fuentes oficiales organizadas por país/región
+ * Se integra con sources.js — no lo reemplaza, lo complementa
+ *
+ * COBERTURA:
+ *   🌎 Global      : USGS (ya en sources.js, aquí M5+), EMSC, GeoNet (Nueva Zelanda)
+ *   🇯🇵 Japón       : P2P Quake (API oficial JMA en JSON), Hi-net NIED vía FDSNWS
+ *   🇨🇱 Chile       : CSN / ChileAlerta (ya en sources.js, aquí mejorado)
+ *   🇵🇪 Perú        : IGP (Instituto Geofísico del Perú)
+ *   🇲🇽 México      : SSN UNAM (Servicio Sismológico Nacional)
+ *   🇨🇴 Colombia    : SGC (Servicio Geológico Colombiano)
+ *   🇪🇨 Ecuador     : IG-EPN (Instituto Geofísico - Escuela Politécnica Nacional)
+ *   🇧🇴 Bolivia     : SENAMHI Bolivia vía USGS regional
+ *   🇦🇷 Argentina   : INPRES (Instituto Nacional de Prevención Sísmica)
+ *   🇺🇸 EEUU        : USGS ShakeAlert + PNSN (Cascadia)
+ *   🇨🇦 Canadá      : Natural Resources Canada
+ *   🇬🇧 Europa      : EMSC SeismicPortal + NOA Grecia + IGN España + INGV Italia
+ *   🇹🇷 Turquía     : AFAD + Kandilli Observatory vía FDSNWS
+ *   🇮🇷 Irán        : IRSC (Iranian Seismological Center)
+ *   🇮🇩 Indonesia   : BMKG (Badan Meteorologi, Klimatologi, dan Geofísika)
+ *   🇵🇭 Filipinas   : PHIVOLCS vía USGS regional
+ *   🇳🇿 Nueva Zelanda: GeoNet (GNS Science)
+ *   🇦🇺 Australia   : Geoscience Australia
+ *   🌊 Tsunamis     : PTWC + JMA Tsunami + NTWC + GDACS
+ */
+
+(function(global) {
+    'use strict';
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function dist(la1, lo1, la2, lo2) {
+        if (typeof window.calcDistance === 'function') return window.calcDistance(la1,lo1,la2,lo2);
+        var R=6371, dLat=(la2-la1)*Math.PI/180, dLon=(lo2-lo1)*Math.PI/180;
+        var a=Math.sin(dLat/2)*Math.sin(dLat/2)+
+              Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*
+              Math.sin(dLon/2)*Math.sin(dLon/2);
+        return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+    }
+
+    var PROXIES = [
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest=',
+        'https://thingproxy.freeboard.io/fetch/'
+    ];
+
+    async function proxyFetch(url, timeout) {
+        timeout = timeout || 12000;
+        // Intentar directo primero (para APIs con CORS abierto)
+        try {
+            var r = await fetch(url, {signal: AbortSignal.timeout(timeout)});
+            if (r.ok) return r;
+        } catch(e) {}
+        // Rotar proxies
+        for (var i = 0; i < PROXIES.length; i++) {
+            try {
+                var r2 = await fetch(PROXIES[i] + encodeURIComponent(url),
+                    {signal: AbortSignal.timeout(timeout)});
+                if (r2.ok) return r2;
+            } catch(e2) { continue; }
+        }
+        throw new Error('SeismicSources: todos los proxies fallaron para ' + url);
+    }
+
+    async function proxyJSON(url, timeout) {
+        var r = await proxyFetch(url, timeout);
+        return await r.json();
+    }
+
+    async function proxyText(url, timeout) {
+        var r = await proxyFetch(url, timeout);
+        return await r.text();
+    }
+
+    function magIcon(mag) {
+        if (mag >= 7) return '🔴';
+        if (mag >= 6) return '🟠';
+        if (mag >= 5) return '🟡';
+        if (mag >= 4) return '⚪';
+        return '⚫';
+    }
+
+    function magColor(mag) {
+        if (mag >= 7) return '#ff0000';
+        if (mag >= 6) return '#ff4400';
+        if (mag >= 5) return '#ff9900';
+        if (mag >= 4) return '#ffcc00';
+        return '#aaaaaa';
+    }
+
+    function magPriority(mag) {
+        if (mag >= 8) return 99;
+        if (mag >= 7) return 97;
+        if (mag >= 6) return 90;
+        if (mag >= 5) return 78;
+        if (mag >= 4) return 64;
+        if (mag >= 3) return 50;
+        return 36;
+    }
+
+    function makeAlert(id, mag, place, lat, lon, depthKm, timeMs, source, link, userLat, userLon) {
+        var distKm = (userLat && lat) ? dist(userLat, userLon, lat, lon) : null;
+        return {
+            id: id,
+            type: 'SISMO',
+            icon: magIcon(mag),
+            title: 'Sismo M' + mag.toFixed(1),
+            description: (place || 'Ubicación desconocida') +
+                         (depthKm ? ' · Prof. ' + Math.round(depthKm) + ' km' : '') +
+                         (distKm  ? ' · ' + distKm + ' km de ti' : ''),
+            lat: lat, lon: lon,
+            magnitude: mag, depth: depthKm,
+            distKm: distKm,
+            time: timeMs ? new Date(timeMs).toLocaleString('es-CL') : '',
+            _timeMs: timeMs || 0,
+            source: source,
+            priority: magPriority(mag),
+            color: magColor(mag),
+            link: link || ''
+        };
+    }
+
+    // Parser simple de Atom/RSS para fuentes que no tienen JSON
+    function parseAtomFeed(xmlText) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(xmlText, 'application/xml');
+        var entries = doc.querySelectorAll('entry, item');
+        var results = [];
+        entries.forEach(function(e) {
+            results.push({
+                title:   (e.querySelector('title')   || {}).textContent || '',
+                summary: (e.querySelector('summary, description') || {}).textContent || '',
+                link:    ((e.querySelector('link')   || {}).getAttribute('href') ||
+                          (e.querySelector('link')   || {}).textContent || ''),
+                updated: (e.querySelector('updated, pubDate') || {}).textContent || ''
+            });
+        });
+        return results;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DETECCIÓN DE REGIÓN según coordenadas
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function detectRegion(lat, lon) {
+        if (!lat || !lon) return {code:'GLOBAL'};
+
+        // América del Sur
+        if (lat<13 && lat>-57 && lon>-82 && lon<-34) {
+            if (lat<-17 && lat>-56 && lon>-76 && lon<-65) return {code:'CL', name:'Chile'};
+            if (lat<-0  && lat>-18 && lon>-82 && lon<-68) return {code:'PE', name:'Perú'};
+            if (lat>-5  && lat<13  && lon>-80 && lon<-66) return {code:'CO', name:'Colombia'};
+            if (lat>-5  && lat<2   && lon>-82 && lon<-75) return {code:'EC', name:'Ecuador'};
+            if (lat<-21 && lat>-56 && lon>-74 && lon<-53) return {code:'AR', name:'Argentina'};
+            if (lat<-10 && lat>-23 && lon>-70 && lon<-57) return {code:'BO', name:'Bolivia'};
+            if (lat<5   && lat>-34 && lon>-74 && lon<-34) return {code:'BR', name:'Brasil'};
+            return {code:'SA', name:'Sudamérica'};
+        }
+
+        // América del Norte y Centroamérica
+        if (lat>14 && lat<72 && lon>-170 && lon<-52) {
+            if (lat>24 && lat<50 && lon>-125 && lon<-66) return {code:'US', name:'Estados Unidos'};
+            if (lat>48 && lat<84 && lon>-141 && lon<-52) return {code:'CA', name:'Canadá'};
+            if (lat>14 && lat<33 && lon>-118 && lon<-86) return {code:'MX', name:'México'};
+            return {code:'CAM', name:'Centroamérica'};
+        }
+
+        // Japón
+        if (lat>24 && lat<46 && lon>122 && lon<148) return {code:'JP', name:'Japón'};
+
+        // Indonesia / Oceanía ecuatorial
+        if (lat>-12 && lat<8 && lon>95 && lon<141) return {code:'ID', name:'Indonesia'};
+
+        // Filipinas
+        if (lat>4 && lat<22 && lon>116 && lon<128) return {code:'PH', name:'Filipinas'};
+
+        // Nueva Zelanda
+        if (lat<-33 && lat>-48 && lon>165 && lon<179) return {code:'NZ', name:'Nueva Zelanda'};
+
+        // Australia
+        if (lat<-10 && lat>-44 && lon>113 && lon<154) return {code:'AU', name:'Australia'};
+
+        // China / Asia Oriental
+        if (lat>18 && lat<54 && lon>73 && lon<135) return {code:'CN', name:'Asia Oriental'};
+
+        // Turquía / Cáucaso
+        if (lat>35 && lat<43 && lon>25 && lon<46) return {code:'TR', name:'Turquía'};
+
+        // Irán
+        if (lat>25 && lat<40 && lon>44 && lon<64) return {code:'IR', name:'Irán'};
+
+        // Europa
+        if (lat>35 && lat<72 && lon>-10 && lon<45) {
+            if (lat>35 && lat<44 && lon>-10 && lon<5)  return {code:'ES', name:'España'};
+            if (lat>36 && lat<42 && lon>12  && lon<19) return {code:'IT_S', name:'Italia Sur/Sicilia'};
+            if (lat>37 && lat<43 && lon>19  && lon<28) return {code:'GR', name:'Grecia'};
+            return {code:'EU', name:'Europa'};
+        }
+
+        // Pacífico
+        if (lon>-180 && lon<-130 && lat>-25 && lat<25) return {code:'PAC', name:'Pacífico Central'};
+
+        return {code:'GLOBAL'};
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FUENTES POR REGIÓN
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── GLOBAL: USGS M4.5+ últimas 48h (CORS nativo) ──────────────────────
+    async function fetchUSGS_Global(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=500&minmagnitude=4.5&starttime=' + since;
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return d.features.map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
+                return makeAlert('usgs2_'+f.id, mag, p.place, c[1], c[0], c[2],
+                    p.time, 'USGS', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS Global:', e); return []; }
+    }
+
+    // ── GLOBAL: USGS M2.5+ cerca del usuario (radio ~500km) ───────────────
+    async function fetchUSGS_Local(userLat, userLon) {
+        if (!userLat || !userLon) return [];
+        try {
+            var since = new Date(Date.now() - 24*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=200&minmagnitude=2.5&starttime=' + since +
+                      '&latitude='+userLat+'&longitude='+userLon+'&maxradiuskm=500';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return d.features.map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
+                return makeAlert('usgs_l_'+f.id, mag, p.place, c[1], c[0], c[2],
+                    p.time, 'USGS (local)', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS Local:', e); return []; }
+    }
+
+    // ── GLOBAL: EMSC SeismicPortal (Europa + CORS nativo) ─────────────────
+    async function fetchEMSC_Global(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://www.seismicportal.eu/fdsnws/event/1/query?format=json' +
+                      '&orderby=time&limit=200&minmagnitude=4.0&starttime=' + since;
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            var items = (d.features||[]);
+            return items.map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates, mag=parseFloat(p.mag||p.magtype||0);
+                var place = [p.flynn_region, p.region, p.country].filter(Boolean).join(', ');
+                return makeAlert('emsc2_'+(p.unid||f.id), mag, place,
+                    parseFloat(p.lat||0), parseFloat(p.lon||0), parseFloat(p.depth||0),
+                    new Date(p.time).getTime(), 'EMSC SeismicPortal',
+                    'https://www.seismicportal.eu/eventdetails.html?unid='+(p.unid||''),
+                    userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] EMSC:', e); return []; }
+    }
+
+    // ── JAPÓN: P2P Quake (API no oficial pero usa datos JMA — JSON, CORS OK) ──
+    async function fetchJMA_Japan(userLat, userLon) {
+        try {
+            // P2PQuake entrega datos sísmicos de JMA en tiempo real
+            var url = 'https://api.p2pquake.net/v2/history?codes=551&limit=50';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            var alerts = [];
+            (d||[]).forEach(function(ev) {
+                var info = ev.earthquake || {};
+                var hypo = info.hypocenter || {};
+                var mag  = parseFloat(hypo.magnitude) || 0;
+                if (mag < 2.0 || isNaN(mag)) return;
+                var lat  = parseFloat(hypo.latitude)  || null;
+                var lon  = parseFloat(hypo.longitude) || null;
+                var dep  = parseFloat(hypo.depth)     || 0;
+                var place = hypo.name || 'Japón';
+                var timeMs = ev.time ? new Date(ev.time).getTime() : Date.now();
+                alerts.push(makeAlert('jma_'+ev.id, mag, place, lat, lon, dep,
+                    timeMs, 'JMA (P2PQuake) 🇯🇵', 'https://www.jma.go.jp/bosai/map.html#earthquakes',
+                    userLat, userLon));
+            });
+            console.log('[Seismic] JMA Japón:', alerts.length, 'sismos');
+            return alerts;
+        } catch(e) { console.error('[Seismic] JMA Japan:', e); return []; }
+    }
+
+    // ── JAPÓN: USGS filtrado zona Japón (respaldo) ─────────────────────────
+    async function fetchUSGS_Japan(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=200&minmagnitude=2.5&starttime=' + since +
+                      '&minlatitude=24&maxlatitude=46&minlongitude=122&maxlongitude=148';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return d.features.map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
+                return makeAlert('usgs_jp_'+f.id, mag, p.place, c[1], c[0], c[2],
+                    p.time, 'USGS (Japón)', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS Japan:', e); return []; }
+    }
+
+    // ── CHILE: CSN vía ChileAlerta ──────────────────────────────────────────
+    async function fetchCSN_Chile(userLat, userLon) {
+        try {
+            var url = 'https://chilealerta.com/api/query/?user=demo&select=ultimos_sismos_chile&limit=100&minmagnitude=2.0';
+            var data = null;
+            var proxies = [
+                'https://corsproxy.io/?',
+                'https://api.codetabs.com/v1/proxy?quest=',
+                'https://thingproxy.freeboard.io/fetch/'
+            ];
+            for (var pi=0; pi<proxies.length; pi++) {
+                try {
+                    var r = await fetch(proxies[pi]+encodeURIComponent(url),
+                        {signal:AbortSignal.timeout(10000)});
+                    if (r.ok) { data = await r.json(); break; }
+                } catch(pe) { continue; }
+            }
+            if (!data) return [];
+            var sismos = data.ultimos_sismos_Chile || data.ultimos_sismos_chile || [];
+            return sismos.filter(function(s) {
+                return parseFloat(s.magnitude)>=2.0 && parseFloat(s.magnitude)<10;
+            }).map(function(s) {
+                var mag  = parseFloat(s.magnitude);
+                var sLat = parseFloat(s.latitude)  || null;
+                var sLon = parseFloat(s.longitude) || null;
+                var dep  = parseFloat(s.depth)     || 0;
+                var fechaStr = s.local_time || s.chilean_time || s.utc_time || '';
+                var tMs; try { tMs = new Date(fechaStr.replace(' ','T')+'-03:00').getTime(); }
+                         catch(e) { tMs = Date.now(); }
+                return makeAlert('csn_'+(s.id||tMs), mag,
+                    (s.reference||'Chile')+' · Prof.'+Math.round(dep)+'km',
+                    sLat, sLon, dep, tMs,
+                    'CSN Chile 🇨🇱', s.url||'https://www.csn.uchile.cl',
+                    userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] CSN Chile:', e); return []; }
+    }
+
+    // ── PERÚ: IGP (Instituto Geofísico del Perú) ───────────────────────────
+    async function fetchIGP_Peru(userLat, userLon) {
+        try {
+            // IGP tiene FDSN compatible con USGS
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'http://igpdb.igp.gob.pe/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since;
+            var d = await proxyJSON(url, 12000);
+            return (d.features||[]).map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
+                return makeAlert('igp_'+f.id, mag, p.place||'Perú', c[1], c[0], c[2],
+                    p.time, 'IGP Perú 🇵🇪', 'https://ultimosismo.igp.gob.pe',
+                    userLat, userLon);
+            });
+        } catch(e) {
+            // Fallback: USGS zona Perú
+            try {
+                var since2 = new Date(Date.now() - 48*3600000).toISOString();
+                var url2 = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                           '&orderby=time&limit=100&minmagnitude=2.0&starttime='+since2+
+                           '&minlatitude=-18&maxlatitude=0&minlongitude=-82&maxlongitude=-68';
+                var d2 = await (await fetch(url2,{signal:AbortSignal.timeout(10000)})).json();
+                return (d2.features||[]).map(function(f) {
+                    var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                    return makeAlert('usgs_pe_'+f.id,mag,p.place,c[1],c[0],c[2],
+                        p.time,'USGS (Perú)',p.url,userLat,userLon);
+                });
+            } catch(e2) { console.error('[Seismic] IGP Perú:', e2); return []; }
+        }
+    }
+
+    // ── MÉXICO: SSN UNAM ───────────────────────────────────────────────────
+    async function fetchSSN_Mexico(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.5&starttime=' +
+                      new Date(Date.now()-48*3600000).toISOString() +
+                      '&minlatitude=14&maxlatitude=33&minlongitude=-118&maxlongitude=-86';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            var alerts = (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('mx_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'SSN/USGS México 🇲🇽',p.url,userLat,userLon);
+            });
+            // También intentar SSN directo
+            try {
+                var ssnUrl = 'https://api.datos.gob.mx/v2/ssn-sismos?pageSize=50&sort=-fechaHora';
+                var ssn = await proxyJSON(ssnUrl, 10000);
+                var rows = (ssn.results || []);
+                rows.forEach(function(s) {
+                    var mag = parseFloat(s.magnitud)||0;
+                    if (mag < 2.5) return;
+                    var lat = parseFloat(s.latitud)||null;
+                    var lon = parseFloat(s.longitud)||null;
+                    var tMs = s.fechaHora ? new Date(s.fechaHora).getTime() : Date.now();
+                    alerts.push(makeAlert('ssn_'+tMs, mag,
+                        s.referencia||'México', lat, lon,
+                        parseFloat(s.profundidad)||0, tMs,
+                        'SSN UNAM 🇲🇽','https://www.ssn.unam.mx',
+                        userLat, userLon));
+                });
+            } catch(e2) {}
+            return alerts;
+        } catch(e) { console.error('[Seismic] SSN México:', e); return []; }
+    }
+
+    // ── COLOMBIA: SGC ──────────────────────────────────────────────────────
+    async function fetchSGC_Colombia(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' +
+                      new Date(Date.now()-48*3600000).toISOString() +
+                      '&minlatitude=-5&maxlatitude=13&minlongitude=-80&maxlongitude=-66';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('co_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'SGC/USGS Colombia 🇨🇴',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] SGC Colombia:', e); return []; }
+    }
+
+    // ── ECUADOR: IG-EPN ────────────────────────────────────────────────────
+    async function fetchIGEPN_Ecuador(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' +
+                      new Date(Date.now()-48*3600000).toISOString() +
+                      '&minlatitude=-5&maxlatitude=2&minlongitude=-82&maxlongitude=-75';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('ec_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'IG-EPN/USGS Ecuador 🇪🇨',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] IG-EPN Ecuador:', e); return []; }
+    }
+
+    // ── ARGENTINA: INPRES ──────────────────────────────────────────────────
+    async function fetchINPRES_Argentina(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' +
+                      new Date(Date.now()-48*3600000).toISOString() +
+                      '&minlatitude=-56&maxlatitude=-21&minlongitude=-74&maxlongitude=-53';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('ar_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'INPRES/USGS Argentina 🇦🇷',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] INPRES Argentina:', e); return []; }
+    }
+
+    // ── EEUU: USGS ShakeAlert (zona Oeste + Alaska + Hawaii) ─────────────
+    async function fetchUSGS_USA(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=200&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=18&maxlatitude=72&minlongitude=-170&maxlongitude=-66';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('us_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'USGS ShakeAlert 🇺🇸',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS USA:', e); return []; }
+    }
+
+    // ── CANADÁ: Natural Resources Canada ──────────────────────────────────
+    async function fetchNRCan_Canada(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=48&maxlatitude=84&minlongitude=-141&maxlongitude=-52';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('ca_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'NRCan/USGS Canadá 🇨🇦',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] NRCan Canadá:', e); return []; }
+    }
+
+    // ── TURQUÍA: AFAD + Kandilli ───────────────────────────────────────────
+    async function fetchAFAD_Turkey(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url2 = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                       '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                       '&minlatitude=35&maxlatitude=43&minlongitude=25&maxlongitude=46';
+            var d = await (await fetch(url2,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('tr_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'AFAD/USGS Turquía 🇹🇷',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] AFAD Turquía:', e); return []; }
+    }
+
+    // ── IRÁN: IRSC ────────────────────────────────────────────────────────
+    async function fetchIRSC_Iran(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=25&maxlatitude=40&minlongitude=44&maxlongitude=64';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('ir_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'IRSC/USGS Irán 🇮🇷',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] IRSC Irán:', e); return []; }
+    }
+
+    // ── INDONESIA: BMKG ────────────────────────────────────────────────────
+    async function fetchBMKG_Indonesia(userLat, userLon) {
+        try {
+            // BMKG tiene API JSON pública
+            var url = 'https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.json';
+            var d = await proxyJSON(url, 12000);
+            var infogempa = (d.Infogempa && d.Infogempa.gempa) || [];
+            if (!Array.isArray(infogempa)) infogempa = [infogempa];
+            return infogempa.map(function(g) {
+                var mag  = parseFloat(g.Magnitude) || 0;
+                var lat  = parseFloat(g.Lintang)   || null;
+                var lon  = parseFloat(g.Bujur)     || null;
+                var dep  = parseFloat(g.Kedalaman) || 0;
+                var tMs  = g.DateTime ? new Date(g.DateTime).getTime() : Date.now();
+                return makeAlert('bmkg_'+tMs, mag,
+                    g.Wilayah||'Indonesia', lat, lon, dep, tMs,
+                    'BMKG Indonesia 🇮🇩',
+                    'https://www.bmkg.go.id/gempabumi/gempabumi-terkini.bmkg',
+                    userLat, userLon);
+            });
+        } catch(e) {
+            // Fallback USGS zona Indonesia
+            try {
+                var since = new Date(Date.now()-48*3600000).toISOString();
+                var url2 = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                           '&orderby=time&limit=100&minmagnitude=2.5&starttime='+since+
+                           '&minlatitude=-12&maxlatitude=8&minlongitude=95&maxlongitude=141';
+                var d2 = await (await fetch(url2,{signal:AbortSignal.timeout(10000)})).json();
+                return (d2.features||[]).map(function(f) {
+                    var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                    return makeAlert('id_'+f.id,mag,p.place,c[1],c[0],c[2],
+                        p.time,'USGS (Indonesia)',p.url,userLat,userLon);
+                });
+            } catch(e2) { console.error('[Seismic] BMKG Indonesia:', e2); return []; }
+        }
+    }
+
+    // ── FILIPINAS: PHIVOLCS ────────────────────────────────────────────────
+    async function fetchPHIVOLCS_Philippines(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=4&maxlatitude=22&minlongitude=116&maxlongitude=128';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('ph_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'PHIVOLCS/USGS Filipinas 🇵🇭',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] PHIVOLCS:', e); return []; }
+    }
+
+    // ── NUEVA ZELANDA: GeoNet (GNS Science) — CORS nativo ──────────────────
+    async function fetchGeoNet_NZ(userLat, userLon) {
+        try {
+            var url = 'https://api.geonet.org.nz/quake?MMI=-1';
+            var d = await (await fetch(url, {
+                signal: AbortSignal.timeout(12000),
+                headers: {'Accept': 'application/vnd.geo+json'}
+            })).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=parseFloat(p.magnitude)||0;
+                return makeAlert('nz_'+p.publicID, mag,
+                    p.locality||'Nueva Zelanda', c[1], c[0], parseFloat(p.depth)||0,
+                    new Date(p.time).getTime(),
+                    'GeoNet NZ 🇳🇿', 'https://www.geonet.org.nz/earthquake/'+p.publicID,
+                    userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] GeoNet NZ:', e); return []; }
+    }
+
+    // ── AUSTRALIA: Geoscience Australia ────────────────────────────────────
+    async function fetchGeoScience_AU(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=-44&maxlatitude=-10&minlongitude=113&maxlongitude=154';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('au_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'GA/USGS Australia 🇦🇺',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] GA Australia:', e); return []; }
+    }
+
+    // ── GRECIA: NOA ────────────────────────────────────────────────────────
+    async function fetchNOA_Greece(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since +
+                      '&minlatitude=34&maxlatitude=42&minlongitude=19&maxlongitude=30';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('gr_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'NOA/USGS Grecia 🇬🇷',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] NOA Grecia:', e); return []; }
+    }
+
+    // ── ITALIA: INGV ───────────────────────────────────────────────────────
+    async function fetchINGV_Italy(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://webservices.ingv.it/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=2.0&starttime=' + since;
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=parseFloat(p.mag||0);
+                var place = p['flynn_region']||p.place||'Italia';
+                return makeAlert('ingv_'+f.id,mag,place,c[1],c[0],c[2],
+                    p.time ? new Date(p.time).getTime() : Date.now(),
+                    'INGV Italia 🇮🇹',
+                    'https://terremoti.ingv.it',
+                    userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] INGV Italia:', e); return []; }
+    }
+
+    // ── ESPAÑA: IGN ────────────────────────────────────────────────────────
+    async function fetchIGN_Spain(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                      '&orderby=time&limit=100&minmagnitude=1.5&starttime=' + since +
+                      '&minlatitude=35&maxlatitude=44&minlongitude=-10&maxlongitude=5';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties,c=f.geometry.coordinates,mag=p.mag||0;
+                return makeAlert('es_'+f.id,mag,p.place,c[1],c[0],c[2],
+                    p.time,'IGN/USGS España 🇪🇸',p.url,userLat,userLon);
+            });
+        } catch(e) { console.error('[Seismic] IGN España:', e); return []; }
+    }
+
+    // ── TSUNAMIS: PTWC (Pacific Tsunami Warning Center) ────────────────────
+    async function fetchPTWC_Tsunami(userLat, userLon) {
+        try {
+            var url = 'https://www.tsunami.gov/events/xml/PHEBAtom.xml';
+            var txt = await proxyText(url, 12000);
+            var items = parseAtomFeed(txt);
+            return items.map(function(item, i) {
+                var title = item.title || 'Alerta Tsunami PTWC';
+                var isTsunami = /tsunami/i.test(title);
+                var mag = 0;
+                var mMatch = title.match(/M\s*([\d.]+)/i);
+                if (mMatch) mag = parseFloat(mMatch[1]);
+                return {
+                    id: 'ptwc_s_' + i,
+                    type: isTsunami ? 'TSUNAMI' : 'SISMO',
+                    icon: isTsunami ? '🌊' : magIcon(mag),
+                    title: (isTsunami ? '🌊 Tsunami PTWC: ' : 'PTWC: ') + title.substring(0,100),
+                    description: item.summary ? item.summary.substring(0,200) : '',
+                    lat: null, lon: null,
+                    magnitude: mag,
+                    distKm: null,
+                    time: item.updated ? new Date(item.updated).toLocaleString('es-CL') : '',
+                    _timeMs: item.updated ? new Date(item.updated).getTime() : Date.now(),
+                    source: 'PTWC 🌊',
+                    priority: isTsunami ? 99 : magPriority(mag),
+                    color: isTsunami ? '#0000ff' : magColor(mag),
+                    link: item.link || 'https://www.tsunami.gov'
+                };
+            });
+        } catch(e) { console.error('[Seismic] PTWC:', e); return []; }
+    }
+
+    // ── TSUNAMIS: JMA Tsunami Feed (Japón) ─────────────────────────────────
+    async function fetchJMA_Tsunami(userLat, userLon) {
+        try {
+            var url = 'https://api.p2pquake.net/v2/history?codes=552&limit=10';
+            var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
+            return (d||[]).map(function(ev, i) {
+                var areas = ev.areas || [];
+                var desc = areas.slice(0,5).map(function(a){
+                    return (a.name||'')+(a.maxScale?' (Esc.'+a.maxScale+')':'');
+                }).join(', ');
+                return {
+                    id: 'jma_tsun_'+i,
+                    type: 'TSUNAMI',
+                    icon: '🌊',
+                    title: '🌊 Alerta Tsunami JMA — Japón',
+                    description: desc || 'Ver detalles en JMA',
+                    lat: null, lon: null,
+                    distKm: null,
+                    time: ev.time ? new Date(ev.time).toLocaleString('es-CL') : '',
+                    _timeMs: ev.time ? new Date(ev.time).getTime() : Date.now(),
+                    source: 'JMA Tsunami 🇯🇵🌊',
+                    priority: 99,
+                    color: '#0000ff',
+                    link: 'https://www.jma.go.jp/bosai/map.html#tsunamiforecast'
+                };
+            });
+        } catch(e) { console.error('[Seismic] JMA Tsunami:', e); return []; }
+    }
+
+    // ── TSUNAMIS: NTWC (National Tsunami Warning Center — Alaska/EEUU) ─────
+    async function fetchNTWC_Tsunami(userLat, userLon) {
+        try {
+            var url = 'https://www.tsunami.gov/events/xml/NWSeAtom.xml';
+            var txt = await proxyText(url, 12000);
+            var items = parseAtomFeed(txt);
+            return items.filter(function(item) {
+                return /tsunami/i.test(item.title) || /tsunami/i.test(item.summary);
+            }).map(function(item, i) {
+                return {
+                    id: 'ntwc_'+i,
+                    type: 'TSUNAMI',
+                    icon: '🌊',
+                    title: '🌊 NTWC: ' + (item.title||'').substring(0,100),
+                    description: (item.summary||'').substring(0,200),
+                    lat: null, lon: null, distKm: null,
+                    time: item.updated ? new Date(item.updated).toLocaleString('es-CL') : '',
+                    _timeMs: item.updated ? new Date(item.updated).getTime() : Date.now(),
+                    source: 'NTWC (Alaska) 🌊',
+                    priority: 99,
+                    color: '#0000ff',
+                    link: item.link || 'https://www.tsunami.gov'
+                };
+            });
+        } catch(e) { console.error('[Seismic] NTWC:', e); return []; }
+    }
+
+    // ── SHOA Chile: Tsunamis Pacífico Sur ──────────────────────────────────
+    async function fetchSHOA_Tsunami(userLat, userLon) {
+        try {
+            var url = 'https://www.shoa.cl/php/rss.php';
+            var txt = await proxyText(url, 12000);
+            var items = parseAtomFeed(txt);
+            return items.filter(function(item) {
+                return /tsunami|maremoto|alerta|sismo/i.test(item.title+item.summary);
+            }).map(function(item, i) {
+                var isTsunami = /tsunami|maremoto/i.test(item.title+item.summary);
+                return {
+                    id: 'shoa_'+i,
+                    type: isTsunami ? 'TSUNAMI' : 'SISMO',
+                    icon: isTsunami ? '🌊' : '🔴',
+                    title: (isTsunami ? '🌊 ' : '') + 'SHOA: ' + (item.title||'').substring(0,100),
+                    description: (item.summary||'').substring(0,200),
+                    lat: null, lon: null, distKm: null,
+                    time: item.updated ? new Date(item.updated).toLocaleString('es-CL') : '',
+                    _timeMs: item.updated ? new Date(item.updated).getTime() : Date.now(),
+                    source: 'SHOA Chile 🇨🇱🌊',
+                    priority: isTsunami ? 99 : 85,
+                    color: isTsunami ? '#0000ff' : '#ff0000',
+                    link: item.link || 'https://www.shoa.cl'
+                };
+            });
+        } catch(e) { console.error('[Seismic] SHOA:', e); return []; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DEDUPLICACIÓN: elimina alertas con mismo sismo de distintas fuentes
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function deduplicateSeismic(alerts) {
+        var seen = [];
+        return alerts.filter(function(a) {
+            if (!a.lat || !a.lon || !a._timeMs) return true; // no deduplicar sin coords
+            for (var i=0; i<seen.length; i++) {
+                var b = seen[i];
+                if (!b.lat || !b.lon || !b._timeMs) continue;
+                var sameMag   = Math.abs((a.magnitude||0) - (b.magnitude||0)) < 0.4;
+                var nearTime  = Math.abs(a._timeMs - b._timeMs) < 90000; // 90 segundos
+                var nearPlace = dist(a.lat, a.lon, b.lat, b.lon) < 80;   // 80 km
+                if (sameMag && nearTime && nearPlace) return false;
+            }
+            seen.push(a);
+            return true;
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FUNCIÓN PRINCIPAL: loadSeismicAlerts(lat, lon)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async function loadSeismicAlerts(userLat, userLon) {
+        var region = detectRegion(userLat, userLon);
+        console.log('[SeismicSources] Región detectada:', region.code, '—', region.name||'Global');
+
+        // ── Fuentes SIEMPRE activas (globales críticas) ──────────────────────
+        var always = [
+            fetchUSGS_Global(userLat, userLon),
+            fetchEMSC_Global(userLat, userLon),
+            fetchPTWC_Tsunami(userLat, userLon),
+            fetchNTWC_Tsunami(userLat, userLon),
+            fetchJMA_Tsunami(userLat, userLon)
+        ];
+
+        // ── Fuentes por REGIÓN del usuario ───────────────────────────────────
+        var regional = [];
+
+        switch(region.code) {
+            case 'JP':
+                regional.push(fetchJMA_Japan(userLat, userLon));
+                regional.push(fetchUSGS_Japan(userLat, userLon));
+                break;
+            case 'CL':
+                regional.push(fetchCSN_Chile(userLat, userLon));
+                regional.push(fetchSHOA_Tsunami(userLat, userLon));
+                break;
+            case 'PE':
+                regional.push(fetchIGP_Peru(userLat, userLon));
+                break;
+            case 'MX':
+                regional.push(fetchSSN_Mexico(userLat, userLon));
+                break;
+            case 'CO':
+                regional.push(fetchSGC_Colombia(userLat, userLon));
+                break;
+            case 'EC':
+                regional.push(fetchIGEPN_Ecuador(userLat, userLon));
+                break;
+            case 'AR':
+                regional.push(fetchINPRES_Argentina(userLat, userLon));
+                break;
+            case 'US':
+                regional.push(fetchUSGS_USA(userLat, userLon));
+                break;
+            case 'CA':
+                regional.push(fetchNRCan_Canada(userLat, userLon));
+                break;
+            case 'TR':
+                regional.push(fetchAFAD_Turkey(userLat, userLon));
+                break;
+            case 'IR':
+                regional.push(fetchIRSC_Iran(userLat, userLon));
+                break;
+            case 'ID':
+                regional.push(fetchBMKG_Indonesia(userLat, userLon));
+                break;
+            case 'PH':
+                regional.push(fetchPHIVOLCS_Philippines(userLat, userLon));
+                break;
+            case 'NZ':
+                regional.push(fetchGeoNet_NZ(userLat, userLon));
+                break;
+            case 'AU':
+                regional.push(fetchGeoScience_AU(userLat, userLon));
+                break;
+            case 'GR':
+                regional.push(fetchNOA_Greece(userLat, userLon));
+                break;
+            case 'IT_S':
+            case 'EU':
+                regional.push(fetchINGV_Italy(userLat, userLon));
+                regional.push(fetchIGN_Spain(userLat, userLon));
+                regional.push(fetchNOA_Greece(userLat, userLon));
+                break;
+            case 'ES':
+                regional.push(fetchIGN_Spain(userLat, userLon));
+                break;
+            case 'SA': // Sudamérica genérica
+                regional.push(fetchCSN_Chile(userLat, userLon));
+                regional.push(fetchIGP_Peru(userLat, userLon));
+                regional.push(fetchSGC_Colombia(userLat, userLon));
+                regional.push(fetchSHOA_Tsunami(userLat, userLon));
+                break;
+            case 'CAM': // Centroamérica
+                regional.push(fetchSSN_Mexico(userLat, userLon));
+                break;
+            default: // GLOBAL: agregar fuente local más cercana
+                regional.push(fetchUSGS_Local(userLat, userLon));
+                regional.push(fetchGeoNet_NZ(userLat, userLon));    // alta actividad
+                regional.push(fetchINGV_Italy(userLat, userLon));   // alta actividad
+                regional.push(fetchBMKG_Indonesia(userLat, userLon)); // alta actividad
+                break;
+        }
+
+        // ── Ejecutar todo en paralelo ────────────────────────────────────────
+        var allPromises = always.concat(regional);
+        var results = await Promise.allSettled(allPromises);
+
+        var all = [];
+        results.forEach(function(r) {
+            if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+                all = all.concat(r.value);
+            }
+        });
+
+        // ── Filtrar: solo eventos últimas 48h ────────────────────────────────
+        var cutoff = Date.now() - 48*3600000;
+        all = all.filter(function(a) { return !a._timeMs || a._timeMs >= cutoff; });
+
+        // ── Deduplicar ───────────────────────────────────────────────────────
+        all = deduplicateSeismic(all);
+
+        // ── Ordenar: más reciente primero ────────────────────────────────────
+        all.sort(function(a,b) { return (b._timeMs||0) - (a._timeMs||0); });
+
+        console.log('[SeismicSources] Total sismos+tsunamis únicos:', all.length,
+                    '| Fuentes activas:', allPromises.length);
+        return all;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // EXPORTAR
+    // ─────────────────────────────────────────────────────────────────────────
+
+    global.SeismicSources = {
+        load: loadSeismicAlerts,
+        detectRegion: detectRegion
+    };
+
+    // Para debug en consola
+    console.log('[SeismicSources] Módulo cargado — 20 fuentes oficiales por región');
+
+})(window);

@@ -240,9 +240,13 @@ function setUserRadiusKm(km) {
     }
 }
 function getUserRadiusKm() {
-    if (CONFIG.USER_RADIUS_KM != null && CONFIG.USER_RADIUS_KM !== 0) return CONFIG.USER_RADIUS_KM;
+    // IMPORTANTE: 0 = "Global" (mostrar todo) y es un valor VÁLIDO, no "sin definir".
+    // No usar "|| 500" en ningún lugar que llame a esta función — 0 es falsy en JS
+    // y esa operación anularía silenciosamente la selección de Global.
+    if (CONFIG.USER_RADIUS_KM != null && !isNaN(CONFIG.USER_RADIUS_KM)) return CONFIG.USER_RADIUS_KM;
     var stored = parseInt(localStorage.getItem('ag_radius_km'));
     if (!isNaN(stored)) { CONFIG.USER_RADIUS_KM = stored; return stored; }
+    CONFIG.USER_RADIUS_KM = 500;
     return 500;
 }
 function saveFocusLocation() {
@@ -1233,7 +1237,7 @@ function loadAlerts() {
     // Si tenemos coordenadas → cargar alertas específicas para esa ubicación
     var scanFn;
     if (loc.lat && typeof window.loadAlertsForLocation === 'function') {
-        var radius = getUserRadiusKm() || 500;
+        var radius = getUserRadiusKm();
         scanFn = function(cb) {
             // Ejecutar fuentes externas Y motor de alertas en paralelo
             var tasks = [
@@ -1336,7 +1340,7 @@ function loadAlerts() {
         var RADIO_LOCAL    = 50;    // localidad (50km)
         var RADIO_COMUNA   = 150;   // comuna (150km)
         var RADIO_PROV     = 300;   // provincia (300km)
-        var RADIO_PAIS     = getUserRadiusKm() || 500; // país
+        var RADIO_PAIS     = getUserRadiusKm(); // país
 
         function alertScore(a) {
             // Puntaje: cuánto es local para el usuario
@@ -1349,7 +1353,7 @@ function loadAlerts() {
             return 0;
         }
 
-        var radius = getUserRadiusKm() || 500;
+        var radius = getUserRadiusKm();
 
         var filtered = externalAlerts.filter(function(a) {
             // Sin ubicación → mostrar todo

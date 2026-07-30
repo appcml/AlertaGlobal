@@ -1190,7 +1190,7 @@ async function fetchPTWC() {
 
 
 async function loadAlertsForLocation(locationInput, radiusKm) {
-    radiusKm=radiusKm||500;
+    radiusKm = (radiusKm != null && !isNaN(radiusKm)) ? radiusKm : 500; // 0=Global es válido, no reemplazar con 500
     var lat,lon,cityName;
     if (typeof locationInput==='object'&&locationInput.lat) {
         lat=locationInput.lat; lon=locationInput.lon;

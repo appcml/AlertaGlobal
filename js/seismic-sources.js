@@ -251,18 +251,49 @@
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── GLOBAL: USGS M4.5+ últimas 48h (CORS nativo) ──────────────────────
+    // ── GLOBAL: USGS por sectores — cubre TODO el mundo con M2.5+ ───────────
+    // Dividimos el planeta en 8 sectores para hacer queries paralelas
+    // y superar el límite de 500 eventos por query
     async function fetchUSGS_Global(userLat, userLon) {
         try {
-            var since = new Date(Date.now() - 48*3600000).toISOString();
-            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
-                      '&orderby=time&limit=500&minmagnitude=4.5&starttime=' + since;
-            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
-            return d.features.map(function(f) {
-                var p=f.properties, c=f.geometry.coordinates, mag=p.mag||0;
-                return makeAlert('usgs2_'+f.id, mag, p.place, c[1], c[0], c[2],
-                    p.time, 'USGS', p.url, userLat, userLon);
+            var since48h = new Date(Date.now() - 48*3600000).toISOString();
+            var base = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&limit=500&minmagnitude=2.5&starttime=' + since48h;
+
+            // 8 sectores que cubren el mundo completo
+            var sectors = [
+                '&minlatitude=-90&maxlatitude=0&minlongitude=-180&maxlongitude=-90',    // Pacífico SW + Antártida
+                '&minlatitude=-90&maxlatitude=0&minlongitude=-90&maxlongitude=0',       // Sudamérica sur + Atlántico S
+                '&minlatitude=-90&maxlatitude=0&minlongitude=0&maxlongitude=90',        // África sur + Índico S
+                '&minlatitude=-90&maxlatitude=0&minlongitude=90&maxlongitude=180',      // Australia + Pacífico SE
+                '&minlatitude=0&maxlatitude=90&minlongitude=-180&maxlongitude=-90',     // Alaska + Pacífico NW
+                '&minlatitude=0&maxlatitude=90&minlongitude=-90&maxlongitude=0',        // Norteamérica + Caribe + Atlántico N
+                '&minlatitude=0&maxlatitude=90&minlongitude=0&maxlongitude=90',         // Europa + Africa N + Asia Central
+                '&minlatitude=0&maxlatitude=90&minlongitude=90&maxlongitude=180',       // Asia E + Japón + Oceanía N
+            ];
+
+            var results = await Promise.allSettled(
+                sectors.map(function(sector) {
+                    return fetch(base + sector, {signal: AbortSignal.timeout(15000)})
+                        .then(function(r) { return r.json(); });
+                })
+            );
+
+            var seen = {};
+            var all = [];
+            results.forEach(function(r) {
+                if (r.status !== 'fulfilled' || !r.value.features) return;
+                r.value.features.forEach(function(f) {
+                    if (seen[f.id]) return;
+                    seen[f.id] = true;
+                    var p = f.properties, c = f.geometry.coordinates;
+                    var a = makeAlert('usgs_'+f.id, p.mag||0, p.place, c[1], c[0], c[2],
+                        p.time, 'USGS 🌍', p.url, userLat, userLon);
+                    all.push(a);
+                });
             });
-        } catch(e) { console.error('[Seismic] USGS Global:', e); return []; }
+            console.log('[SeismicSources] USGS sectores: ' + all.length + ' eventos M2.5+');
+            return all;
+        } catch(e) { console.error('[Seismic] USGS Global sectores:', e); return []; }
     }
 
     // ── GLOBAL: USGS M2.5+ cerca del usuario (radio ~500km) ───────────────
@@ -287,7 +318,7 @@
         try {
             var since = new Date(Date.now() - 48*3600000).toISOString();
             var url = 'https://www.seismicportal.eu/fdsnws/event/1/query?format=json' +
-                      '&orderby=time&limit=200&minmagnitude=4.0&starttime=' + since;
+                      '&orderby=time&limit=500&minmagnitude=3.0&starttime=' + since;
             var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
             var items = (d.features||[]);
             return items.map(function(f) {
@@ -895,7 +926,8 @@
     // ── GFZ POTSDAM: global M4.5+ énfasis Europa/Asia Central ────────────
     async function fetchGFZ_Potsdam(userLat, userLon) {
         try {
-            var url = 'https://geofon.gfz-potsdam.de/fdsnws/event/1/query?format=geojson&limit=50&minmag=4.5&orderby=time';
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://geofon.gfz-potsdam.de/fdsnws/event/1/query?format=geojson&limit=500&minmag=3.0&orderby=time&starttime=' + since;
             var d = await proxyJSON(url, 12000);
             var feats = (d && d.features) ? d.features : [];
             return feats.map(function(f) {
@@ -1012,7 +1044,8 @@
     // ── IRIS FDSN: global M4.5+ red académica internacional ──────────────
     async function fetchIRIS_Global(userLat, userLon) {
         try {
-            var url = 'https://service.iris.edu/fdsnws/event/1/query?format=geojson&limit=50&minmagnitude=4.5&orderby=time&nodata=404';
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://service.iris.edu/fdsnws/event/1/query?format=geojson&limit=500&minmagnitude=3.5&orderby=time&nodata=404&starttime=' + since;
             var d = await proxyJSON(url, 12000);
             var feats = (d && d.features) ? d.features : [];
             return feats.map(function(f) {
@@ -1350,23 +1383,86 @@
         } catch(e) { console.error('[Seismic] USGS SW Pacific:', e); return []; }
     }
 
+
+    // ── FEEDS USGS POR CONTINENTE: garantizan cobertura M2.5+ siempre ──────
+    // Se llaman en always además de los sectores, para redundancia
+
+    async function fetchUSGS_Americas(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                '&orderby=time&limit=500&minmagnitude=2.5&starttime=' + since +
+                '&minlatitude=-60&maxlatitude=72&minlongitude=-180&maxlongitude=-30';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates;
+                return makeAlert('usgs_am_'+f.id, p.mag||0, p.place, c[1],c[0],c[2],
+                    p.time, 'USGS Américas 🌎', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS Americas:', e); return []; }
+    }
+
+    async function fetchUSGS_EuropeAfrica(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                '&orderby=time&limit=500&minmagnitude=2.5&starttime=' + since +
+                '&minlatitude=-40&maxlatitude=72&minlongitude=-30&maxlongitude=60';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates;
+                return makeAlert('usgs_eu_'+f.id, p.mag||0, p.place, c[1],c[0],c[2],
+                    p.time, 'USGS Europa/África 🌍', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS EuropeAfrica:', e); return []; }
+    }
+
+    async function fetchUSGS_AsiaOceania(userLat, userLon) {
+        try {
+            var since = new Date(Date.now() - 48*3600000).toISOString();
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+                '&orderby=time&limit=500&minmagnitude=2.5&starttime=' + since +
+                '&minlatitude=-50&maxlatitude=75&minlongitude=60&maxlongitude=180';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(12000)})).json();
+            return (d.features||[]).map(function(f) {
+                var p=f.properties, c=f.geometry.coordinates;
+                return makeAlert('usgs_as_'+f.id, p.mag||0, p.place, c[1],c[0],c[2],
+                    p.time, 'USGS Asia/Oceanía 🌏', p.url, userLat, userLon);
+            });
+        } catch(e) { console.error('[Seismic] USGS AsiaOceania:', e); return []; }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // DEDUPLICACIÓN: elimina alertas con mismo sismo de distintas fuentes
     // ─────────────────────────────────────────────────────────────────────────
 
     function deduplicateSeismic(alerts) {
-        var seen = [];
+        // Deduplicación O(n) con hash de celda espaciotemporal
+        // Clave: mag_redondeada + celda_lat(0.5°) + celda_lon(0.5°) + ventana_tiempo(5min)
+        // Mucho más rápido que O(n²) cuando hay miles de eventos
+        var cells = {};
+
+        // Primero ordenar: prioridad más alta primero (USGS > EMSC > regionales)
+        // para que en caso de duplicado el que quede sea el de mejor fuente
+        alerts.sort(function(a, b) {
+            var ap = (a.source||'').includes('USGS') ? 10 : (a.source||'').includes('EMSC') ? 9 : 5;
+            var bp = (b.source||'').includes('USGS') ? 10 : (b.source||'').includes('EMSC') ? 9 : 5;
+            return bp - ap;
+        });
+
         return alerts.filter(function(a) {
-            if (!a.lat || !a.lon || !a._timeMs) return true; // no deduplicar sin coords
-            for (var i=0; i<seen.length; i++) {
-                var b = seen[i];
-                if (!b.lat || !b.lon || !b._timeMs) continue;
-                var sameMag   = Math.abs((a.magnitude||0) - (b.magnitude||0)) < 0.4;
-                var nearTime  = Math.abs(a._timeMs - b._timeMs) < 90000; // 90 segundos
-                var nearPlace = dist(a.lat, a.lon, b.lat, b.lon) < 80;   // 80 km
-                if (sameMag && nearTime && nearPlace) return false;
-            }
-            seen.push(a);
+            if (!a.lat || !a.lon || !a._timeMs) return true;
+
+            // Celda espacial: 0.5 grados (~55km) x ventana temporal: 5 minutos
+            var cellLat  = Math.round(a.lat  * 2) / 2;   // 0.5° grid
+            var cellLon  = Math.round(a.lon  * 2) / 2;
+            var cellTime = Math.round(a._timeMs / 300000); // ventana 5 min
+            var cellMag  = Math.round((a.magnitude||0) * 2) / 2; // ±0.25 mag
+
+            var key = cellLat + '|' + cellLon + '|' + cellTime + '|' + cellMag;
+
+            if (cells[key]) return false; // duplicado
+            cells[key] = true;
             return true;
         });
     }
@@ -1380,16 +1476,20 @@
         console.log('[SeismicSources] Región detectada:', region.code, '—', region.name||'Global');
 
         // ── Fuentes SIEMPRE activas (globales críticas) ──────────────────────
+        // ── Fuentes SIEMPRE activas ─────────────────────────────────────────────
+        // USGS por sectores cubre M2.5+ en TODO el mundo (~2000-4000 eventos/48h)
+        // Los feeds continentales son redundancia y complemento para zonas con menos pines
         var always = [
-            fetchUSGS_Global(userLat, userLon),      // USGS M4.5+ global
-            fetchEMSC_Global(userLat, userLon),      // EMSC global
-            fetchGFZ_Potsdam(userLat, userLon),      // GFZ Potsdam M4.5+ global
-            fetchUSGS_Kamchatka(userLat, userLon),   // Kamchatka/Kuril — siempre activo
-            fetchUSGS_SWPacific(userLat, userLon),   // Vanuatu/Tonga/Fiji — siempre activo
-            fetchUSGS_Africa(userLat, userLon),      // Africa M3+ — llena el mapa vacío
-            fetchPTWC_Tsunami(userLat, userLon),     // Tsunamis Pacífico
-            fetchNTWC_Tsunami(userLat, userLon),     // Tsunamis Alaska/EEUU
-            fetchJMA_Tsunami(userLat, userLon)       // Tsunamis Japón
+            fetchUSGS_Global(userLat, userLon),        // USGS 8 sectores M2.5+ global
+            fetchUSGS_Americas(userLat, userLon),      // USGS Américas M2.5+ (respaldo)
+            fetchUSGS_EuropeAfrica(userLat, userLon),  // USGS Europa+África M2.5+ (respaldo)
+            fetchUSGS_AsiaOceania(userLat, userLon),   // USGS Asia+Oceanía M2.5+ (respaldo)
+            fetchEMSC_Global(userLat, userLon),        // EMSC M3.0+ global (fuente independiente)
+            fetchGFZ_Potsdam(userLat, userLon),        // GFZ Potsdam M3.0+ (cubre Rusia/Asia C)
+            fetchIRIS_Global(userLat, userLon),        // IRIS FDSN M3.5+ (red académica global)
+            fetchPTWC_Tsunami(userLat, userLon),       // Tsunamis Pacífico
+            fetchNTWC_Tsunami(userLat, userLon),       // Tsunamis Alaska/EEUU
+            fetchJMA_Tsunami(userLat, userLon)         // Tsunamis Japón
         ];
 
         // ── Fuentes por REGIÓN del usuario ───────────────────────────────────

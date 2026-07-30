@@ -666,14 +666,17 @@
             var url = 'https://www.tsunami.gov/events/xml/PHEBAtom.xml';
             var txt = await proxyText(url, 12000);
             var items = parseAtomFeed(txt);
+            var cutoffTsunami = Date.now() - 24*3600000;
             return items.map(function(item, i) {
                 var title = item.title || 'Alerta Tsunami PTWC';
                 var isTsunami = /tsunami/i.test(title);
                 var mag = 0;
                 var mMatch = title.match(/M\s*([\d.]+)/i);
                 if (mMatch) mag = parseFloat(mMatch[1]);
+                // Usar la fecha del item para generar ID estable (evita duplicados entre recargas)
+                var itemTime = item.updated ? new Date(item.updated).getTime() : Date.now();
                 return {
-                    id: 'ptwc_s_' + i,
+                    id: 'ptwc_s_' + itemTime,
                     type: isTsunami ? 'TSUNAMI' : 'SISMO',
                     icon: isTsunami ? '🌊' : magIcon(mag),
                     title: (isTsunami ? '🌊 Tsunami PTWC: ' : 'PTWC: ') + title.substring(0,100),
@@ -697,27 +700,36 @@
         try {
             var url = 'https://api.p2pquake.net/v2/history?codes=552&limit=10';
             var d = await (await fetch(url,{signal:AbortSignal.timeout(12000)})).json();
-            return (d||[]).map(function(ev, i) {
-                var areas = ev.areas || [];
-                var desc = areas.slice(0,5).map(function(a){
-                    return (a.name||'')+(a.maxScale?' (Esc.'+a.maxScale+')':'');
-                }).join(', ');
-                return {
-                    id: 'jma_tsun_'+i,
-                    type: 'TSUNAMI',
-                    icon: '🌊',
-                    title: '🌊 Alerta Tsunami JMA — Japón',
-                    description: desc || 'Ver detalles en JMA',
-                    lat: null, lon: null,
-                    distKm: null,
-                    time: ev.time ? new Date(ev.time).toLocaleString('es-CL') : '',
-                    _timeMs: ev.time ? new Date(ev.time).getTime() : Date.now(),
-                    source: 'JMA Tsunami 🇯🇵🌊',
-                    priority: 99,
-                    color: '#0000ff',
-                    link: 'https://www.jma.go.jp/bosai/map.html#tsunamiforecast'
-                };
-            });
+            // ⚠️ FILTRO CRÍTICO: la API devuelve historial sin límite de tiempo.
+            // Las alertas de tsunami JMA son activas solo durante horas — máximo 12h.
+            var cutoff12h = Date.now() - 12 * 3600000;
+            return (d||[])
+                .filter(function(ev) {
+                    // Filtrar eventos más antiguos de 12 horas
+                    var evTime = ev.time ? new Date(ev.time).getTime() : 0;
+                    return evTime >= cutoff12h;
+                })
+                .map(function(ev) {
+                    var areas = ev.areas || [];
+                    var desc = areas.slice(0,5).map(function(a){
+                        return (a.name||'')+(a.maxScale?' (Esc.'+a.maxScale+')':'');
+                    }).join(', ');
+                    return {
+                        id: 'jma_tsun_' + (ev.id || ev.code || new Date(ev.time).getTime()),
+                        type: 'TSUNAMI',
+                        icon: '🌊',
+                        title: '🌊 Alerta Tsunami JMA — Japón',
+                        description: desc || 'Ver detalles en JMA',
+                        lat: null, lon: null,
+                        distKm: null,
+                        time: ev.time ? new Date(ev.time).toLocaleString('es-CL') : '',
+                        _timeMs: ev.time ? new Date(ev.time).getTime() : Date.now(),
+                        source: 'JMA Tsunami 🇯🇵🌊',
+                        priority: 99,
+                        color: '#0000ff',
+                        link: 'https://www.jma.go.jp/bosai/map.html#tsunamiforecast'
+                    };
+                });
         } catch(e) { console.error('[Seismic] JMA Tsunami:', e); return []; }
     }
 
@@ -731,7 +743,7 @@
                 return /tsunami/i.test(item.title) || /tsunami/i.test(item.summary);
             }).map(function(item, i) {
                 return {
-                    id: 'ntwc_'+i,
+                    id: 'ntwc_'+(item.updated ? new Date(item.updated).getTime() : i),
                     type: 'TSUNAMI',
                     icon: '🌊',
                     title: '🌊 NTWC: ' + (item.title||'').substring(0,100),
@@ -759,7 +771,7 @@
             }).map(function(item, i) {
                 var isTsunami = /tsunami|maremoto/i.test(item.title+item.summary);
                 return {
-                    id: 'shoa_'+i,
+                    id: 'shoa_'+(item.updated ? new Date(item.updated).getTime() : i),
                     type: isTsunami ? 'TSUNAMI' : 'SISMO',
                     icon: isTsunami ? '🌊' : '🔴',
                     title: (isTsunami ? '🌊 ' : '') + 'SHOA: ' + (item.title||'').substring(0,100),
@@ -905,9 +917,16 @@
             }
         });
 
-        // ── Filtrar: solo eventos últimas 48h ────────────────────────────────
-        var cutoff = Date.now() - 48*3600000;
-        all = all.filter(function(a) { return !a._timeMs || a._timeMs >= cutoff; });
+        // ── Filtrar por antigüedad ───────────────────────────────────────────
+        // Tsunamis: máximo 24h (alertas activas duran horas, no días)
+        // Sismos: máximo 48h
+        var cutoff48h = Date.now() - 48*3600000;
+        var cutoff24h = Date.now() - 24*3600000;
+        all = all.filter(function(a) {
+            if (!a._timeMs) return true; // sin fecha → incluir siempre
+            if (/TSUNAMI/.test(a.type||'')) return a._timeMs >= cutoff24h;
+            return a._timeMs >= cutoff48h;
+        });
 
         // ── Deduplicar ───────────────────────────────────────────────────────
         all = deduplicateSeismic(all);

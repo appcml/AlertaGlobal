@@ -13,7 +13,7 @@ var CONFIG = {
     MAX_QUERY_RADIUS_KM: 800
 };
 
-CONFIG.USER_RADIUS_KM = parseInt(localStorage.getItem('ag_radius_km') || '0', 10);
+CONFIG.USER_RADIUS_KM = localStorage.getItem('ag_radius_km') !== null ? parseInt(localStorage.getItem('ag_radius_km'), 10) : 0; // 0=Global por defecto
 CONFIG.MIN_LOCATION_ACCURACY_M = 5000;
 
 var deviceLocation = { lat: null, lon: null, name: '', country: '', accuracy: null };
@@ -271,7 +271,8 @@ function isWithinRadius(eventLat, eventLon, centerLat, centerLon, radiusKm) {
         return isAlertInUserCountry(mockAlert);
     }
     var d = calcDistance(centerLat, centerLon, eventLat, eventLon);
-    return d <= (radiusKm || getUserRadiusKm());
+    if (radiusKm === 0) return true; // 0=Global, ya manejado arriba pero por si acaso
+    return d <= (radiusKm != null && !isNaN(radiusKm) ? radiusKm : getUserRadiusKm());
 }
 
 // ========== THEME ==========
@@ -530,10 +531,10 @@ function setupLocationButtons() {
     var sel = document.getElementById('radiusSelect');
     var radiusPopup = document.getElementById('radiusPopup');
     if (lbl) {
-        var storedKm = localStorage.getItem('ag_radius_km') || '500';
+        var storedKm = localStorage.getItem('ag_radius_km') !== null ? localStorage.getItem('ag_radius_km') : '0';
         lbl.textContent = storedKm === '0' ? 'Global' : storedKm === '-1' ? '🏳️ Mi país' : storedKm + ' km';
     }
-    if (sel) sel.value = String(localStorage.getItem('ag_radius_km') || '500');
+    if (sel) sel.value = String(localStorage.getItem('ag_radius_km') !== null ? localStorage.getItem('ag_radius_km') : '0');
     var btnRadius = document.getElementById('btnRadius');
     if (btnRadius && radiusPopup) btnRadius.addEventListener('click', function() { radiusPopup.style.display='flex'; });
     var closeRadius = document.getElementById('closeRadius');

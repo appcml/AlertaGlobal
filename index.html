@@ -14,45 +14,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="css/styles.css?v=1784395434">
     <style>
-        .mini-filters {
-            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
-            padding: 8px 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            border-bottom: 2px solid #ff6666;
-        }
-        .mini-filters label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            color: #ccc;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        .mini-filters select {
-            padding: 4px 6px;
-            border-radius: 3px;
-            border: 1px solid #444;
-            background: #222;
-            color: #fff;
-            font-size: 11px;
-            cursor: pointer;
-        }
-        .mini-filters button {
-            padding: 4px 10px;
-            border: 1px solid #444;
-            background: #222;
-            color: #ccc;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 11px;
-        }
-        .mini-filters button:hover {
-            border-color: #ff6666;
-            color: #ff6666;
-        }
         .alert-count-badge {
             background: #ff6666;
             color: #000;
@@ -60,7 +21,6 @@
             border-radius: 10px;
             font-weight: bold;
             font-size: 11px;
-            margin-left: auto;
         }
         .alert-item {
             position: relative;
@@ -148,31 +108,9 @@
                 border-radius:10px;background:#1a1a2e;border:1px solid #333;white-space:nowrap;"></div>
             </div>
 
-            <!-- FILTROS MINIMALISTAS EN UNA LÍNEA -->
-            <div class="mini-filters">
-                <label>🎯 Filtros:</label>
-                <label>Tipo:
-                    <select id="filterType">
-                        <option value="todos">Todos</option>
-                        <option value="earthquake">🔴 Sismos</option>
-                        <option value="tsunami">🌊 Tsunamis</option>
-                        <option value="hurricane">🌀 Huracanes</option>
-                        <option value="volcano">🌋 Volcanes</option>
-                        <option value="storm">⛈️ Tormentas</option>
-                        <option value="flood">💧 Inundaciones</option>
-                    </select>
-                </label>
-                <label>Magnitud:
-                    <select id="filterMagnitude">
-                        <option value="0" selected>Todas</option>
-                        <option value="2">≥ 2.0</option>
-                        <option value="3">≥ 3.0</option>
-                        <option value="4">≥ 4.0</option>
-                        <option value="5">≥ 5.0</option>
-                    </select>
-                </label>
-                <button id="btnApplyFilters">✓ Aplicar</button>
-                <button id="btnResetFilters">↻ Reset</button>
+            <!-- Contador de alertas activas -->
+            <div style="padding:4px 12px;background:#1a1a2e;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:8px;">
+                <span style="color:#aaa;font-size:11px;">🚨 Alertas activas:</span>
                 <span class="alert-count-badge" id="alertCount">0</span>
             </div>
 
@@ -571,24 +509,7 @@
             });
         }
 
-        document.getElementById('filterType').addEventListener('change', function() {
-            window.currentFilters.type = this.value;
-        });
-        document.getElementById('filterMagnitude').addEventListener('change', function() {
-            window.currentFilters.magnitude = parseFloat(this.value) || 0;
-        });
-        document.getElementById('btnApplyFilters').addEventListener('click', function() {
-            // Actualizar filtros globales
-            window.alertFilters = window.currentFilters;
-            if (typeof loadAlerts === 'function') loadAlerts();
-        });
-        document.getElementById('btnResetFilters').addEventListener('click', function() {
-            document.getElementById('filterType').value = 'todos';
-            document.getElementById('filterMagnitude').value = '0';
-            window.currentFilters = { type: 'todos', magnitude: 0 };
-            window.alertFilters = window.currentFilters;
-            if (typeof loadAlerts === 'function') loadAlerts();
-        });
+
 
         // ── CONTADOR ──
         var _prevCount = -1;

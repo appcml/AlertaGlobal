@@ -201,15 +201,46 @@
         // Irán
         if (lat>25 && lat<40 && lon>44 && lon<64) return {code:'IR', name:'Irán'};
 
-        // Europa
-        if (lat>35 && lat<72 && lon>-10 && lon<45) {
-            if (lat>35 && lat<44 && lon>-10 && lon<5)  return {code:'ES', name:'España'};
-            if (lat>36 && lat<42 && lon>12  && lon<19) return {code:'IT_S', name:'Italia Sur/Sicilia'};
-            if (lat>37 && lat<43 && lon>19  && lon<28) return {code:'GR', name:'Grecia'};
+        // Europa (incluye Nórdicos e Islandia)
+        if (lat>35 && lat<72 && lon>-30 && lon<45) {
+            if (lat>63 && lat<67 && lon>-25 && lon<-13) return {code:'IS', name:'Islandia'};
+            if (lat>55 && lat<72 && lon>4  && lon<32)   return {code:'NO', name:'Europa Nórdica'};
+            if (lat>35 && lat<44 && lon>-10 && lon<5)   return {code:'ES', name:'España'};
+            if (lat>36 && lat<42 && lon>12  && lon<19)  return {code:'IT_S', name:'Italia Sur/Sicilia'};
+            if (lat>37 && lat<43 && lon>19  && lon<28)  return {code:'GR', name:'Grecia'};
+            if (lat>46 && lat<50 && lon>9   && lon<18)  return {code:'AT', name:'Austria/Europa Central'};
             return {code:'EU', name:'Europa'};
         }
 
-        // Pacífico
+        // Cáucaso (Armenia, Georgia, Azerbaiyán)
+        if (lat>38 && lat<44 && lon>38 && lon<51) return {code:'CAU', name:'Cáucaso'};
+
+        // Oriente Medio (Israel, Jordania, Arabia, Siria, Iraq)
+        if (lat>12 && lat<38 && lon>25 && lon<60) return {code:'ME', name:'Oriente Medio'};
+
+        // Asia Central (Kazajistán, Uzbekistán, Tayikistán, Kirguistán)
+        if (lat>36 && lat<56 && lon>55 && lon<88) return {code:'CA', name:'Asia Central'};
+
+        // Nepal / Himalaya
+        if (lat>26 && lat<30 && lon>80 && lon<88) return {code:'NP', name:'Nepal/Himalaya'};
+
+        // Pakistan / Afganistán
+        if (lat>23 && lat<38 && lon>60 && lon<75) return {code:'PK', name:'Pakistan'};
+
+        // Rusia
+        if (lat>45 && lat<78 && lon>20 && lon<180) return {code:'RU', name:'Rusia'};
+
+        // Africa
+        if (lat>-35 && lat<38 && lon>-18 && lon<52) {
+            if (lat>-35 && lat<-22 && lon>16 && lon<35) return {code:'ZA', name:'Sudáfrica'};
+            if (lat>15  && lat<38  && lon>-6 && lon<10) return {code:'DZ', name:'Magreb/Argelia'};
+            return {code:'AF', name:'África'};
+        }
+
+        // Pacífico SW (Vanuatu, Tonga, Fiji, Salomón)
+        if (lat>-30 && lat<5 && lon>150 && lon<185) return {code:'SWP', name:'Pacífico SW'};
+
+        // Pacífico Central
         if (lon>-180 && lon<-130 && lat>-25 && lat<25) return {code:'PAC', name:'Pacífico Central'};
 
         return {code:'GLOBAL'};
@@ -1010,6 +1041,315 @@
         } catch(e) { console.error('[Seismic] RSBR Brasil:', e); return []; }
     }
 
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // NUEVAS FUENTES: RUSIA, AFRICA, CAUCASO, ASIA CENTRAL, ORIENTE MEDIO
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // ── RUSIA: GS RAS — Geophysical Survey Russian Academy of Sciences ──────
+    // Cubre Siberia, Kamchatka, Sakhalin, Urales, Baikal — zonas muy activas
+    async function fetchGSRAS_Russia(userLat, userLon) {
+        try {
+            // GS RAS publica catálogo en JSON via su portal moderno
+            var url = 'http://ceme.gsras.ru/cgi-bin/geoJSON_seism.pl?&b=40&t=90&l=19&r=195&m=2.5&n=100';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties || {};
+                var c = f.geometry && f.geometry.coordinates;
+                if (!c) return null;
+                var mag  = parseFloat(p.M || p.mag || p.magnitude || 0);
+                var dep  = parseFloat(p.H || p.depth || p.dep || 0);
+                var place = p.Location || p.place || p.region || 'Rusia';
+                var timeMs = p.Date ? new Date(p.Date).getTime()
+                           : p.time ? new Date(p.time).getTime() : Date.now();
+                return makeAlert('gsras_' + (p.id || timeMs), mag, place,
+                    c[1], c[0], dep, timeMs,
+                    'GS RAS 🇷🇺', 'http://www.gsras.ru/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] GS RAS Russia:', e); return []; }
+    }
+
+    // ── RUSIA Kamchatka: USGS filtrado zona Kamchatka/Kuril ────────────────
+    async function fetchUSGS_Kamchatka(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=45&maxlatitude=65&minlongitude=140&maxlongitude=170';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_kamt_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Kamchatka', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Kamchatka 🌋', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Kamchatka:', e); return []; }
+    }
+
+    // ── SIBERIA / BAIKAL: USGS filtrado zona Siberia ────────────────────────
+    async function fetchUSGS_Siberia(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.0&limit=50&orderby=time&minlatitude=48&maxlatitude=75&minlongitude=55&maxlongitude=140';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_sib_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Siberia', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Siberia 🇷🇺', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Siberia:', e); return []; }
+    }
+
+    // ── AFRICA DEL NORTE: CRAAG — Argelia + Magreb ─────────────────────────
+    async function fetchCRAAG_Algeria(userLat, userLon) {
+        try {
+            var url = 'https://www.craag.dz/Seismicite/sismicite_actuelle.json';
+            var d = await proxyJSON(url, 12000);
+            var list = d.sismes || d.data || d.earthquakes || (Array.isArray(d) ? d : []);
+            return list.map(function(ev) {
+                var mag  = parseFloat(ev.magnitude || ev.mag || ev.M || 0);
+                var lat  = parseFloat(ev.latitude  || ev.lat || 0);
+                var lon  = parseFloat(ev.longitude || ev.lon || 0);
+                var place = ev.region || ev.lieu || ev.location || 'Argelia';
+                var timeMs = ev.date ? new Date(ev.date).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('craag_' + (ev.id || timeMs), mag, place,
+                    lat, lon, parseFloat(ev.depth||ev.profondeur||0), timeMs,
+                    'CRAAG 🇩🇿', 'https://www.craag.dz/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] CRAAG Algeria:', e); return []; }
+    }
+
+    // ── AFRICA: EMSC filtrado por zona África ──────────────────────────────
+    // África del Norte + Rift Valley + Africa Austral vía EMSC
+    async function fetchEMSC_Africa(userLat, userLon) {
+        try {
+            var url = 'https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit=50&minmag=3.0&orderby=time&minlatitude=-35&maxlatitude=38&minlongitude=-18&maxlongitude=52';
+            var d = await proxyJSON(url, 12000);
+            var list = d.earthquakes || (d.features ? d.features.map(function(f){ return {properties: f.properties, geometry: f.geometry}; }) : []);
+            // El formato EMSC /fdsnws devuelve GeoJSON
+            var feats = d.features || [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('emsc_af_' + f.id, parseFloat(p.mag||0),
+                    p.flynn_region || p.place || 'África', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'EMSC África 🌍', 'https://www.emsc-csem.org/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] EMSC Africa:', e); return []; }
+    }
+
+    // ── AFRICA RIFT VALLEY: USGS filtrado zona Rift ────────────────────────
+    async function fetchUSGS_Africa(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.0&limit=50&orderby=time&minlatitude=-35&maxlatitude=38&minlongitude=-18&maxlongitude=52';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_af_' + f.id, parseFloat(p.mag||0),
+                    p.place||'África', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS África 🌍', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Africa:', e); return []; }
+    }
+
+    // ── SUDÁFRICA: CGS — Council for Geoscience ────────────────────────────
+    async function fetchCGS_SouthAfrica(userLat, userLon) {
+        try {
+            var url = 'https://www.geoscience.org.za/cgs-earthquake-data/index.php?format=json&limit=20';
+            var d = await proxyJSON(url, 12000);
+            var list = d.earthquakes || d.data || (Array.isArray(d) ? d : []);
+            return list.map(function(ev) {
+                var mag  = parseFloat(ev.magnitude || ev.mag || 0);
+                var lat  = parseFloat(ev.latitude  || ev.lat || 0);
+                var lon  = parseFloat(ev.longitude || ev.lon || 0);
+                var place = ev.location || ev.region || 'Sudáfrica';
+                var timeMs = ev.datetime ? new Date(ev.datetime).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('cgs_' + (ev.id || timeMs), mag, place,
+                    lat, lon, parseFloat(ev.depth||0), timeMs,
+                    'CGS 🇿🇦', 'https://www.geoscience.org.za/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] CGS South Africa:', e); return []; }
+    }
+
+    // ── CÁUCASO: ANS Armenia + EMSC zona Cáucaso ─────────────────────────
+    async function fetchANS_Armenia(userLat, userLon) {
+        try {
+            // ANS publica datos en JSON/GeoJSON
+            var url = 'http://seismo.am/en/services/seismap/catalog.json';
+            var d = await proxyJSON(url, 12000);
+            var list = d.earthquakes || d.data || (Array.isArray(d) ? d : []);
+            return list.slice(0, 30).map(function(ev) {
+                var mag  = parseFloat(ev.magnitude || ev.M || ev.mag || 0);
+                var lat  = parseFloat(ev.latitude  || ev.lat || 0);
+                var lon  = parseFloat(ev.longitude || ev.lon || 0);
+                var place = ev.region || ev.location || 'Cáucaso';
+                var timeMs = ev.datetime ? new Date(ev.datetime).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('ans_' + (ev.id || timeMs), mag, place,
+                    lat, lon, parseFloat(ev.depth||0), timeMs,
+                    'ANS Armenia 🇦🇲', 'http://seismo.am/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] ANS Armenia:', e); return []; }
+    }
+
+    // ── CÁUCASO: USGS filtrado zona Cáucaso/Asia Central ──────────────────
+    async function fetchUSGS_Caucasus(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=35&maxlatitude=48&minlongitude=38&maxlongitude=75';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_cau_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Cáucaso/Asia Central', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Cáucaso', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Caucasus:', e); return []; }
+    }
+
+    // ── ASIA CENTRAL: USGS filtrado Kazajistán/Uzbekistán/Tayikistán ───────
+    async function fetchUSGS_CentralAsia(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=34&maxlatitude=55&minlongitude=55&maxlongitude=87';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_cas_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Asia Central', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Asia Central 🌏', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS CentralAsia:', e); return []; }
+    }
+
+    // ── ORIENTE MEDIO: GII Israel — Geological Survey Israel ───────────────
+    async function fetchGII_Israel(userLat, userLon) {
+        try {
+            var url = 'https://eq.gsi.gov.il/api/earthquakes/recent';
+            var d = await proxyJSON(url, 12000);
+            var list = d.earthquakes || d.data || (Array.isArray(d) ? d : []);
+            return list.slice(0, 20).map(function(ev) {
+                var mag  = parseFloat(ev.magnitude || ev.mag || ev.ML || 0);
+                var lat  = parseFloat(ev.lat || ev.latitude || 0);
+                var lon  = parseFloat(ev.lon || ev.longitude || 0);
+                var place = ev.location || ev.name || 'Israel/Oriente Medio';
+                var timeMs = ev.time ? new Date(ev.time).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('gii_' + (ev.id || timeMs), mag, place,
+                    lat, lon, parseFloat(ev.depth||0), timeMs,
+                    'GII Israel 🇮🇱', 'https://eq.gsi.gov.il/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] GII Israel:', e); return []; }
+    }
+
+    // ── ORIENTE MEDIO: USGS filtrado Oriente Medio/Arabia ──────────────────
+    async function fetchUSGS_MiddleEast(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=12&maxlatitude=42&minlongitude=25&maxlongitude=65';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_me_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Oriente Medio', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Oriente Medio 🌍', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS MiddleEast:', e); return []; }
+    }
+
+    // ── PAKISTAN/AFGANISTÁN: PMD + USGS zona ──────────────────────────────
+    async function fetchUSGS_Pakistan(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=23&maxlatitude=38&minlongitude=60&maxlongitude=75';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_pk_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Pakistan/Afganistán', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Pakistan 🇵🇰', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Pakistan:', e); return []; }
+    }
+
+    // ── ZAMG: Austria + Europa Central ─────────────────────────────────────
+    async function fetchZAMG_Austria(userLat, userLon) {
+        try {
+            var url = 'https://www.zamg.ac.at/eqdb/api/v1/events?format=geojson&limit=50&minMag=1.5&orderBy=time';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.magnitude || p.mag || 0);
+                return makeAlert('zamg_' + (p.id || f.id), mag,
+                    p.region || p.place || 'Europa Central', c[1], c[0], c[2]||0,
+                    p.time ? new Date(p.time).getTime() : Date.now(),
+                    'ZAMG 🇦🇹', 'https://www.zamg.ac.at/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] ZAMG Austria:', e); return []; }
+    }
+
+    // ── NEPAL/HIMALAYA: USGS filtrado zona Himalaya ────────────────────────
+    async function fetchUSGS_Himalaya(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&limit=50&orderby=time&minlatitude=26&maxlatitude=40&minlongitude=70&maxlongitude=100';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_him_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Himalaya', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Himalaya 🏔️', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Himalaya:', e); return []; }
+    }
+
+    // ── EUROPA NÓRDICA: NORSAR Norway + Islandia ───────────────────────────
+    async function fetchUSGS_Nordic(userLat, userLon) {
+        try {
+            // Islandia es muy activa volcánica/sísmicamente
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.0&limit=50&orderby=time&minlatitude=55&maxlatitude=72&minlongitude=-30&maxlongitude=32';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_nord_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Europa Nórdica', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Nórdico 🌋', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS Nordic:', e); return []; }
+    }
+
+    // ── PACÍFICO SUR / ISLAS: USGS zona Pacífico SW ────────────────────────
+    async function fetchUSGS_SWPacific(userLat, userLon) {
+        try {
+            // Vanuatu, Tonga, Fiji, Islas Salomón — zona muy activa
+            var url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=3.0&limit=50&orderby=time&minlatitude=-30&maxlatitude=5&minlongitude=150&maxlongitude=185';
+            var d = await (await fetch(url, {signal: AbortSignal.timeout(10000)})).json();
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                return makeAlert('usgs_swp_' + f.id, parseFloat(p.mag||0),
+                    p.place||'Pacífico SW', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'USGS Pacífico SW 🌊', p.url||'', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] USGS SW Pacific:', e); return []; }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // DEDUPLICACIÓN: elimina alertas con mismo sismo de distintas fuentes
     // ─────────────────────────────────────────────────────────────────────────
@@ -1041,12 +1381,15 @@
 
         // ── Fuentes SIEMPRE activas (globales críticas) ──────────────────────
         var always = [
-            fetchUSGS_Global(userLat, userLon),    // USGS M4.5+ global
-            fetchEMSC_Global(userLat, userLon),    // EMSC global
-            fetchGFZ_Potsdam(userLat, userLon),    // GFZ Potsdam M4.5+ global
-            fetchPTWC_Tsunami(userLat, userLon),   // Tsunamis Pacífico
-            fetchNTWC_Tsunami(userLat, userLon),   // Tsunamis Alaska/EEUU
-            fetchJMA_Tsunami(userLat, userLon)     // Tsunamis Japón
+            fetchUSGS_Global(userLat, userLon),      // USGS M4.5+ global
+            fetchEMSC_Global(userLat, userLon),      // EMSC global
+            fetchGFZ_Potsdam(userLat, userLon),      // GFZ Potsdam M4.5+ global
+            fetchUSGS_Kamchatka(userLat, userLon),   // Kamchatka/Kuril — siempre activo
+            fetchUSGS_SWPacific(userLat, userLon),   // Vanuatu/Tonga/Fiji — siempre activo
+            fetchUSGS_Africa(userLat, userLon),      // Africa M3+ — llena el mapa vacío
+            fetchPTWC_Tsunami(userLat, userLon),     // Tsunamis Pacífico
+            fetchNTWC_Tsunami(userLat, userLon),     // Tsunamis Alaska/EEUU
+            fetchJMA_Tsunami(userLat, userLon)       // Tsunamis Japón
         ];
 
         // ── Fuentes por REGIÓN del usuario ───────────────────────────────────
@@ -1152,13 +1495,83 @@
                 regional.push(fetchUSGS_USA(userLat, userLon));
                 regional.push(fetchAEC_Alaska(userLat, userLon));
                 break;
-            default: // GLOBAL: agregar fuentes de alta actividad + red académica
+            // ── RUSIA ──────────────────────────────────────────────────────
+            case 'RU':
+                regional.push(fetchGSRAS_Russia(userLat, userLon));
+                regional.push(fetchUSGS_Kamchatka(userLat, userLon));
+                regional.push(fetchUSGS_Siberia(userLat, userLon));
+                break;
+
+            // ── AFRICA ──────────────────────────────────────────────────────
+            case 'DZ': // Magreb/Argelia
+                regional.push(fetchCRAAG_Algeria(userLat, userLon));
+                regional.push(fetchEMSC_Africa(userLat, userLon));
+                break;
+            case 'ZA': // Sudáfrica
+                regional.push(fetchCGS_SouthAfrica(userLat, userLon));
+                regional.push(fetchUSGS_Africa(userLat, userLon));
+                break;
+            case 'AF': // Africa genérica
+                regional.push(fetchUSGS_Africa(userLat, userLon));
+                regional.push(fetchEMSC_Africa(userLat, userLon));
+                break;
+
+            // ── CÁUCASO ──────────────────────────────────────────────────────
+            case 'CAU':
+                regional.push(fetchANS_Armenia(userLat, userLon));
+                regional.push(fetchUSGS_Caucasus(userLat, userLon));
+                regional.push(fetchAFAD_Turkey(userLat, userLon)); // cubre zona
+                break;
+
+            // ── ORIENTE MEDIO ────────────────────────────────────────────────
+            case 'ME':
+                regional.push(fetchGII_Israel(userLat, userLon));
+                regional.push(fetchUSGS_MiddleEast(userLat, userLon));
+                regional.push(fetchIRSC_Iran(userLat, userLon)); // Irán limítrofe
+                break;
+
+            // ── ASIA CENTRAL ─────────────────────────────────────────────────
+            case 'CA':
+                regional.push(fetchUSGS_CentralAsia(userLat, userLon));
+                regional.push(fetchUSGS_Caucasus(userLat, userLon));
+                break;
+
+            // ── HIMALAYA/NEPAL/PAKISTAN ───────────────────────────────────────
+            case 'NP':
+                regional.push(fetchUSGS_Himalaya(userLat, userLon));
+                break;
+            case 'PK':
+                regional.push(fetchUSGS_Pakistan(userLat, userLon));
+                regional.push(fetchUSGS_Himalaya(userLat, userLon));
+                break;
+
+            // ── EUROPA NÓRDICA / ISLANDIA ─────────────────────────────────────
+            case 'IS':
+            case 'NO':
+                regional.push(fetchUSGS_Nordic(userLat, userLon));
+                regional.push(fetchORFEUS_Europe(userLat, userLon));
+                break;
+
+            // ── EUROPA CENTRAL (Austria, etc.) ────────────────────────────────
+            case 'AT':
+                regional.push(fetchZAMG_Austria(userLat, userLon));
+                regional.push(fetchORFEUS_Europe(userLat, userLon));
+                regional.push(fetchGFZ_Potsdam(userLat, userLon));
+                break;
+
+            // ── PACÍFICO SW (Vanuatu, Tonga, Fiji, Salomón) ──────────────────
+            case 'SWP':
+                regional.push(fetchUSGS_SWPacific(userLat, userLon));
+                regional.push(fetchGeoNet_NZ(userLat, userLon)); // cubre zona
+                break;
+
+            default: // GLOBAL: máxima cobertura
                 regional.push(fetchUSGS_Local(userLat, userLon));
-                regional.push(fetchGeoNet_NZ(userLat, userLon));      // alta actividad
-                regional.push(fetchINGV_Italy(userLat, userLon));     // alta actividad
-                regional.push(fetchBMKG_Indonesia(userLat, userLon)); // alta actividad
-                regional.push(fetchGFZ_Potsdam(userLat, userLon));    // Europa/Asia Central
-                regional.push(fetchIRIS_Global(userLat, userLon));    // red académica global
+                regional.push(fetchGeoNet_NZ(userLat, userLon));
+                regional.push(fetchINGV_Italy(userLat, userLon));
+                regional.push(fetchBMKG_Indonesia(userLat, userLon));
+                regional.push(fetchIRIS_Global(userLat, userLon));
+                regional.push(fetchUSGS_SWPacific(userLat, userLon)); // Pacífico SW
                 break;
         }
 

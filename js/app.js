@@ -1384,38 +1384,7 @@ function loadAlerts() {
             return (a.priority||0) >= 50;
         });
 
-        // ── FILTRO POR TIPO Y MAGNITUD (desde UI) ──
-        var uiType = (document.getElementById('filterType') || {}).value || 'todos';
-        var uiMag  = parseFloat((document.getElementById('filterMagnitude') || {}).value || '0');
-
-        var typeMap = {
-            'earthquake': ['SISMO'],
-            'tsunami':    ['TSUNAMI'],
-            'hurricane':  ['HURACÁN','CICLÓN','TIFÓN'],
-            'volcano':    ['VOLCÁN','ERUPCIÓN'],
-            'storm':      ['TORMENTA','ALERTA CLIMÁTICA','VIENTO FUERTE','LLUVIA INTENSA'],
-            'flood':      ['INUNDACIÓN'],
-            'landslide':  ['DESLIZAMIENTO'],
-            'fire':       ['INCENDIO']
-        };
-
-        if (uiType !== 'todos') {
-            var allowed = typeMap[uiType] || [];
-            filtered = filtered.filter(function(a) {
-                return allowed.some(function(t) {
-                    return (a.type || '').toUpperCase().includes(t);
-                });
-            });
-        }
-
-        if (uiMag > 0) {
-            filtered = filtered.filter(function(a) {
-                if ((a.type || '').toUpperCase().includes('SISMO')) {
-                    return (a.magnitude || 0) >= uiMag;
-                }
-                return true;
-            });
-        }
+        // Filtros de tipo/magnitud eliminados — se muestran TODAS las alertas
 
         // ── ORDENAR: Hora reciente primero, con excepciones de seguridad ──
         // Regla base: más reciente primero — el usuario quiere ver qué pasó AHORA

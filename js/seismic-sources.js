@@ -158,6 +158,7 @@
             if (lat<-21 && lat>-56 && lon>-74 && lon<-53) return {code:'AR', name:'Argentina'};
             if (lat<-10 && lat>-23 && lon>-70 && lon<-57) return {code:'BO', name:'Bolivia'};
             if (lat<5   && lat>-34 && lon>-74 && lon<-34) return {code:'BR', name:'Brasil'};
+            if (lat>-2  && lat<13  && lon>-73 && lon<-59) return {code:'VE', name:'Venezuela'};
             return {code:'SA', name:'Sudamérica'};
         }
 
@@ -166,6 +167,7 @@
             if (lat>24 && lat<50 && lon>-125 && lon<-66) return {code:'US', name:'Estados Unidos'};
             if (lat>48 && lat<84 && lon>-141 && lon<-52) return {code:'CA', name:'Canadá'};
             if (lat>14 && lat<33 && lon>-118 && lon<-86) return {code:'MX', name:'México'};
+            if (lat>8  && lat<11 && lon>-86 && lon<-82) return {code:'CR', name:'Costa Rica'};
             return {code:'CAM', name:'Centroamérica'};
         }
 
@@ -184,8 +186,14 @@
         // Australia
         if (lat<-10 && lat>-44 && lon>113 && lon<154) return {code:'AU', name:'Australia'};
 
-        // China / Asia Oriental
+        // Corea del Sur
+        if (lat>33 && lat<39 && lon>124 && lon<132) return {code:'KR', name:'Corea del Sur'};
+
+        // China / Asia Oriental (incluyendo Mongolia, Tíbet)
         if (lat>18 && lat<54 && lon>73 && lon<135) return {code:'CN', name:'Asia Oriental'};
+
+        // India / Asia del Sur
+        if (lat>6 && lat<37 && lon>68 && lon<97) return {code:'IN', name:'India'};
 
         // Turquía / Cáucaso
         if (lat>35 && lat<43 && lon>25 && lon<46) return {code:'TR', name:'Turquía'};
@@ -788,6 +796,220 @@
         } catch(e) { console.error('[Seismic] SHOA:', e); return []; }
     }
 
+
+    // ── COREA DEL SUR: KMA — Korea Meteorological Administration ──────────
+    async function fetchKMA_Korea(userLat, userLon) {
+        try {
+            // KMA ofrece datos sísmicos recientes en JSON
+            var url = 'https://www.weather.go.kr/w/eqk-vol/eqk/recent-eqk.do';
+            var txt = await proxyText(url, 12000);
+            var json = JSON.parse(txt);
+            var list = json.recentEqkList || json.list || json.data || [];
+            return list.slice(0, 20).map(function(ev) {
+                var mag = parseFloat(ev.magMl || ev.magnitude || ev.mag || 0);
+                var lat = parseFloat(ev.lat || ev.latitude || 0);
+                var lon = parseFloat(ev.lon || ev.longitude || 0);
+                var timeMs = ev.tmFc ? new Date(ev.tmFc).getTime()
+                           : ev.originTime ? new Date(ev.originTime).getTime()
+                           : Date.now();
+                var place = ev.locName || ev.location || '한국 (Corea)';
+                if (!lat || !lon) return null;
+                return makeAlert('kma_'+ev.eqkNo||timeMs, mag, place, lat, lon,
+                    parseFloat(ev.dep||0), timeMs, 'KMA 🇰🇷', 'https://www.weather.go.kr/w/eqk-vol/eqk/recent-eqk.do', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] KMA Korea:', e); return []; }
+    }
+
+    // ── CHINA: CEIC — China Earthquake Information Center ─────────────────
+    async function fetchCEIC_China(userLat, userLon) {
+        try {
+            // CEIC API JSON pública
+            var url = 'http://www.ceic.ac.cn/ajax/speedsearch?mark=ceic&typeAll=1&page=1&pageSize=20';
+            var d = await proxyJSON(url, 12000);
+            var list = d.shuju || d.data || d.list || [];
+            return list.map(function(ev) {
+                var mag  = parseFloat(ev.M || ev.MAGNITUDE || ev.mag || 0);
+                var lat  = parseFloat(ev.EPI_LAT || ev.lat || 0);
+                var lon  = parseFloat(ev.EPI_LON || ev.lon || 0);
+                var place = ev.LOCATION_C || ev.EPI_DESC || '中国 (China)';
+                var timeMs = ev.O_TIME ? new Date(ev.O_TIME.replace(/\//g,'-')).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('ceic_'+ev.EQ_ID||timeMs, mag, place, lat, lon,
+                    parseFloat(ev.EPI_DEPTH||0), timeMs, 'CEIC 🇨🇳', 'https://www.ceic.ac.cn/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] CEIC China:', e); return []; }
+    }
+
+    // ── INDIA: NCS — National Center for Seismology ────────────────────────
+    async function fetchNCS_India(userLat, userLon) {
+        try {
+            // NCS India publica RSS/feed de sismos recientes
+            var url = 'https://riseq.seismo.gov.in/riseq/earthquake/recentEqList';
+            var d = await proxyJSON(url, 12000);
+            var list = d.eqList || d.data || d || [];
+            if (!Array.isArray(list)) return [];
+            return list.slice(0, 20).map(function(ev) {
+                var mag  = parseFloat(ev.magnitude || ev.mag || 0);
+                var lat  = parseFloat(ev.latitude  || ev.lat || 0);
+                var lon  = parseFloat(ev.longitude || ev.lon || 0);
+                var place = ev.location || ev.region || 'India';
+                var timeMs = ev.datetime ? new Date(ev.datetime).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('ncs_'+timeMs, mag, place, lat, lon,
+                    parseFloat(ev.depth||0), timeMs, 'NCS India 🇮🇳', 'https://seismo.gov.in/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] NCS India:', e); return []; }
+    }
+
+    // ── GFZ POTSDAM: global M4.5+ énfasis Europa/Asia Central ────────────
+    async function fetchGFZ_Potsdam(userLat, userLon) {
+        try {
+            var url = 'https://geofon.gfz-potsdam.de/fdsnws/event/1/query?format=geojson&limit=50&minmag=4.5&orderby=time';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.mag || 0);
+                var lat = c[1], lon = c[0], dep = c[2] || 0;
+                var timeMs = p.time || Date.now();
+                return makeAlert('gfz_'+f.id, mag, p.place||'', lat, lon, dep,
+                    timeMs, 'GFZ Potsdam 🇩🇪', p.url||'https://geofon.gfz-potsdam.de/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] GFZ Potsdam:', e); return []; }
+    }
+
+    // ── ORFEUS/EIDA: red europea consolidada ──────────────────────────────
+    async function fetchORFEUS_Europe(userLat, userLon) {
+        try {
+            var url = 'https://www.orfeus-eu.org/fdsnws/event/1/query?format=geojson&limit=50&minmag=3.0&orderby=time&maxlatitude=72&minlatitude=28&maxlongitude=45&minlongitude=-15';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.mag || 0);
+                return makeAlert('orfeus_'+f.id, mag, p.place||'Europa', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'ORFEUS/EIDA 🇪🇺', 'https://www.orfeus-eu.org/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] ORFEUS:', e); return []; }
+    }
+
+    // ── BGS UK: British Geological Survey ─────────────────────────────────
+    async function fetchBGS_UK(userLat, userLon) {
+        try {
+            var url = 'https://www.bgs.ac.uk/feeds/SmallMagEarthquakes.xml';
+            var txt = await proxyText(url, 12000);
+            var items = parseAtomFeed(txt);
+            return items.map(function(item, i) {
+                var mag = 0, lat = null, lon = null;
+                var mMatch = (item.title||'').match(/ML?\s*([\d.]+)/i);
+                if (mMatch) mag = parseFloat(mMatch[1]);
+                // Coords suelen venir en el summary como "Lat: X Lon: Y"
+                var latM = (item.summary||'').match(/[Ll]at[itude]*:?\s*([\d.-]+)/);
+                var lonM = (item.summary||'').match(/[Ll]on[gitude]*:?\s*([\d.-]+)/);
+                if (latM) lat = parseFloat(latM[1]);
+                if (lonM) lon = parseFloat(lonM[1]);
+                var timeMs = item.updated ? new Date(item.updated).getTime() : Date.now();
+                return makeAlert('bgs_'+timeMs+'_'+i, mag, item.title||'UK', lat, lon, 0,
+                    timeMs, 'BGS UK 🇬🇧', 'https://www.bgs.ac.uk/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] BGS UK:', e); return []; }
+    }
+
+    // ── ALASKA EQ CENTER: UAF — zona muy activa ────────────────────────────
+    async function fetchAEC_Alaska(userLat, userLon) {
+        try {
+            var url = 'https://earthquake.alaska.edu/fdsnws/event/1/query?format=geojson&limit=50&minmag=2.5&orderby=time&minlatitude=51&maxlatitude=72&minlongitude=-180&maxlongitude=-129';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.mag || 0);
+                return makeAlert('aec_'+f.id, mag, p.place||'Alaska', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'AEC Alaska 🇺🇸', 'https://earthquake.alaska.edu/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] AEC Alaska:', e); return []; }
+    }
+
+    // ── FUNVISIS: Venezuela — Fundación Venezolana de Investigaciones Sism. ─
+    async function fetchFUNVISIS_Venezuela(userLat, userLon) {
+        try {
+            var url = 'http://www.funvisis.gob.ve/archivos/json/ultimos_sismos.json';
+            var d = await proxyJSON(url, 12000);
+            var list = d.sismos || d.data || d || [];
+            if (!Array.isArray(list)) return [];
+            return list.slice(0, 20).map(function(ev) {
+                var mag  = parseFloat(ev.magnitud || ev.mag || ev.M || 0);
+                var lat  = parseFloat(ev.latitud || ev.lat || 0);
+                var lon  = parseFloat(ev.longitud || ev.lon || 0);
+                var place = ev.localidad || ev.lugar || 'Venezuela';
+                var timeMs = ev.fecha_hora ? new Date(ev.fecha_hora).getTime() : Date.now();
+                if (!lat || !lon) return null;
+                return makeAlert('funvisis_'+timeMs, mag, place, lat, lon,
+                    parseFloat(ev.profundidad||0), timeMs, 'FUNVISIS 🇻🇪', 'http://www.funvisis.gob.ve/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] FUNVISIS Venezuela:', e); return []; }
+    }
+
+    // ── OVSICORI: Costa Rica — Centroamérica ──────────────────────────────
+    async function fetchOVSICORI_CostaRica(userLat, userLon) {
+        try {
+            // OVSICORI publica feed RSS con sismos recientes
+            var url = 'https://www.ovsicori.una.ac.cr/index.php?format=feed&type=rss';
+            var txt = await proxyText(url, 12000);
+            var items = parseAtomFeed(txt);
+            return items.filter(function(item) {
+                return /sismo|terremoto|temblor|magnitud|M\s*[\d.]/i.test((item.title||'')+(item.summary||''));
+            }).map(function(item, i) {
+                var mag = 0;
+                var mMatch = ((item.title||'')+(item.summary||'')).match(/M[Ll]?[wW]?[\s:]*([\d.]+)/);
+                if (mMatch) mag = parseFloat(mMatch[1]);
+                var lat = null, lon = null;
+                var latM = (item.summary||'').match(/[Ll]at[itud]*:?\s*([\d.-]+)/);
+                var lonM = (item.summary||'').match(/[Ll]on[gitud]*:?\s*([\d.-]+)/);
+                if (latM) lat = parseFloat(latM[1]);
+                if (lonM) lon = parseFloat(lonM[1]);
+                var timeMs = item.updated ? new Date(item.updated).getTime() : Date.now();
+                return makeAlert('ovsicori_'+timeMs+'_'+i, mag, item.title||'Costa Rica', lat, lon, 0,
+                    timeMs, 'OVSICORI 🇨🇷', 'https://www.ovsicori.una.ac.cr/', userLat, userLon);
+            }).filter(function(a) { return a && a.magnitude >= 1; });
+        } catch(e) { console.error('[Seismic] OVSICORI:', e); return []; }
+    }
+
+    // ── IRIS FDSN: global M4.5+ red académica internacional ──────────────
+    async function fetchIRIS_Global(userLat, userLon) {
+        try {
+            var url = 'https://service.iris.edu/fdsnws/event/1/query?format=geojson&limit=50&minmagnitude=4.5&orderby=time&nodata=404';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.mag || 0);
+                return makeAlert('iris_'+f.id, mag, p.place||'Global', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'IRIS FDSN 🌍', 'https://service.iris.edu/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] IRIS FDSN:', e); return []; }
+    }
+
+    // ── BRASIL: USP/RSBR — Rede Sismográfica Brasileira ──────────────────
+    async function fetchRSBR_Brasil(userLat, userLon) {
+        try {
+            var url = 'http://rsbr.gov.br/fdsnws/event/1/query?format=geojson&limit=30&minmag=2.0&orderby=time&minlatitude=-34&maxlatitude=5&minlongitude=-74&maxlongitude=-34';
+            var d = await proxyJSON(url, 12000);
+            var feats = (d && d.features) ? d.features : [];
+            return feats.map(function(f) {
+                var p = f.properties, c = f.geometry && f.geometry.coordinates;
+                if (!p || !c) return null;
+                var mag = parseFloat(p.mag || 0);
+                return makeAlert('rsbr_'+f.id, mag, p.place||'Brasil', c[1], c[0], c[2]||0,
+                    p.time||Date.now(), 'RSBR Brasil 🇧🇷', 'http://rsbr.gov.br/', userLat, userLon);
+            }).filter(Boolean);
+        } catch(e) { console.error('[Seismic] RSBR Brasil:', e); return []; }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // DEDUPLICACIÓN: elimina alertas con mismo sismo de distintas fuentes
     // ─────────────────────────────────────────────────────────────────────────
@@ -819,11 +1041,12 @@
 
         // ── Fuentes SIEMPRE activas (globales críticas) ──────────────────────
         var always = [
-            fetchUSGS_Global(userLat, userLon),
-            fetchEMSC_Global(userLat, userLon),
-            fetchPTWC_Tsunami(userLat, userLon),
-            fetchNTWC_Tsunami(userLat, userLon),
-            fetchJMA_Tsunami(userLat, userLon)
+            fetchUSGS_Global(userLat, userLon),    // USGS M4.5+ global
+            fetchEMSC_Global(userLat, userLon),    // EMSC global
+            fetchGFZ_Potsdam(userLat, userLon),    // GFZ Potsdam M4.5+ global
+            fetchPTWC_Tsunami(userLat, userLon),   // Tsunamis Pacífico
+            fetchNTWC_Tsunami(userLat, userLon),   // Tsunamis Alaska/EEUU
+            fetchJMA_Tsunami(userLat, userLon)     // Tsunamis Japón
         ];
 
         // ── Fuentes por REGIÓN del usuario ───────────────────────────────────
@@ -853,9 +1076,7 @@
             case 'AR':
                 regional.push(fetchINPRES_Argentina(userLat, userLon));
                 break;
-            case 'US':
-                regional.push(fetchUSGS_USA(userLat, userLon));
-                break;
+
             case 'CA':
                 regional.push(fetchNRCan_Canada(userLat, userLon));
                 break;
@@ -881,28 +1102,63 @@
                 regional.push(fetchNOA_Greece(userLat, userLon));
                 break;
             case 'IT_S':
-            case 'EU':
                 regional.push(fetchINGV_Italy(userLat, userLon));
                 regional.push(fetchIGN_Spain(userLat, userLon));
                 regional.push(fetchNOA_Greece(userLat, userLon));
+                regional.push(fetchORFEUS_Europe(userLat, userLon));
+                regional.push(fetchGFZ_Potsdam(userLat, userLon));
                 break;
             case 'ES':
                 regional.push(fetchIGN_Spain(userLat, userLon));
+                break;
+            case 'KR': // Corea del Sur
+                regional.push(fetchKMA_Korea(userLat, userLon));
+                break;
+            case 'CN': // China y Asia Oriental
+                regional.push(fetchCEIC_China(userLat, userLon));
+                break;
+            case 'IN': // India
+                regional.push(fetchNCS_India(userLat, userLon));
+                break;
+            case 'VE': // Venezuela
+                regional.push(fetchFUNVISIS_Venezuela(userLat, userLon));
+                break;
+            case 'BR': // Brasil
+                regional.push(fetchRSBR_Brasil(userLat, userLon));
+                break;
+            case 'CR': // Costa Rica
+                regional.push(fetchOVSICORI_CostaRica(userLat, userLon));
                 break;
             case 'SA': // Sudamérica genérica
                 regional.push(fetchCSN_Chile(userLat, userLon));
                 regional.push(fetchIGP_Peru(userLat, userLon));
                 regional.push(fetchSGC_Colombia(userLat, userLon));
+                regional.push(fetchFUNVISIS_Venezuela(userLat, userLon));
+                regional.push(fetchRSBR_Brasil(userLat, userLon));
                 regional.push(fetchSHOA_Tsunami(userLat, userLon));
                 break;
             case 'CAM': // Centroamérica
                 regional.push(fetchSSN_Mexico(userLat, userLon));
+                regional.push(fetchOVSICORI_CostaRica(userLat, userLon));
                 break;
-            default: // GLOBAL: agregar fuente local más cercana
+            case 'EU': // Europa genérica (ya tenía INGV+IGN+NOA)
+                regional.push(fetchINGV_Italy(userLat, userLon));
+                regional.push(fetchIGN_Spain(userLat, userLon));
+                regional.push(fetchNOA_Greece(userLat, userLon));
+                regional.push(fetchORFEUS_Europe(userLat, userLon)); // consolida UK, FR, AT, etc.
+                regional.push(fetchGFZ_Potsdam(userLat, userLon));
+                break;
+            case 'US': // EEUU — Alaska como subregión separada
+                regional.push(fetchUSGS_USA(userLat, userLon));
+                regional.push(fetchAEC_Alaska(userLat, userLon));
+                break;
+            default: // GLOBAL: agregar fuentes de alta actividad + red académica
                 regional.push(fetchUSGS_Local(userLat, userLon));
-                regional.push(fetchGeoNet_NZ(userLat, userLon));    // alta actividad
-                regional.push(fetchINGV_Italy(userLat, userLon));   // alta actividad
+                regional.push(fetchGeoNet_NZ(userLat, userLon));      // alta actividad
+                regional.push(fetchINGV_Italy(userLat, userLon));     // alta actividad
                 regional.push(fetchBMKG_Indonesia(userLat, userLon)); // alta actividad
+                regional.push(fetchGFZ_Potsdam(userLat, userLon));    // Europa/Asia Central
+                regional.push(fetchIRIS_Global(userLat, userLon));    // red académica global
                 break;
         }
 

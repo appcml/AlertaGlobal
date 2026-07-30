@@ -652,7 +652,7 @@ window.runAlertEngine = async function(lat, lon, cityName, radiusKm) {
                         Math.pow(Math.sin((coords[0]-lon)*Math.PI/360),2))
                     )
                 );
-                if (dist <= (radiusKm||1000)) {
+                if (radiusKm === 0 || dist <= (radiusKm != null && !isNaN(radiusKm) ? radiusKm : 1000)) {
                     var ea = analyzeEarthquake(p.mag, p.place, coords[2], dist);
                     if (ea) {
                         ea.lat = coords[1];

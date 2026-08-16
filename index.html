@@ -12,126 +12,82 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-    <link rel="stylesheet" href="css/styles.css?v=1784395434">
+    <link rel="stylesheet" href="css/styles.css?v=1786848000">
     <style>
-        .alert-count-badge {
-            background: #ff6666;
-            color: #000;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 11px;
-        }
-        .alert-item {
-            position: relative;
-        }
-        .btn-share {
-            position: absolute;
-            bottom: 8px;
-            right: 8px;
-            background: #222;
-            border: 1px solid #444;
-            color: #ccc;
-            padding: 3px 8px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 11px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-        .alert-item:hover .btn-share {
-            opacity: 1;
-        }
-        .btn-share:hover {
-            background: #ff6666;
-            border-color: #ff6666;
-            color: #000;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-        }
-        /* Forzar que todos los modales estén ocultos por defecto */
-        #searchPopup, #radiusPopup, #sharePopup,
-        #langPopup, #favoritesPopup, #sosPopup, #themePopup {
-            display: none;
-        }
-        @keyframes pulse {
-            0%   { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
-            70%  { box-shadow: 0 0 0 10px rgba(255,0,0,0); }
-            100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
-        }
+        /* Modales ocultos por defecto */
+        #searchPopup,#radiusPopup,#sharePopup,#langPopup,#favoritesPopup,#sosPopup,#themePopup{display:none}
+        @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,0,0,0.7)}70%{box-shadow:0 0 0 10px rgba(255,0,0,0)}100%{box-shadow:0 0 0 0 rgba(255,0,0,0)}}
+        .fb-tag{padding:5px 10px;background:var(--surface2);border:1px solid var(--card-border);color:var(--text-secondary);border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.2s}
+        .fb-tag.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
     </style>
 </head>
 <body>
 
-    <div class="status-indicator" id="statusIndicator">
-        <span class="status-dot safe"></span>
-        <span class="status-text" id="statusText">Entorno Seguro</span>
-    </div>
-
-    <header class="toolbar">
-        <div class="toolbar-title">🌍 Alerta Global</div>
-        <div class="toolbar-actions">
-            <button class="toolbar-btn" id="btnFavorites">⭐</button>
-            <button class="toolbar-btn" id="btnTheme">🎨</button>
-            <button class="toolbar-btn" id="btnLang">🌐</button>
-            <button class="toolbar-btn" id="btnFeedback" title="Enviar feedback">💬</button>
-            <button class="toolbar-btn" id="btnRefresh">🔄</button>
+<!-- ═══════════════════════════════════════
+     TOPBAR — siempre visible
+═══════════════════════════════════════ -->
+<header class="topbar" id="topbar">
+    <div class="topbar-left">
+        <div class="topbar-logo">🌍 <span>Alerta Global</span></div>
+        <div class="status-pill" id="statusIndicator">
+            <span class="status-dot safe" id="statusDot"></span>
+            <span class="status-text" id="statusText">Entorno Seguro</span>
         </div>
-    </header>
+    </div>
+    <div class="topbar-actions">
+        <button class="tbtn" id="btnFavorites" title="Favoritos">⭐</button>
+        <button class="tbtn" id="btnTheme" title="Tema">🎨</button>
+        <button class="tbtn" id="btnLang" title="Idioma">🌐</button>
+        <button class="tbtn" id="btnFeedback" title="Feedback">💬</button>
+        <button class="tbtn" id="btnRefresh" title="Actualizar">🔄</button>
+    </div>
+</header>
 
-    <nav class="tabs">
-        <button class="tab active" data-tab="alertas">🚨 <span data-i18n="tab_alerts">Alertas</span></button>
-        <button class="tab" data-tab="mapa">🗺️ <span data-i18n="tab_map">Mapa</span></button>
-        <button class="tab" data-tab="clima">🌤️ <span data-i18n="tab_weather">Clima</span></button>
-        <button class="tab" data-tab="sos">🦺 <span>Kit SOS</span></button>
-        <button class="tab" data-tab="tips">💡 Tips</button>
-    </nav>
+<!-- ═══════════════════════════════════════
+     LAYOUT PRINCIPAL: sidebar + mapa
+═══════════════════════════════════════ -->
+<div class="app-layout">
 
-    <main class="content">
+    <!-- ── SIDEBAR DE ALERTAS ── -->
+    <aside class="sidebar" id="sidebar">
 
-        <!-- ALERTAS -->
-        <section class="tab-panel active" id="panel-alertas">
-            <div class="location-bar">
-                <button class="location-btn" id="btnMyLocation">📍 <span id="currentLocationName">Detectar mi ubicación</span></button>
-                <button class="location-btn" id="btnSearchLocation">🔍 Buscar</button>
-                <button class="location-btn fav-btn" id="btnStarAlert">☆</button>
-                <button class="location-btn" id="btnRadius">📏 <span id="radiusLabel">Global</span></button>
-            <div id="zoneIndicator" style="display:none;font-size:11px;color:#aaa;padding:2px 8px;
-                border-radius:10px;background:#1a1a2e;border:1px solid #333;white-space:nowrap;"></div>
+        <!-- Barra de ubicación -->
+        <div class="sidebar-locbar">
+            <button class="loc-btn loc-btn-primary" id="btnMyLocation">📍 <span id="currentLocationName">Detectar ubicación</span></button>
+            <button class="loc-btn" id="btnSearchLocation">🔍</button>
+            <button class="loc-btn fav-btn" id="btnStarAlert">☆</button>
+            <button class="loc-btn" id="btnRadius">📏 <span id="radiusLabel">Global</span></button>
+            <div id="zoneIndicator" style="display:none;font-size:10px;color:#aaa;padding:2px 8px;border-radius:8px;background:var(--surface2);border:1px solid var(--card-border);white-space:nowrap;"></div>
+        </div>
+
+        <!-- Contador + tabs móvil -->
+        <div class="sidebar-countbar">
+            <span class="count-label">🚨 Alertas activas:</span>
+            <span class="count-badge" id="alertCount">0</span>
+            <!-- Tabs solo visibles en móvil dentro del sidebar -->
+            <div class="mobile-tabs" id="mobileTabs">
+                <button class="mtab active" data-panel="alerts">Alertas</button>
+                <button class="mtab" data-panel="weather">Clima</button>
+                <button class="mtab" data-panel="sos">SOS</button>
+                <button class="mtab" data-panel="tips">Tips</button>
             </div>
+        </div>
 
-            <!-- Contador de alertas activas -->
-            <div style="padding:4px 12px;background:#1a1a2e;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:8px;">
-                <span style="color:#aaa;font-size:11px;">🚨 Alertas activas:</span>
-                <span class="alert-count-badge" id="alertCount">0</span>
-            </div>
-
+        <!-- Panel: Lista de alertas -->
+        <div class="sidebar-panel active" id="sp-alerts">
             <div class="loading" id="alertsLoading"><div class="spinner"></div><p>Cargando alertas...</p></div>
             <div class="alert-list" id="alertList"></div>
             <div class="error-msg" id="alertsError" style="display:none"></div>
-        </section>
+        </div>
 
-        <!-- MAPA -->
-        <section class="tab-panel" id="panel-mapa">
-            <div id="map" style="height:calc(100vh - 160px);min-height:400px;background:#111;"></div>
-        </section>
-
-        <!-- CLIMA -->
-        <section class="tab-panel" id="panel-clima">
-            <div class="location-bar">
-                <button class="location-btn" id="btnWeatherLocation">📍 <span id="weatherLocationName">Detectar mi ubicación</span></button>
-                <button class="location-btn" id="btnWeatherSearch">🔍 Buscar</button>
-                <button class="location-btn fav-btn" id="btnStarWeather">☆</button>
+        <!-- Panel: Clima (sidebar) -->
+        <div class="sidebar-panel" id="sp-weather">
+            <div class="location-bar" style="padding:8px 10px;border-bottom:1px solid var(--card-border)">
+                <button class="loc-btn loc-btn-primary" id="btnWeatherLocation">📍 <span id="weatherLocationName">Detectar ubicación</span></button>
+                <button class="loc-btn" id="btnWeatherSearch">🔍</button>
+                <button class="loc-btn fav-btn" id="btnStarWeather">☆</button>
             </div>
-            <div class="loading" id="weatherLoading"><div class="spinner"></div><p>Obteniendo ubicación...</p></div>
+            <div class="loading" id="weatherLoading"><div class="spinner"></div><p>Obteniendo clima...</p></div>
             <div class="weather-container" id="weatherContainer" style="display:none">
                 <div class="weather-city" id="wCity"></div>
                 <div class="weather-temp" id="wTemp"></div>
@@ -144,760 +100,550 @@
                     <div class="weather-detail"><span class="detail-icon">☁️</span><span class="detail-label">Nubosidad</span><span class="detail-value" id="wClouds"></span></div>
                     <div class="weather-detail"><span class="detail-icon">🌫️</span><span class="detail-label">AQI</span><span class="detail-value" id="wAQI"></span></div>
                     <div class="weather-detail"><span class="detail-icon">👁️</span><span class="detail-label">Visibilidad</span><span class="detail-value" id="wVisibility"></span></div>
+                    <div class="weather-detail"><span class="detail-icon">☀️</span><span class="detail-label">UV</span><span class="detail-value" id="wUV">—</span></div>
                 </div>
                 <div class="weather-recommendation" id="wRecommendation"></div>
             </div>
             <div class="error-msg" id="weatherError" style="display:none"></div>
-        </section>
+        </div>
 
-        <!-- KIT SOS MEJORADO -->
-        <section class="tab-panel" id="panel-sos">
+        <!-- Panel: SOS (sidebar) -->
+        <div class="sidebar-panel" id="sp-sos">
             <div class="sos-header">
                 <div class="sos-connection-banner" id="sosBanner">
                     <span class="sos-conn-icon">📶</span>
                     <span id="sosConnText" data-i18n="sos_online">Modo Online — Datos en tiempo real</span>
                 </div>
             </div>
-
-            <!-- Botón SOS principal -->
-            <div style="padding:12px 16px 0;">
-                <button id="btnSOSEmergency" onclick="triggerSOS()" style="
-                    width:100%;padding:18px;background:linear-gradient(135deg,#cc0000,#ff3333);
-                    color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:bold;
-                    cursor:pointer;box-shadow:0 4px 15px rgba(255,0,0,0.4);letter-spacing:1px;
-                    animation:pulse 2s infinite;">
+            <div style="padding:10px 12px 0">
+                <button id="btnSOSEmergency" onclick="triggerSOS()" style="width:100%;padding:16px;background:linear-gradient(135deg,#cc0000,#ff3333);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer;animation:pulse 2s infinite;">
                     🆘 <span data-i18n="sos_emergency_btn">EMERGENCIA — LLAMAR AHORA</span>
                 </button>
             </div>
-
-            <!-- Números de emergencia por país -->
-            <div style="padding:12px 16px 4px;">
-                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><span data-i18n="sos_numbers_title">📞 Números de Emergencia</span></div>
-                <div id="sosEmergencyNumbers" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    <!-- Se llena dinámicamente según el país detectado -->
-                </div>
+            <div style="padding:10px 12px 4px">
+                <div style="color:var(--text-muted);font-size:10px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">📞 Números de Emergencia</div>
+                <div id="sosEmergencyNumbers" style="display:grid;grid-template-columns:1fr 1fr;gap:6px"></div>
             </div>
-
-            <!-- Grid de acciones -->
-            <div style="padding:8px 16px;">
-                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;"><span data-i18n="sos_actions_title">⚡ Acciones Rápidas</span></div>
+            <div style="padding:6px 12px">
+                <div style="color:var(--text-muted);font-size:10px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">⚡ Acciones Rápidas</div>
                 <div class="sos-grid">
-                    <div class="sos-card">
-                        <div class="sos-icon">📍</div>
-                        <div class="sos-title" data-i18n="sos_share">Compartir Ubicación</div>
-                        <div class="sos-desc">Envía tus coordenadas exactas por WhatsApp/SMS</div>
-                        <button class="sos-btn" id="btnShareLocation" onclick="shareEmergencyLocation()">📤 Compartir</button>
-                    </div>
-                    <div class="sos-card">
-                        <div class="sos-icon">💉</div>
-                        <div class="sos-title" data-i18n="sos_firstaid">Primeros Auxilios</div>
-                        <div class="sos-desc">Guías rápidas para emergencias comunes</div>
-                        <button class="sos-btn" id="btnFirstAid" onclick="openFirstAid()">📖 Ver guía</button>
-                    </div>
-                    <div class="sos-card">
-                        <div class="sos-icon">🔦</div>
-                        <div class="sos-title" data-i18n="sos_flashlight">Señal SOS</div>
-                        <div class="sos-desc" data-i18n="sos_flashlight_desc">Linterna en morse SOS (···−−−···) para ser localizado</div>
-                        <button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">🔦 <span data-i18n="sos_flashlight_btn">Señal SOS</span></button>
-                    </div>
-                    <div class="sos-card">
-                        <div class="sos-icon">📻</div>
-                        <div class="sos-title" data-i18n="sos_radio">Radio / Walkie</div>
-                        <div class="sos-desc" data-i18n="sos_radio_desc">Frecuencias de emergencia y apps walkie-talkie</div>
-                        <button class="sos-btn" onclick="openRadioPanel()">📡 <span data-i18n="sos_radio_btn">Ver canales</span></button>
-                    </div>
+                    <div class="sos-card"><div class="sos-icon">📍</div><div class="sos-title" data-i18n="sos_share">Compartir Ubicación</div><div class="sos-desc">Envía coordenadas por WhatsApp/SMS</div><button class="sos-btn" id="btnShareLocation" onclick="shareEmergencyLocation()">📤 Compartir</button></div>
+                    <div class="sos-card"><div class="sos-icon">💉</div><div class="sos-title" data-i18n="sos_firstaid">Primeros Auxilios</div><div class="sos-desc">Guías rápidas para emergencias</div><button class="sos-btn" id="btnFirstAid" onclick="openFirstAid()">📖 Ver guía</button></div>
+                    <div class="sos-card"><div class="sos-icon">🔦</div><div class="sos-title" data-i18n="sos_flashlight">Señal SOS</div><div class="sos-desc" data-i18n="sos_flashlight_desc">Linterna morse SOS</div><button class="sos-btn" id="btnFlashlight" onclick="toggleFlashlight()">🔦 <span data-i18n="sos_flashlight_btn">Señal SOS</span></button></div>
+                    <div class="sos-card"><div class="sos-icon">📻</div><div class="sos-title" data-i18n="sos_radio">Radio / Walkie</div><div class="sos-desc" data-i18n="sos_radio_desc">Frecuencias de emergencia</div><button class="sos-btn" onclick="openRadioPanel()">📡 <span data-i18n="sos_radio_btn">Ver canales</span></button></div>
                 </div>
             </div>
-
-            <!-- Guía de primeros auxilios (oculta por defecto) -->
-            <div id="firstAidPanel" style="display:none;padding:0 16px 16px;">
-                <div style="color:#aaa;font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">🏥 Primeros Auxilios Rápidos</div>
-                <div id="firstAidContent" style="background:#111;border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:#ddd;"></div>
+            <div id="firstAidPanel" style="display:none;padding:0 12px 12px">
+                <div class="tip-title" style="margin-bottom:6px">🏥 Primeros Auxilios</div>
+                <div id="firstAidContent" style="background:var(--surface2);border-radius:8px;padding:10px;font-size:13px;line-height:1.7;color:var(--text)"></div>
             </div>
-        </section>
+        </div>
 
-        <!-- TIPS -->
-        <section class="tab-panel" id="panel-tips">
+        <!-- Panel: Tips (sidebar) -->
+        <div class="sidebar-panel" id="sp-tips">
             <div class="tips-container" id="tipsContainer"></div>
-        </section>
-
-    </main>
-
-    <!-- POPUPS -->
-    <div class="modal" id="searchPopup">
-        <div class="modal-content">
-            <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);">🔍 Buscar Localidad</h2>
-            <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
-            <div id="searchResults" style="margin-top:16px;"></div>
         </div>
-    </div>
 
-    <div class="modal" id="radiusPopup">
-        <div class="modal-content">
-            <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);">📏 Radio de Alertas</h2>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
-                <button class="radius-option" data-radius="100">100 km</button>
-                <button class="radius-option" data-radius="500">500 km</button>
-                <button class="radius-option" data-radius="1000">1000 km</button>
-                <button class="radius-option" data-radius="5000">5000 km</button>
-                <button class="radius-option" data-radius="10000">10000 km</button>
-                <button class="radius-option" data-radius="0" style="background:#ff6666;color:#000;">🌍 Global</button>
-                <button class="radius-option" data-radius="-1" style="background:#4488ff;color:#fff;margin-top:8px;width:100%;">🏳️ Solo mi país</button>
-            </div>
+    </aside>
+
+    <!-- ── PANEL MAPA + CLIMA STRIP ── -->
+    <div class="map-pane" id="mapPane">
+
+        <!-- Tabs del panel derecho (desktop) — Mapa siempre activo por defecto -->
+        <div class="map-tabs" id="mapTabs">
+            <button class="map-tab active" data-maptab="map">🗺️ Mapa</button>
+            <button class="map-tab" data-maptab="climate">🌤️ Clima detallado</button>
+            <button class="map-tab" data-maptab="tips-desktop">💡 Tips</button>
         </div>
-    </div>
 
-    <div class="modal" id="sharePopup">
-        <div class="modal-content">
-            <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);">📤 Compartir Alerta</h2>
-            <textarea id="shareContent" readonly style="width:100%;height:100px;margin:16px 0;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;resize:none;"></textarea>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <button id="btnCopyShare" style="padding:12px;background:#ff6666;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">📋 Copiar</button>
-                <button id="btnWhatsApp" style="padding:12px;background:#25D366;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">💬 WhatsApp</button>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
-                <button id="btnTwitter" style="padding:12px;background:#1DA1F2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">🐦 Twitter/X</button>
-                <button id="btnTelegram" style="padding:12px;background:#0088cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">✈️ Telegram</button>
-            </div>
+        <!-- Mapa Leaflet -->
+        <div id="map-tab-map" class="map-tab-panel active">
+            <div id="map" style="width:100%;height:100%;background:#0a0f1a;"></div>
         </div>
-    </div>
 
-    <!-- POPUP FAVORITOS -->
-    <div class="modal" id="favoritesPopup">
-        <div class="modal-content">
-            <button class="modal-close" id="closeFavorites" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);">⭐ Ubicaciones Favoritas</h2>
-            <div id="favoritesList" style="margin-top:16px;max-height:300px;overflow-y:auto;"></div>
-            <div id="favoritesEmpty" style="color:#888;text-align:center;padding:24px;display:none;">Sin ubicaciones guardadas</div>
-        </div>
-    </div>
-
-    <!-- POPUP TÉRMINOS -->
-    <div class="modal" id="termsPopup" style="display:flex;">
-        <div class="modal-content" style="max-width:480px;max-height:80vh;overflow-y:auto;">
-            <h2 style="color:var(--accent);margin-bottom:12px;">🌍 Alerta Global — Versión Beta</h2>
-            <div style="background:#ff666622;border:1px solid #ff6666;border-radius:6px;padding:10px;margin-bottom:16px;font-size:13px;color:#ff9999;">
-                ⚠️ Esta es una versión <b>BETA v1.0</b>. Algunas funciones pueden no estar disponibles o presentar errores.
-            </div>
-            <h3 style="color:#ccc;margin-bottom:8px;font-size:14px;">Términos y Condiciones de Uso</h3>
-            <div style="font-size:12px;color:#aaa;line-height:1.6;">
-                <p><b style="color:#fff;">1. Propósito informativo</b><br>
-                Alerta Global es una aplicación de carácter informativo. Las alertas mostradas provienen de fuentes públicas oficiales (USGS, NASA, NOAA, Smithsonian, OpenWeatherMap) y se presentan con fines informativos únicamente.</p>
-
-                <p><b style="color:#fff;">2. No sustituye a las autoridades</b><br>
-                Esta aplicación NO reemplaza los sistemas oficiales de alerta temprana. En caso de emergencia, siga siempre las instrucciones de las autoridades locales (SENAPRED, ONEMI, protección civil de su país).</p>
-
-                <p><b style="color:#fff;">3. Limitación de responsabilidad</b><br>
-                Los desarrolladores de Alerta Global no se hacen responsables por decisiones tomadas basadas en la información de esta aplicación. Los datos pueden contener retrasos o imprecisiones.</p>
-
-                <p><b style="color:#fff;">4. Privacidad y datos</b><br>
-                La aplicación puede solicitar acceso a su ubicación para mostrar alertas cercanas. Esta información no se almacena en servidores externos y solo se usa localmente en su dispositivo.</p>
-
-                <p><b style="color:#fff;">5. Uso de APIs</b><br>
-                La aplicación utiliza APIs públicas gratuitas. La disponibilidad de los datos depende de terceros y puede variar.</p>
-
-                <p><b style="color:#fff;">6. Versión Beta</b><br>
-                Esta es una versión de prueba. Algunas funciones pueden estar incompletas. Agradecemos su paciencia y comentarios para mejorar la aplicación.</p>
-            </div>
-            <button id="btnAcceptTerms" style="width:100%;padding:14px;background:#ff6666;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:16px;">
-                ✅ Acepto los términos y condiciones
-            </button>
-        </div>
-    </div>
-
-    <!-- POPUP RADIO DE EMERGENCIA -->
-    <div class="modal" id="radioPopup">
-        <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto;">
-            <button class="modal-close" onclick="document.getElementById('radioPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);margin-bottom:16px;">📻 Radio & Comunicación de Emergencia</h2>
-            <div id="radioContent"></div>
-        </div>
-    </div>
-
-    <!-- POPUP IDIOMAS -->
-    <div class="modal" id="langPopup">
-        <div class="modal-content" style="max-width:320px;">
-            <button class="modal-close" onclick="document.getElementById('langPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);margin-bottom:16px;">🌐 <span data-i18n="lang_select">Seleccionar idioma</span></h2>
-            <div style="display:grid;gap:8px;">
-                <button class="lang-option" data-lang="es" onclick="selectLanguage('es')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇪🇸 Español
-                </button>
-                <button class="lang-option" data-lang="en" onclick="selectLanguage('en')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇺🇸 English
-                </button>
-                <button class="lang-option" data-lang="pt" onclick="selectLanguage('pt')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇧🇷 Português
-                </button>
-                <button class="lang-option" data-lang="fr" onclick="selectLanguage('fr')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇫🇷 Français
-                </button>
-                <button class="lang-option" data-lang="de" onclick="selectLanguage('de')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇩🇪 Deutsch
-                </button>
-                <button class="lang-option" data-lang="zh" onclick="selectLanguage('zh')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">
-                    🇨🇳 中文
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- POPUP TEMAS -->
-    <div class="modal" id="themePopup">
-        <div class="modal-content" style="max-width:320px;">
-            <button class="modal-close" onclick="document.getElementById('themePopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:var(--accent);margin-bottom:16px;">🎨 <span data-i18n="theme_select">Seleccionar tema</span></h2>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <button onclick="applyTheme('dark')" style="padding:16px;background:#0a0a0f;border:2px solid #ff6666;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
-                    🌑 <b>Oscuro</b><br><small style="color:#aaa;">Por defecto</small>
-                </button>
-                <button onclick="applyTheme('light')" style="padding:16px;background:#f0f0f0;border:2px solid #999;color:#111;border-radius:10px;cursor:pointer;font-size:13px;">
-                    ☀️ <b>Claro</b><br><small style="color:#555;">Día</small>
-                </button>
-                <button onclick="applyTheme('blue')" style="padding:16px;background:#0a1628;border:2px solid #4488ff;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
-                    🌊 <b>Marino</b><br><small style="color:#88aaff;">Azul profundo</small>
-                </button>
-                <button onclick="applyTheme('green')" style="padding:16px;background:#0a1a0a;border:2px solid #44cc44;color:#fff;border-radius:10px;cursor:pointer;font-size:13px;">
-                    🌿 <b>Bosque</b><br><small style="color:#88cc88;">Verde oscuro</small>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- POPUP PRIMEROS AUXILIOS -->
-    <div class="modal" id="firstAidPopup">
-        <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto;">
-            <button class="modal-close" onclick="document.getElementById('firstAidPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">✕</button>
-            <h2 style="color:#ff6666;margin-bottom:16px;">🏥 Primeros Auxilios</h2>
-            <div id="firstAidDetail" style="font-size:13px;line-height:1.8;color:#ddd;"></div>
-        </div>
-    </div>
-
-    <!-- POPUP FEEDBACK -->
-    <div class="modal" id="feedbackPopup">
-        <div class="modal-content" style="max-width:420px;">
-            <h2 style="color:var(--accent);margin-bottom:6px;">💬 ¿Cómo podemos mejorar?</h2>
-            <p style="color:#aaa;font-size:12px;margin-bottom:16px;">Tu opinión nos ayuda a hacer AlertaGlobal mejor. Es opcional y anónimo.</p>
-
-            <!-- Calificación con estrellas -->
-            <div style="margin-bottom:14px;">
-                <div style="color:#ccc;font-size:12px;margin-bottom:6px;">¿Qué te parece la app?</div>
-                <div id="starRating" style="display:flex;gap:8px;font-size:28px;cursor:pointer;">
-                    <span class="star" data-val="1">⭐</span>
-                    <span class="star" data-val="2">⭐</span>
-                    <span class="star" data-val="3">⭐</span>
-                    <span class="star" data-val="4">⭐</span>
-                    <span class="star" data-val="5">⭐</span>
+        <!-- Clima detallado (desktop) — duplica el panel weather del sidebar -->
+        <div id="map-tab-climate" class="map-tab-panel">
+            <div style="overflow-y:auto;height:100%;padding:0">
+                <div class="location-bar" style="padding:8px 12px;border-bottom:1px solid var(--card-border);">
+                    <span style="font-size:13px;font-weight:700;color:var(--text-secondary)">🌤️ Clima actual</span>
+                    <span id="wCityDesktop" style="font-size:13px;color:var(--accent);margin-left:8px"></span>
+                </div>
+                <!-- Clima grande desktop -->
+                <div id="weatherContainerDesktop" style="padding:20px">
+                    <div style="text-align:center;padding:20px 0;color:var(--text-muted);font-size:14px">Selecciona una ubicación para ver el clima</div>
                 </div>
             </div>
+        </div>
 
-            <!-- Categorías rápidas -->
-            <div style="margin-bottom:14px;">
-                <div style="color:#ccc;font-size:12px;margin-bottom:6px;">¿Qué mejorarías? (opcional)</div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;" id="feedbackTags">
-                    <button class="fb-tag" data-tag="alertas">🚨 Alertas</button>
-                    <button class="fb-tag" data-tag="mapa">🗺️ Mapa</button>
-                    <button class="fb-tag" data-tag="velocidad">⚡ Velocidad</button>
-                    <button class="fb-tag" data-tag="diseño">🎨 Diseño</button>
-                    <button class="fb-tag" data-tag="idioma">🌐 Idiomas</button>
-                    <button class="fb-tag" data-tag="sos">🦺 Kit SOS</button>
-                    <button class="fb-tag" data-tag="nada">✅ Todo bien</button>
-                </div>
+        <!-- Tips desktop -->
+        <div id="map-tab-tips-desktop" class="map-tab-panel">
+            <div style="overflow-y:auto;height:100%">
+                <div class="tips-container" id="tipsContainerDesktop"></div>
             </div>
+        </div>
 
-            <!-- Comentario libre -->
-            <textarea id="feedbackText" placeholder="Cuéntanos más (opcional)..."
-                style="width:100%;height:70px;padding:8px;border-radius:6px;border:1px solid #444;
-                background:#1a1a2e;color:#fff;font-size:13px;resize:none;box-sizing:border-box;margin-bottom:12px;"></textarea>
+        <!-- Barra de clima rápida — siempre visible abajo del mapa -->
+        <div class="weather-strip" id="weatherStrip">
+            <div class="ws-city" id="wsCity">📍 Sin ubicación</div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsTemp">—</span><span class="ws-lbl">Temp</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsFeels">—</span><span class="ws-lbl">Sens</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsHumidity">—</span><span class="ws-lbl">Humedad</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsWind">—</span><span class="ws-lbl">Viento</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsRain">—</span><span class="ws-lbl">Lluvia</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsUV">—</span><span class="ws-lbl">UV</span></div>
+            <div class="ws-divider"></div>
+            <div class="ws-item"><span class="ws-val" id="wsVis">—</span><span class="ws-lbl">Visib</span></div>
+        </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <button id="btnSkipFeedback" style="padding:12px;background:#222;border:1px solid #444;
-                    color:#aaa;border-radius:6px;cursor:pointer;font-size:13px;">
-                    Omitir por ahora
-                </button>
-                <button id="btnSendFeedback" style="padding:12px;background:var(--accent);border:none;
-                    color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px;">
-                    📤 Enviar
-                </button>
-            </div>
-            <p style="color:#555;font-size:10px;text-align:center;margin-top:8px;">Anónimo · No almacenamos datos personales</p>
+    </div><!-- /map-pane -->
+
+</div><!-- /app-layout -->
+
+<!-- Botón flotante móvil para ver mapa -->
+<button class="fab-map-btn" id="fabMapBtn" onclick="toggleMobileMap()">🗺️ Mapa</button>
+
+<!-- ═══════════════════════════════════════
+     MODALES (sin cambios funcionales)
+═══════════════════════════════════════ -->
+<div class="modal" id="searchPopup">
+    <div class="modal-content">
+        <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent)">🔍 Buscar Localidad</h2>
+        <input type="text" id="searchInput" placeholder="Ej: Santiago, Concepción...">
+        <div id="searchResults" style="margin-top:16px"></div>
+    </div>
+</div>
+
+<div class="modal" id="radiusPopup">
+    <div class="modal-content">
+        <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent)">📏 Radio de Alertas</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">
+            <button class="radius-option" data-radius="100">100 km</button>
+            <button class="radius-option" data-radius="500">500 km</button>
+            <button class="radius-option" data-radius="1000">1000 km</button>
+            <button class="radius-option" data-radius="5000">5000 km</button>
+            <button class="radius-option" data-radius="10000">10000 km</button>
+            <button class="radius-option" data-radius="0" style="background:#ff6666;color:#000">🌍 Global</button>
+            <button class="radius-option" data-radius="-1" style="background:#4488ff;color:#fff;margin-top:8px;grid-column:1/-1">🏳️ Solo mi país</button>
         </div>
     </div>
+</div>
 
-    <style>
-    .fb-tag {
-        padding:5px 10px;background:#1a1a2e;border:1px solid #444;color:#ccc;
-        border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.2s;
-    }
-    .fb-tag.active {
-        background:#2a1a1a;border-color:var(--accent);color:var(--accent);
-    }
-    </style>
+<div class="modal" id="sharePopup">
+    <div class="modal-content">
+        <button class="modal-close" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent)">📤 Compartir Alerta</h2>
+        <textarea id="shareContent" readonly style="width:100%;height:100px;margin:16px 0;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;resize:none"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button id="btnCopyShare" style="padding:12px;background:#ff6666;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold">📋 Copiar</button>
+            <button id="btnWhatsApp" style="padding:12px;background:#25D366;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">💬 WhatsApp</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+            <button id="btnTwitter" style="padding:12px;background:#1DA1F2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">🐦 Twitter/X</button>
+            <button id="btnTelegram" style="padding:12px;background:#0088cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">✈️ Telegram</button>
+        </div>
+    </div>
+</div>
 
-    <!-- SCRIPTS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script src="js/ai.js?v=1784420200"></script>
-    <script src="js/i18n.js?v=1784834584"></script>
-    <script src="js/seismic-sources.js?v=1000000001"></script>
-    <script src="js/sources.js?v=1784395434"></script>
-    <script src="js/locations.js?v=1784395434"></script>
-    <script src="js/AlertFiltering_FIX.js"></script>
-    <script src="js/alert-engine.js?v=1784395434"></script>
-    <script src="js/zone-engine.js?v=1784925278"></script>
-    <script src="js/weather-openmeteo.js?v=1784947900"></script>
-    <script src="js/app.js?v=1784395434"></script>
-    <script src="js/map-layers.js?v=1784395434"></script>
-    <script src="js/sos.js?v=1784835138"></script>
+<div class="modal" id="favoritesPopup">
+    <div class="modal-content">
+        <button class="modal-close" id="closeFavorites" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent)">⭐ Ubicaciones Favoritas</h2>
+        <div id="favoritesList" style="margin-top:16px;max-height:300px;overflow-y:auto"></div>
+        <div id="favoritesEmpty" style="color:#888;text-align:center;padding:24px;display:none">Sin ubicaciones guardadas</div>
+    </div>
+</div>
 
-    <script>
-        // ── TÉRMINOS Y CONDICIONES ──
-        var termsPopup = document.getElementById('termsPopup');
-        var btnAcceptTerms = document.getElementById('btnAcceptTerms');
+<div class="modal" id="termsPopup" style="display:flex">
+    <div class="modal-content" style="max-width:480px;max-height:80vh;overflow-y:auto">
+        <h2 style="color:var(--accent);margin-bottom:12px">🌍 Alerta Global — Versión Beta</h2>
+        <div style="background:#ff666622;border:1px solid #ff6666;border-radius:6px;padding:10px;margin-bottom:16px;font-size:13px;color:#ff9999">
+            ⚠️ Esta es una versión <b>BETA v1.0</b>. Algunas funciones pueden no estar disponibles.
+        </div>
+        <h3 style="color:#ccc;margin-bottom:8px;font-size:14px">Términos y Condiciones de Uso</h3>
+        <div style="font-size:12px;color:#aaa;line-height:1.6">
+            <p><b style="color:#fff">1. Propósito informativo</b><br>Alerta Global es una aplicación informativa. Las alertas provienen de fuentes públicas oficiales (USGS, NASA, NOAA) con fines informativos únicamente.</p>
+            <p><b style="color:#fff">2. No sustituye a las autoridades</b><br>Esta app NO reemplaza sistemas oficiales de alerta temprana. En emergencias, siga siempre las instrucciones de las autoridades locales.</p>
+            <p><b style="color:#fff">3. Privacidad y datos</b><br>La ubicación no se almacena en servidores externos. Solo se usa localmente en su dispositivo.</p>
+        </div>
+        <button id="btnAcceptTerms" style="width:100%;padding:14px;background:#ff6666;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:16px">✅ Acepto los términos</button>
+    </div>
+</div>
 
-        // Mostrar selector de idioma al primer inicio (antes que los términos)
-        if (!localStorage.getItem('ag_lang_selected')) {
-            // Primer inicio: mostrar popup de idioma
-            setTimeout(function() {
-                var lp = document.getElementById('langPopup');
-                if (lp) {
-                    // Personalizar popup para primer inicio
-                    var h2 = lp.querySelector('h2');
-                    if (h2) h2.innerHTML = '🌍 Bienvenido a Alerta Global<br><small style="font-size:13px;color:#aaa;font-weight:normal">Selecciona tu idioma / Select your language</small>';
-                    // Agregar botón continuar
-                    var mc = lp.querySelector('.modal-content');
-                    if (mc && !mc.querySelector('#btnLangContinue')) {
-                        var btn = document.createElement('button');
-                        btn.id = 'btnLangContinue';
-                        btn.textContent = '✓ Continuar / Continue';
-                        btn.style.cssText = 'width:100%;padding:14px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:12px;';
-                        btn.onclick = function() {
-                            localStorage.setItem('ag_lang_selected', '1');
-                            lp.style.display = 'none';
-                            // Mostrar términos después
-                            if (!localStorage.getItem('ag_terms_v1') && termsPopup) {
-                                termsPopup.style.display = 'flex';
-                            }
-                        };
-                        mc.appendChild(btn);
-                    }
-                    lp.style.display = 'flex';
-                    // Ocultar el X del primer inicio
-                    var closeBtn = lp.querySelector('.modal-close');
-                    if (closeBtn) closeBtn.style.display = 'none';
-                }
-            }, 500);
-            if (termsPopup) termsPopup.style.display = 'none';
-        } else if (!localStorage.getItem('ag_terms_v1')) {
-            if (termsPopup) termsPopup.style.display = 'flex';
-        } else {
-            if (termsPopup) termsPopup.style.display = 'none';
-        }
-        if (btnAcceptTerms) {
-            btnAcceptTerms.addEventListener('click', function() {
-                localStorage.setItem('ag_terms_v1', '1');
-                if (termsPopup) termsPopup.style.display = 'none';
-                // Mostrar feedback solo la primera vez
-                if (!localStorage.getItem('ag_feedback_shown')) {
-                    setTimeout(function() {
-                        var fp = document.getElementById('feedbackPopup');
-                        if (fp) fp.style.display = 'flex';
-                    }, 800);
-                }
-            });
-        }
+<div class="modal" id="radioPopup">
+    <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto">
+        <button class="modal-close" onclick="document.getElementById('radioPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent);margin-bottom:16px">📻 Radio & Comunicación de Emergencia</h2>
+        <div id="radioContent"></div>
+    </div>
+</div>
 
+<div class="modal" id="langPopup">
+    <div class="modal-content" style="max-width:320px">
+        <button class="modal-close" onclick="document.getElementById('langPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent);margin-bottom:16px">🌐 <span data-i18n="lang_select">Seleccionar idioma</span></h2>
+        <div style="display:grid;gap:8px">
+            <button class="lang-option" data-lang="es" onclick="selectLanguage('es')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇪🇸 Español</button>
+            <button class="lang-option" data-lang="en" onclick="selectLanguage('en')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇺🇸 English</button>
+            <button class="lang-option" data-lang="pt" onclick="selectLanguage('pt')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇧🇷 Português</button>
+            <button class="lang-option" data-lang="fr" onclick="selectLanguage('fr')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇫🇷 Français</button>
+            <button class="lang-option" data-lang="de" onclick="selectLanguage('de')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇩🇪 Deutsch</button>
+            <button class="lang-option" data-lang="zh" onclick="selectLanguage('zh')" style="padding:12px;background:#222;border:1px solid #444;color:#fff;border-radius:8px;cursor:pointer;font-size:14px;text-align:left">🇨🇳 中文</button>
+        </div>
+    </div>
+</div>
 
+<div class="modal" id="themePopup">
+    <div class="modal-content" style="max-width:320px">
+        <button class="modal-close" onclick="document.getElementById('themePopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:var(--accent);margin-bottom:16px">🎨 <span data-i18n="theme_select">Seleccionar tema</span></h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button onclick="applyTheme('dark')" style="padding:16px;background:#0a0a0f;border:2px solid #ff6666;color:#fff;border-radius:10px;cursor:pointer;font-size:13px">🌑 <b>Oscuro</b><br><small style="color:#aaa">Por defecto</small></button>
+            <button onclick="applyTheme('light')" style="padding:16px;background:#f0f0f0;border:2px solid #999;color:#111;border-radius:10px;cursor:pointer;font-size:13px">☀️ <b>Claro</b><br><small style="color:#555">Día</small></button>
+            <button onclick="applyTheme('midnight')" style="padding:16px;background:#0a0e1a;border:2px solid #64B5F6;color:#fff;border-radius:10px;cursor:pointer;font-size:13px">🌊 <b>Marino</b><br><small style="color:#88aaff">Azul profundo</small></button>
+            <button onclick="applyTheme('emerald')" style="padding:16px;background:#001a0e;border:2px solid #44cc44;color:#fff;border-radius:10px;cursor:pointer;font-size:13px">🌿 <b>Bosque</b><br><small style="color:#88cc88">Verde oscuro</small></button>
+        </div>
+    </div>
+</div>
 
-        // ── CONTADOR ──
-        var _prevCount = -1;
-        var observer = new MutationObserver(function() {
-            var count = document.querySelectorAll('.alert-item').length;
-            if (count !== _prevCount) {
-                _prevCount = count;
-                var el = document.getElementById('alertCount');
-                if (el) el.textContent = count;
-            }
-        });
-        var alertListEl = document.getElementById('alertList');
-        if (alertListEl) observer.observe(alertListEl, { childList: true, subtree: true });
+<div class="modal" id="firstAidPopup">
+    <div class="modal-content" style="max-width:460px;max-height:80vh;overflow-y:auto">
+        <button class="modal-close" onclick="document.getElementById('firstAidPopup').style.display='none'" style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;background:#333;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10">✕</button>
+        <h2 style="color:#ff6666;margin-bottom:16px">🏥 Primeros Auxilios</h2>
+        <div id="firstAidDetail" style="font-size:13px;line-height:1.8;color:var(--text)"></div>
+    </div>
+</div>
 
-        // ── FAVORITOS ──
-        (function() {
-            var favPopup = document.getElementById('favoritesPopup');
-            var closeFav = document.getElementById('closeFavorites');
-            var btnFav   = document.getElementById('btnFavorites');
-            function renderFavList() {
-                var list = document.getElementById('favoritesList');
-                var empty = document.getElementById('favoritesEmpty');
-                if (!list) return;
-                var locs = [];
-                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
-                if (!locs.length) {
-                    list.innerHTML = '';
-                    if (empty) empty.style.display = 'block';
-                    return;
-                }
-                if (empty) empty.style.display = 'none';
-                list.innerHTML = locs.map(function(l, i) {
-                    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid #333;">' +
-                        '<span style="cursor:pointer;flex:1" onclick="selectFav('+i+')">📍 ' + l.name + (l.country ? ' — '+l.country : '') + '</span>' +
-                        '<button onclick="removeFav(event,'+i+')" style="background:transparent;border:1px solid #ff4444;color:#ff4444;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:8px;">✕</button>' +
-                        '</div>';
-                }).join('');
-            }
-            window.renderFavList = renderFavList;
-            window.selectFav = function(i) {
-                var locs = [];
-                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
-                var l = locs[i];
-                if (!l) return;
-                if (typeof applyDeviceLocation === 'function') {
-                    applyDeviceLocation(l.lat, l.lon, l.name, l.country || '');
-                }
-                if (favPopup) favPopup.style.display = 'none';
-            };
-            window.removeFav = function(e, i) {
-                e.stopPropagation();
-                var locs = [];
-                try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
-                locs.splice(i, 1);
-                try { localStorage.setItem('ag_locations', JSON.stringify(locs)); } catch(e) {}
-                renderFavList();
-            };
-            if (closeFav) closeFav.addEventListener('click', function() { if(favPopup) favPopup.style.display='none'; });
-            if (btnFav) btnFav.addEventListener('click', function() { renderFavList(); if(favPopup) favPopup.style.display='flex'; });
-            if (favPopup) favPopup.addEventListener('click', function(e) { if(e.target===this) this.style.display='none'; });
-        })();
+<div class="modal" id="feedbackPopup">
+    <div class="modal-content" style="max-width:420px">
+        <h2 style="color:var(--accent);margin-bottom:6px">💬 ¿Cómo podemos mejorar?</h2>
+        <p style="color:#aaa;font-size:12px;margin-bottom:16px">Tu opinión es anónima y nos ayuda a mejorar.</p>
+        <div style="margin-bottom:14px">
+            <div style="color:#ccc;font-size:12px;margin-bottom:6px">¿Qué te parece la app?</div>
+            <div id="starRating" style="display:flex;gap:8px;font-size:28px;cursor:pointer">
+                <span class="star" data-val="1">⭐</span><span class="star" data-val="2">⭐</span>
+                <span class="star" data-val="3">⭐</span><span class="star" data-val="4">⭐</span>
+                <span class="star" data-val="5">⭐</span>
+            </div>
+        </div>
+        <div style="margin-bottom:14px">
+            <div style="color:#ccc;font-size:12px;margin-bottom:6px">¿Qué mejorarías?</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="feedbackTags">
+                <button class="fb-tag" data-tag="alertas">🚨 Alertas</button>
+                <button class="fb-tag" data-tag="mapa">🗺️ Mapa</button>
+                <button class="fb-tag" data-tag="velocidad">⚡ Velocidad</button>
+                <button class="fb-tag" data-tag="diseño">🎨 Diseño</button>
+                <button class="fb-tag" data-tag="idioma">🌐 Idiomas</button>
+                <button class="fb-tag" data-tag="sos">🦺 Kit SOS</button>
+                <button class="fb-tag" data-tag="nada">✅ Todo bien</button>
+            </div>
+        </div>
+        <textarea id="feedbackText" placeholder="Cuéntanos más (opcional)..." style="width:100%;height:70px;padding:8px;border-radius:6px;border:1px solid #444;background:var(--surface2);color:var(--text);font-size:13px;resize:none;box-sizing:border-box;margin-bottom:12px"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button id="btnSkipFeedback" style="padding:12px;background:#222;border:1px solid #444;color:#aaa;border-radius:6px;cursor:pointer;font-size:13px">Omitir</button>
+            <button id="btnSendFeedback" style="padding:12px;background:var(--accent);border:none;color:#000;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px">📤 Enviar</button>
+        </div>
+        <p style="color:#555;font-size:10px;text-align:center;margin-top:8px">Anónimo · No almacenamos datos personales</p>
+    </div>
+</div>
 
-        // ── FAVORITOS MEJORADOS ──
-        function saveFavorites() {
-            try {
-                var favs = JSON.parse(localStorage.getItem('ag_favorites') || '[]');
-                return favs;
-            } catch(e) { return []; }
-        }
+<!-- SCRIPTS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="js/ai.js?v=1784420200"></script>
+<script src="js/i18n.js?v=1784834584"></script>
+<script src="js/seismic-sources.js?v=1000000001"></script>
+<script src="js/sources.js?v=1784395434"></script>
+<script src="js/locations.js?v=1784395434"></script>
+<script src="js/AlertFiltering_FIX.js"></script>
+<script src="js/alert-engine.js?v=1784395434"></script>
+<script src="js/zone-engine.js?v=1784925278"></script>
+<script src="js/weather-openmeteo.js?v=1784947900"></script>
+<script src="js/app.js?v=1786848000"></script>
+<script src="js/map-layers.js?v=1784395434"></script>
+<script src="js/sos.js?v=1784835138"></script>
 
-        function addFavorite(name, lat, lon) {
-            var favs = saveFavorites();
-            if (favs.find(function(f){ return f.name === name; })) return;
-            favs.push({ name: name, lat: lat, lon: lon, added: Date.now() });
-            localStorage.setItem('ag_favorites', JSON.stringify(favs));
-        }
-
-        function removeFavorite(name) {
-            var favs = saveFavorites().filter(function(f){ return f.name !== name; });
-            localStorage.setItem('ag_favorites', JSON.stringify(favs));
-        }
-
-        // Interceptar click en estrella de favoritos
-        document.addEventListener('click', function(e) {
-            var btn = e.target.closest('#btnStarAlert, #btnStarWeather, .fav-btn');
-            if (!btn) return;
-            var nameEl = document.getElementById('currentLocationName') || document.getElementById('weatherLocationName');
-            if (!nameEl) return;
-            var locName = nameEl.textContent.trim();
-            if (!locName || locName === 'Detectar mi ubicación') return;
-
-            var favs = saveFavorites();
-            var isFav = favs.find(function(f){ return f.name === locName; });
-            if (isFav) {
-                removeFavorite(locName);
-                btn.textContent = '☆';
-                btn.title = 'Guardar en favoritos';
-            } else {
-                // Obtener coordenadas actuales
-                var lat = (window.focusLocation && window.focusLocation.lat) ||
-                          (window.deviceLocation && window.deviceLocation.lat) || null;
-                var lon = (window.focusLocation && window.focusLocation.lon) ||
-                          (window.deviceLocation && window.deviceLocation.lon) || null;
-                addFavorite(locName, lat, lon);
-                btn.textContent = '★';
-                btn.style.color = '#ffdd44';
-                btn.title = 'Quitar de favoritos';
-            }
-        });
-
-        // ── COMPARTIR ──
-        var currentShareText = '';
-
-        window.openSharePopup = function(title, description, location, distance) {
-            currentShareText = '🚨 ALERTA: ' + title + '\n' + description + '\n📍 ' + location + (distance ? ' (' + distance + ')' : '');
-            document.getElementById('shareContent').value = currentShareText;
-            document.getElementById('sharePopup').style.display = 'flex';
-        };
-
-        document.getElementById('btnCopyShare').addEventListener('click', function() {
-            navigator.clipboard.writeText(currentShareText).then(function() {
-                alert('¡Copiado al portapapeles!');
-            });
-        });
-        document.getElementById('btnWhatsApp').addEventListener('click', function() {
-            window.open('https://wa.me/?text=' + encodeURIComponent(currentShareText), '_blank');
-        });
-        document.getElementById('btnTwitter').addEventListener('click', function() {
-            window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(currentShareText), '_blank');
-        });
-        document.getElementById('btnTelegram').addEventListener('click', function() {
-            window.open('https://t.me/share/url?text=' + encodeURIComponent(currentShareText), '_blank');
-        });
-
-        // ── CLICK EN BOTÓN COMPARTIR DE CADA ALERTA ──
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('btn-share')) {
-                e.stopPropagation();
-                var item = e.target.closest('.alert-item');
-                var title = (item.querySelector('.alert-title') || {}).textContent || 'Alerta';
-                var desc = (item.querySelector('.alert-description') || {}).textContent || '';
-                var loc = (item.querySelector('#currentLocationName') || {}).textContent || '';
-                var dist = (item.querySelector('[class*="dist"]') || {}).textContent || '';
-                window.openSharePopup(title, desc, loc, dist);
-            }
-        });
-        // ── RADIO DE ALERTAS — conectar botones al sistema ──
-        (function() {
-            var radiusPopup = document.getElementById('radiusPopup');
-            var radiusLabel = document.getElementById('radiusLabel');
-            var btnRadius   = document.getElementById('btnRadius');
-
-            // Cargar radio guardado
-            var savedRadius = parseInt(localStorage.getItem('ag_radius_km')) || 0;
-            if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = savedRadius;
-            if (radiusLabel) radiusLabel.textContent = savedRadius === 0 ? 'Global' : savedRadius + ' km';
-
-            // Marcar botón activo
-            function updateActiveBtn(val) {
-                document.querySelectorAll('.radius-option').forEach(function(b) {
-                    var r = parseInt(b.dataset.radius);
-                    var isActive = r === val;
-                    // Reset estilos base
-                    b.style.background = '';
-                    b.style.color = '';
-                    if (isActive) {
-                        b.style.background = r === -1 ? '#4488ff' : '#ff6666';
-                        b.style.color = '#000';
-                        b.style.fontWeight = 'bold';
-                    } else {
-                        b.style.fontWeight = '';
-                    }
-                });
-            }
-            updateActiveBtn(savedRadius);
-
-            // Click en cada botón de radio
-            document.querySelectorAll('.radius-option').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var km = parseInt(this.dataset.radius);
-                    localStorage.setItem('ag_radius_km', String(km));
-                    if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = km;
-                    if (typeof setUserRadiusKm === 'function') setUserRadiusKm(km);
-                    if (radiusLabel) radiusLabel.textContent = km === 0 ? 'Global' : km === -1 ? '🏳️ Mi país' : km + ' km';
-                    updateActiveBtn(km);
-                    if (radiusPopup) radiusPopup.style.display = 'none';
-                    if (typeof loadAlerts === 'function') loadAlerts();
-                });
-            });
-
-            // Abrir/cerrar popup
-            if (btnRadius && radiusPopup) {
-                btnRadius.addEventListener('click', function() {
-                    radiusPopup.style.display = 'flex';
-                });
-            }
-            var closeR = radiusPopup && radiusPopup.querySelector('.modal-close');
-            if (closeR) closeR.addEventListener('click', function() { radiusPopup.style.display = 'none'; });
-            if (radiusPopup) radiusPopup.addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
-        })();
-    </script>
-
-    <script>
-    // ── FEEDBACK → Google Forms ──
-    var GFORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfHfDP-0VGtKj2E6C8RL9POabcdUEqjdCDNnoYvtZtci1n2ig/formResponse';
-    var GFORM_FIELDS = {
-        stars:   'entry.470287973',   // Calificación 1-5
-        tags:    'entry.1308844205',  // ¿Qué mejorarías?
-        comment: 'entry.287835020'    // Comentarios
-    };
-
-    var _fbStars = 0;
-    var _fbTags  = [];
-
-    // ── Estrellas ──
-    document.querySelectorAll('.star').forEach(function(s) {
-        s.addEventListener('click', function() {
-            _fbStars = parseInt(this.dataset.val);
-            document.querySelectorAll('.star').forEach(function(st, i) {
-                st.style.filter  = i < _fbStars ? 'none' : 'grayscale(1)';
-                st.style.opacity = i < _fbStars ? '1' : '0.3';
-            });
-        });
+<script>
+// ── LAYOUT: Tabs del sidebar (móvil) ──
+document.querySelectorAll('.mtab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var panel = this.dataset.panel;
+        document.querySelectorAll('.mtab').forEach(function(b){ b.classList.remove('active'); });
+        this.classList.add('active');
+        document.querySelectorAll('.sidebar-panel').forEach(function(p){ p.classList.remove('active'); });
+        var target = document.getElementById('sp-' + panel);
+        if (target) target.classList.add('active');
     });
+});
 
-    // ── Tags ──
-    document.querySelectorAll('.fb-tag').forEach(function(btn) {
+// ── LAYOUT: Tabs del mapa (desktop) ──
+document.querySelectorAll('.map-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var tab = this.dataset.maptab;
+        document.querySelectorAll('.map-tab').forEach(function(b){ b.classList.remove('active'); });
+        this.classList.add('active');
+        document.querySelectorAll('.map-tab-panel').forEach(function(p){ p.classList.remove('active'); });
+        var target = document.getElementById('map-tab-' + tab);
+        if (target) target.classList.add('active');
+    });
+});
+
+// ── FAB: toggle mapa en móvil ──
+var _mobileMapVisible = false;
+function toggleMobileMap() {
+    _mobileMapVisible = !_mobileMapVisible;
+    var sidebar = document.getElementById('sidebar');
+    var mapPane = document.getElementById('mapPane');
+    var fab = document.getElementById('fabMapBtn');
+    if (_mobileMapVisible) {
+        sidebar.style.display = 'none';
+        mapPane.classList.add('mobile-fullscreen');
+        fab.textContent = '📋 Alertas';
+        // Invalidar tamaño del mapa al mostrarse
+        setTimeout(function(){ if(window.leafletMap) window.leafletMap.invalidateSize(); }, 100);
+    } else {
+        sidebar.style.display = '';
+        mapPane.classList.remove('mobile-fullscreen');
+        fab.textContent = '🗺️ Mapa';
+    }
+}
+
+// ── BARRA CLIMA RÁPIDA — se llena desde weather-openmeteo.js ──
+window.updateWeatherStrip = function(data, cityName) {
+    if (!data) return;
+    var c = data.current || data;
+    var city = document.getElementById('wsCity');
+    var temp = document.getElementById('wsTemp');
+    var feels = document.getElementById('wsFeels');
+    var hum = document.getElementById('wsHumidity');
+    var wind = document.getElementById('wsWind');
+    var rain = document.getElementById('wsRain');
+    var uv = document.getElementById('wsUV');
+    var vis = document.getElementById('wsVis');
+    if (city && cityName) city.textContent = '📍 ' + cityName;
+    if (temp && c.temperature_2m != null) temp.textContent = Math.round(c.temperature_2m) + '°C';
+    if (feels && c.apparent_temperature != null) feels.textContent = Math.round(c.apparent_temperature) + '°C';
+    if (hum && c.relative_humidity_2m != null) hum.textContent = c.relative_humidity_2m + '%';
+    if (wind && c.wind_speed_10m != null) wind.textContent = Math.round(c.wind_speed_10m) + ' km/h';
+    if (rain) {
+        var r = c.rain || c.precipitation || 0;
+        rain.textContent = r > 0 ? r.toFixed(1) + 'mm' : '0mm';
+    }
+    if (uv && c.uv_index != null) uv.textContent = c.uv_index.toFixed(0);
+    if (vis && c.visibility != null) {
+        var vkm = c.visibility >= 1000 ? (c.visibility/1000).toFixed(1)+'km' : Math.round(c.visibility)+'m';
+        vis.textContent = vkm;
+    }
+    // También sync ciudad desktop
+    var cityD = document.getElementById('wCityDesktop');
+    if (cityD && cityName) cityD.textContent = cityName;
+};
+
+// ── TÉRMINOS ──
+var termsPopup = document.getElementById('termsPopup');
+var btnAcceptTerms = document.getElementById('btnAcceptTerms');
+if (!localStorage.getItem('ag_lang_selected')) {
+    setTimeout(function() {
+        var lp = document.getElementById('langPopup');
+        if (lp) {
+            var h2 = lp.querySelector('h2');
+            if (h2) h2.innerHTML = '🌍 Bienvenido a Alerta Global<br><small style="font-size:13px;color:#aaa;font-weight:normal">Selecciona tu idioma / Select your language</small>';
+            var mc = lp.querySelector('.modal-content');
+            if (mc && !mc.querySelector('#btnLangContinue')) {
+                var btn = document.createElement('button');
+                btn.id = 'btnLangContinue';
+                btn.textContent = '✓ Continuar / Continue';
+                btn.style.cssText = 'width:100%;padding:14px;background:var(--accent);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;margin-top:12px';
+                btn.onclick = function() {
+                    localStorage.setItem('ag_lang_selected','1');
+                    lp.style.display = 'none';
+                    if (!localStorage.getItem('ag_terms_v1') && termsPopup) termsPopup.style.display = 'flex';
+                };
+                mc.appendChild(btn);
+            }
+            lp.style.display = 'flex';
+            var closeBtn = lp.querySelector('.modal-close');
+            if (closeBtn) closeBtn.style.display = 'none';
+        }
+    }, 500);
+    if (termsPopup) termsPopup.style.display = 'none';
+} else if (!localStorage.getItem('ag_terms_v1')) {
+    if (termsPopup) termsPopup.style.display = 'flex';
+} else {
+    if (termsPopup) termsPopup.style.display = 'none';
+}
+if (btnAcceptTerms) {
+    btnAcceptTerms.addEventListener('click', function() {
+        localStorage.setItem('ag_terms_v1','1');
+        if (termsPopup) termsPopup.style.display = 'none';
+        if (!localStorage.getItem('ag_feedback_shown')) {
+            setTimeout(function() { var fp=document.getElementById('feedbackPopup'); if(fp) fp.style.display='flex'; }, 800);
+        }
+    });
+}
+
+// ── FAVORITOS ──
+(function() {
+    var favPopup = document.getElementById('favoritesPopup');
+    var closeFav = document.getElementById('closeFavorites');
+    var btnFav = document.getElementById('btnFavorites');
+    function renderFavList() {
+        var list = document.getElementById('favoritesList');
+        var empty = document.getElementById('favoritesEmpty');
+        if (!list) return;
+        var locs = [];
+        try { locs = JSON.parse(localStorage.getItem('ag_locations')) || []; } catch(e) {}
+        if (!locs.length) { list.innerHTML = ''; if(empty) empty.style.display='block'; return; }
+        if (empty) empty.style.display = 'none';
+        list.innerHTML = locs.map(function(l,i) {
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--card-border)">'
+                +'<span style="cursor:pointer;flex:1" onclick="selectFav('+i+')">📍 '+l.name+(l.country?' — '+l.country:'')+'</span>'
+                +'<button onclick="removeFav(event,'+i+')" style="background:transparent;border:1px solid #ff4444;color:#ff4444;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:8px">✕</button>'
+                +'</div>';
+        }).join('');
+    }
+    window.renderFavList = renderFavList;
+    window.selectFav = function(i) {
+        var locs = []; try { locs=JSON.parse(localStorage.getItem('ag_locations'))||[]; } catch(e){}
+        var l = locs[i]; if(!l) return;
+        if (typeof applyDeviceLocation === 'function') applyDeviceLocation(l.lat, l.lon, l.name, l.country||'');
+        if (favPopup) favPopup.style.display = 'none';
+    };
+    window.removeFav = function(e,i) {
+        e.stopPropagation();
+        var locs = []; try { locs=JSON.parse(localStorage.getItem('ag_locations'))||[]; } catch(e){}
+        locs.splice(i,1);
+        try { localStorage.setItem('ag_locations',JSON.stringify(locs)); } catch(e){}
+        renderFavList();
+    };
+    if (closeFav) closeFav.addEventListener('click', function(){ if(favPopup) favPopup.style.display='none'; });
+    if (btnFav) btnFav.addEventListener('click', function(){ renderFavList(); if(favPopup) favPopup.style.display='flex'; });
+    if (favPopup) favPopup.addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+})();
+
+// ── COMPARTIR ──
+window.openSharePopup = function(title, description, location, distance) {
+    var text = '🚨 ALERTA: '+title+'\n'+(description||'')+'\n📍 '+(location||'')+(distance?' ('+distance+')':'');
+    document.getElementById('shareContent').value = text;
+    document.getElementById('sharePopup').style.display = 'flex';
+};
+document.getElementById('btnCopyShare').addEventListener('click', function() {
+    var t = document.getElementById('shareContent').value;
+    navigator.clipboard.writeText(t).then(function(){ alert('¡Copiado!'); });
+});
+document.getElementById('btnWhatsApp').addEventListener('click', function() {
+    window.open('https://wa.me/?text='+encodeURIComponent(document.getElementById('shareContent').value),'_blank');
+});
+document.getElementById('btnTwitter').addEventListener('click', function() {
+    window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(document.getElementById('shareContent').value),'_blank');
+});
+document.getElementById('btnTelegram').addEventListener('click', function() {
+    window.open('https://t.me/share/url?text='+encodeURIComponent(document.getElementById('shareContent').value),'_blank');
+});
+
+// ── RADIO DE ALERTAS ──
+(function() {
+    var radiusPopup = document.getElementById('radiusPopup');
+    var radiusLabel = document.getElementById('radiusLabel');
+    var btnRadius = document.getElementById('btnRadius');
+    var savedRadius = parseInt(localStorage.getItem('ag_radius_km')) || 0;
+    if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = savedRadius;
+    if (radiusLabel) radiusLabel.textContent = savedRadius===0?'Global':savedRadius===-1?'🏳️ Mi país':savedRadius+' km';
+    function updateActiveBtn(val) {
+        document.querySelectorAll('.radius-option').forEach(function(b) {
+            var r = parseInt(b.dataset.radius);
+            b.style.fontWeight = r===val ? 'bold' : '';
+            if(r===val) { b.style.background=r===-1?'#4488ff':'#ff6666'; b.style.color='#000'; }
+            else { b.style.background=''; b.style.color=''; }
+        });
+    }
+    updateActiveBtn(savedRadius);
+    document.querySelectorAll('.radius-option').forEach(function(btn) {
         btn.addEventListener('click', function() {
-            var tag = this.dataset.tag;
-            if (this.classList.contains('active')) {
-                this.classList.remove('active');
-                _fbTags = _fbTags.filter(function(t){ return t !== tag; });
-            } else {
-                this.classList.add('active');
-                _fbTags.push(tag);
+            var km = parseInt(this.dataset.radius);
+            localStorage.setItem('ag_radius_km', String(km));
+            if (typeof CONFIG !== 'undefined') CONFIG.USER_RADIUS_KM = km;
+            if (typeof setUserRadiusKm === 'function') setUserRadiusKm(km);
+            if (radiusLabel) radiusLabel.textContent = km===0?'Global':km===-1?'🏳️ Mi país':km+' km';
+            updateActiveBtn(km);
+            if (radiusPopup) radiusPopup.style.display = 'none';
+            if (typeof loadAlerts === 'function') loadAlerts();
+        });
+    });
+    if (btnRadius && radiusPopup) btnRadius.addEventListener('click', function(){ radiusPopup.style.display='flex'; });
+    var closeR = radiusPopup && radiusPopup.querySelector('.modal-close');
+    if (closeR) closeR.addEventListener('click', function(){ radiusPopup.style.display='none'; });
+    if (radiusPopup) radiusPopup.addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+})();
+</script>
+
+<script>
+// ── FEEDBACK ──
+var GFORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfHfDP-0VGtKj2E6C8RL9POabcdUEqjdCDNnoYvtZtci1n2ig/formResponse';
+var GFORM_FIELDS = { stars:'entry.470287973', tags:'entry.1308844205', comment:'entry.287835020' };
+var _fbStars=0, _fbTags=[];
+document.querySelectorAll('.star').forEach(function(s) {
+    s.addEventListener('click', function() {
+        _fbStars = parseInt(this.dataset.val);
+        document.querySelectorAll('.star').forEach(function(st,i){ st.style.filter=i<_fbStars?'none':'grayscale(1)'; st.style.opacity=i<_fbStars?'1':'0.3'; });
+    });
+});
+document.querySelectorAll('.fb-tag').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var tag=this.dataset.tag;
+        if(this.classList.contains('active')){ this.classList.remove('active'); _fbTags=_fbTags.filter(function(t){return t!==tag;}); }
+        else { this.classList.add('active'); _fbTags.push(tag); }
+    });
+});
+function closeFeedback(){ localStorage.setItem('ag_feedback_shown','1'); document.getElementById('feedbackPopup').style.display='none'; }
+document.getElementById('btnSendFeedback').addEventListener('click', function() {
+    if(!_fbStars) return;
+    var comment=(document.getElementById('feedbackText').value||'').trim();
+    var params=new URLSearchParams();
+    params.append(GFORM_FIELDS.stars,_fbStars||'0');
+    (_fbTags.length?_fbTags:['Sin selección']).forEach(function(t){ params.append(GFORM_FIELDS.tags,t); });
+    params.append(GFORM_FIELDS.comment, comment+' | v2.1 | '+new Date().toLocaleDateString('es-CL'));
+    fetch(GFORM_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()}).catch(function(){});
+    closeFeedback();
+    var t=document.createElement('div');
+    t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--accent);color:var(--accent);padding:12px 24px;border-radius:20px;font-size:13px;z-index:9999';
+    t.textContent='✅ ¡Gracias por tu feedback!'; document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); },3000);
+});
+document.getElementById('btnSkipFeedback').addEventListener('click', closeFeedback);
+document.getElementById('feedbackPopup').addEventListener('click', function(e){ if(e.target===this) closeFeedback(); });
+</script>
+
+<script>
+// ── SERVICE WORKER ──
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/AlertaGlobal/sw.js', { scope: '/AlertaGlobal/' })
+        .then(function(reg) {
+            console.log('[App] SW registrado:', reg.scope);
+            if ('Notification' in window && Notification.permission === 'default') {
+                setTimeout(function() { Notification.requestPermission(); }, 5000);
             }
-        });
-    });
-
-    // ── Enviar a Google Forms ──
-    function sendFeedbackToGForms(stars, tags, comment) {
-        // Construir FormData para envío silencioso (no redirige)
-        var lang = localStorage.getItem('ag_lang') || 'es';
-        var commentFull = comment +
-            (comment ? ' | ' : '') +
-            'Lang:' + lang + ' | v2.0 | ' + new Date().toLocaleDateString('es-CL');
-
-        var params = new URLSearchParams();
-        params.append(GFORM_FIELDS.stars,   stars || '0');
-        // Google Forms casillas: enviar cada tag por separado
-        if (tags && tags.length > 0) {
-            tags.forEach(function(tag) {
-                params.append(GFORM_FIELDS.tags, tag);
-            });
-        } else {
-            params.append(GFORM_FIELDS.tags, 'Sin selección');
-        }
-        params.append(GFORM_FIELDS.comment, commentFull);
-
-        // Enviar con no-cors (Google Forms no necesita respuesta)
-        fetch(GFORM_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString()
-        }).catch(function() {
-            // Si falla el envío, guardar localmente como respaldo
-            try {
-                var prev = JSON.parse(localStorage.getItem('ag_feedbacks_pending') || '[]');
-                prev.push({ stars: stars, tags: tags, comment: commentFull, ts: Date.now() });
-                localStorage.setItem('ag_feedbacks_pending', JSON.stringify(prev));
-            } catch(e) {}
-        });
-    }
-
-    function showThanks(msg) {
-        var thanks = document.createElement('div');
-        thanks.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
-            'background:#1a1a2e;border:1px solid var(--accent);color:var(--accent);' +
-            'padding:12px 24px;border-radius:20px;font-size:13px;z-index:9999;' +
-            'box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;';
-        thanks.textContent = msg || '✅ ¡Gracias por tu feedback!';
-        document.body.appendChild(thanks);
-        setTimeout(function(){ thanks.remove(); }, 3500);
-    }
-
-    function closeFeedback() {
-        localStorage.setItem('ag_feedback_shown', '1');
-        document.getElementById('feedbackPopup').style.display = 'none';
-    }
-
-    // ── Botón Enviar ──
-    document.getElementById('btnSendFeedback').addEventListener('click', function() {
-        var comment = (document.getElementById('feedbackText').value || '').trim();
-        if (_fbStars === 0) {
-            // Si no seleccionó estrellas, recordarle
-            document.getElementById('starRating').style.animation = 'pulse 0.4s 2';
-            return;
-        }
-        sendFeedbackToGForms(_fbStars, _fbTags.slice(), comment);
-        closeFeedback();
-        showThanks('✅ ¡Gracias! Tu opinión llegará a nuestro equipo.');
-    });
-
-    // ── Botón Omitir ──
-    document.getElementById('btnSkipFeedback').addEventListener('click', function() {
-        closeFeedback();
-    });
-
-    // ── Cerrar al click fuera ──
-    document.getElementById('feedbackPopup').addEventListener('click', function(e) {
-        if (e.target === this) closeFeedback();
-    });
-    </script>
-</body>
-
-    <script>
-    // ── SERVICE WORKER — Notificaciones en background ──
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/AlertaGlobal/sw.js', { scope: '/AlertaGlobal/' })
-            .then(function(reg) {
-                console.log('[App] SW registrado:', reg.scope);
-
-                // Periodic Background Sync (Chrome Android)
-                if ('periodicSync' in reg) {
-                    navigator.permissions.query({ name: 'periodic-background-sync' })
-                        .then(function(status) {
-                            if (status.state === 'granted') {
-                                reg.periodicSync.register('check-alerts', {
-                                    minInterval: 15 * 60 * 1000 // cada 15 minutos
-                                }).then(function() {
-                                    console.log('[App] Periodic sync registrado');
-                                }).catch(function(e) {
-                                    console.log('[App] Periodic sync no disponible:', e);
-                                });
-                            }
-                        });
+            navigator.serviceWorker.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'ALERTS_UPDATED' && e.data.critical > 0 && 'setAppBadge' in navigator) {
+                    navigator.setAppBadge(e.data.critical);
                 }
-
-                // Solicitar permiso de notificaciones
-                if ('Notification' in window && Notification.permission === 'default') {
-                    // Esperar 5 segundos antes de pedir permiso
-                    setTimeout(function() {
-                        Notification.requestPermission().then(function(perm) {
-                            console.log('[App] Permiso notificaciones:', perm);
-                        });
-                    }, 5000);
-                }
-
-                // Escuchar mensajes del SW
-                navigator.serviceWorker.addEventListener('message', function(e) {
-                    if (e.data && e.data.type === 'ALERTS_UPDATED') {
-                        console.log('[App] SW reporta', e.data.count, 'alertas,', e.data.critical, 'críticas');
-                        // Actualizar badge si hay críticas
-                        if (e.data.critical > 0 && 'setAppBadge' in navigator) {
-                            navigator.setAppBadge(e.data.critical);
-                        }
-                    }
-                });
-            })
-            .catch(function(err) {
-                console.log('[App] SW error:', err);
             });
-    }
-
-    // Función global para enviar ubicación al SW
-    window.updateSWLocation = function(lat, lon, name, lang) {
-        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-        navigator.serviceWorker.controller.postMessage({
-            type: 'SET_LOCATION',
-            lat: lat, lon: lon,
-            name: name || 'Tu zona',
-            lang: lang || localStorage.getItem('ag_lang') || 'es'
-        });
-    };
-
-    // Función para forzar verificación inmediata
-    // Hook de zona — notifica cuando cambia el tipo de zona
-    window.onZoneDetected = function(zone) {
-        console.log('🗺️ Zona actualizada:', zone.type.label, zone.elevation+'m');
-        if (typeof refreshSmartTips === 'function') refreshSmartTips();
-    };
-
-    window.checkAlertsNow = function() {
-        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-        navigator.serviceWorker.controller.postMessage({ type: 'CHECK_NOW' });
-    };
-    </script>
+        }).catch(function(err){ console.log('[App] SW error:', err); });
+}
+window.updateSWLocation = function(lat,lon,name,lang) {
+    if (!navigator.serviceWorker||!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({type:'SET_LOCATION',lat:lat,lon:lon,name:name||'Tu zona',lang:lang||localStorage.getItem('ag_lang')||'es'});
+};
+window.onZoneDetected = function(zone) {
+    if (typeof refreshSmartTips==='function') refreshSmartTips();
+};
+</script>
 
 </body>
 </html>

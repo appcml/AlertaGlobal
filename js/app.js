@@ -45,7 +45,7 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
     mapMarkers.forEach(function(m) { leafletMap.removeLayer(m); });
     mapMarkers = [];
 
-    // Actualizar posición usuario
+    // Actualizar posición usuario sin mover el mapa si ya fue movido manualmente
     if (userLocation && userLocation.lat) {
         if (userMarker) {
             userMarker.setLatLng([userLocation.lat, userLocation.lon]);
@@ -53,108 +53,76 @@ function updateMapMarkersSmartZoom(allAlerts, userLocation) {
             userMarker = L.marker([userLocation.lat, userLocation.lon], { icon: createUserIcon() })
                 .addTo(leafletMap).bindPopup('<b>📍 Tu ubicación</b><br>' + (userLocation.name || ''));
         }
-        leafletMap.setView([userLocation.lat, userLocation.lon], leafletMap.getZoom() || 6, { animate: true });
     }
 
-    // Obtener nivel de zoom actual
     var currentZoom = leafletMap.getZoom();
-    var radiusKm = getUserRadiusKm();
-    
-    // LÓGICA DE FILTRADO POR ZOOM
-    var filteredAlerts = [];
-    var mapRadiusKm = getUserRadiusKm();
 
-    // Función de filtro para el mapa respetando el radio/país seleccionado
-    function passesMapFilter(a) {
-        if (!a.lat || !a.lon) return false;
-        if (mapRadiusKm === 0) return true; // Global
-        if (mapRadiusKm === -1) return isAlertInUserCountry(a); // Solo mi país
-        if (!userLocation || !userLocation.lat) return true;
-        return isWithinRadius(a.lat, a.lon, userLocation.lat, userLocation.lon, mapRadiusKm);
-    }
+    // ── NUEVO ENFOQUE: el mapa SIEMPRE muestra todos los pines disponibles ──
+    // El radio del usuario solo afecta la LISTA de alertas, nunca el mapa.
+    // En zoom bajo filtramos por prioridad mínima para no saturar el mapa;
+    // en zoom medio/alto mostramos todo con coords.
 
-    if (currentZoom <= 6) {
-        // ZOOM BAJO: respetar filtro seleccionado
-        filteredAlerts = allAlerts.filter(passesMapFilter);
-        // Si filtro es "Mi país" y no hay pins locales, mostrar pin de ubicación al menos
-        if (mapRadiusKm === -1 && filteredAlerts.length === 0) {
-            filteredAlerts = allAlerts.filter(function(a) {
-                return a.lat != null && a.lon != null && a.distKm === 0;
-            });
-        }
-    } else if (currentZoom <= 10) {
-        // ZOOM MEDIO: alertas que pasan el filtro + importantes
-        filteredAlerts = allAlerts.filter(function(a) {
-            if (!passesMapFilter(a)) return false;
-            var isImportant = (a.priority >= 55) || (a.magnitude && a.magnitude >= 2.5);
-            return isImportant || (a.distKm === 0);
-        });
-    } else {
-        // ZOOM ALTO: todas las alertas que pasan el filtro
-        filteredAlerts = allAlerts.filter(passesMapFilter);
-    }
+    var minPriority;
+    if (currentZoom <= 4)       minPriority = 80;  // Solo críticos (≥80) en zoom mundo
+    else if (currentZoom <= 6)  minPriority = 55;  // Moderados en zoom continental
+    else if (currentZoom <= 9)  minPriority = 30;  // Todos relevantes en zoom regional
+    else                        minPriority = 0;   // Todos en zoom local
 
-    // Dibujar marcadores filtrados
+    var filteredAlerts = allAlerts.filter(function(a) {
+        if (a.lat == null || a.lon == null) return false;
+        // Tsunamis y M8+: siempre visibles en cualquier zoom
+        if (/TSUNAMI/.test(a.type||'') || (a.priority||0) >= 95) return true;
+        return (a.priority || 0) >= minPriority;
+    });
+
+    // Dibujar marcadores
     filteredAlerts.forEach(function(a) {
-        if (a.lat == null || a.lon == null) return;
-        
         var color = a.color || '#FF9500';
-        var distKm = a.distKm != null ? Math.round(a.distKm) : null;
-        var distStr = distKm != null ? '<br><small>📏 ' + distKm + ' km de ti</small>' : '';
+        // Distancia desde ubicación usuario
+        var distStr = '';
+        if (userLocation && userLocation.lat && a.lat != null) {
+            var d = a.distKm != null ? Math.round(a.distKm)
+                : Math.round(calcDistance(userLocation.lat, userLocation.lon, a.lat, a.lon));
+            distStr = '<br><small>📏 ' + d + ' km de ti</small>';
+        }
         var timeStr = a.time ? '<br><small>🕐 ' + formatTime(a.time) + '</small>' : '';
-        
+
         var popup = '<div style="min-width:200px;font-family:sans-serif">'
             +'<div style="color:'+color+';font-weight:700;font-size:13px">'
             +(a.icon||'')+ ' ' + (a.type||'') + '</div>'
             +'<div style="font-weight:600;font-size:13px;margin:4px 0">' + a.title + '</div>'
             +(a.description ? '<div style="font-size:11px;color:#888;margin-bottom:4px">'
                 +a.description.substring(0,150)+'</div>' : '')
-            +(a._farAlert ? '<div style="font-size:11px;color:#4488ff;background:#0a1628;border-radius:4px;padding:4px 6px;margin:3px 0">ℹ️ Evento en otra región — No afecta directamente tu ubicación actual. Se muestra por monitoreo global.</div>' : '')
             +'<div style="font-size:11px;color:#666">📡 '+a.source+distStr+timeStr+'</div>'
             +(a.link ? '<br><a href="'+a.link+'" target="_blank" style="font-size:11px;color:#0A84FF">Ver más →</a>' : '')
             +'</div>';
-        
+
         var marker = L.marker([a.lat, a.lon], { icon: getMapIcon(a) })
             .addTo(leafletMap)
             .bindPopup(popup, { maxWidth: 250 });
         mapMarkers.push(marker);
     });
-    
-    // Mostrar indicador de filtrado
+
+    // Indicador en esquina inferior derecha
     var indicator = document.getElementById('filterIndicator');
     if (!indicator) {
         indicator = document.createElement('div');
         indicator.id = 'filterIndicator';
-        indicator.style.cssText = 'position:absolute;bottom:20px;right:20px;background:#1a1a1a;color:#0f0;'
-            +'padding:10px 15px;border-radius:8px;font-size:12px;z-index:1000;border:1px solid #0f0;font-family:monospace;';
+        indicator.style.cssText = 'position:absolute;bottom:20px;right:20px;background:#111;color:#0f0;'
+            +'padding:8px 14px;border-radius:8px;font-size:11px;z-index:1000;border:1px solid #0f0;font-family:monospace;pointer-events:none;';
         document.body.appendChild(indicator);
     }
-    
-    var zoomLabel = '';
-    if (currentZoom <= 6) zoomLabel = 'GLOBAL (críticas)';
-    else if (currentZoom <= 10) zoomLabel = 'REGIONAL';
-    else zoomLabel = 'DETALLE';
-    
-    indicator.innerHTML = 'Zoom: ' + zoomLabel + '<br>' + filteredAlerts.length + ' de ' + allAlerts.length + ' alertas';
+    var zoomLabel = currentZoom <= 4 ? 'MUNDIAL' : currentZoom <= 6 ? 'GLOBAL' : currentZoom <= 9 ? 'REGIONAL' : 'LOCAL';
+    indicator.innerHTML = '🗺️ ' + zoomLabel + ' · ' + filteredAlerts.length + ' pines';
 }
 
 function setupMapZoomListener() {
     if (!leafletMap) return;
     leafletMap.on('zoomend', function() {
         var userLoc = getActiveLocation();
-        var allForMap = externalAlerts.concat(window._globalMapAlerts || []);
+        // El mapa usa TODOS los pines disponibles — locales + globales
+        var allForMap = externalAlerts.concat(window._globalMapAlerts || []).concat(window._climatePins || []);
         updateMapMarkersSmartZoom(allForMap, userLoc);
-        // Agregar pins climáticos al hacer zoom medio-alto
-        var z = leafletMap.getZoom();
-        if (z >= 8 && userLoc && userLoc.lat && typeof window.ZoneEngine !== 'undefined') {
-            var deg = z >= 10 ? 0.3 : 0.6;
-            window.ZoneEngine.generateGridPins(userLoc.lat, userLoc.lon, deg).then(function(pins) {
-                if (!pins || !pins.length) return;
-                window._climatePins = pins;
-                var combined = allForMap.concat(pins);
-                updateMapMarkersSmartZoom(combined, userLoc);
-            });
-        }
     });
 }
 
@@ -1316,17 +1284,17 @@ function loadAlerts() {
         if (typeof loadGlobalAlerts === 'function') {
             loadGlobalAlerts().then(function(globalAlerts) {
                 if (!globalAlerts || !globalAlerts.length) return;
-                // Fusionar: las alertas globales solo van al mapa, no a la lista
+                // Deduplicar globales vs locales por ID
                 var localIds = {};
-                externalAlerts.forEach(function(a){ localIds[a.id] = true; });
+                externalAlerts.forEach(function(a){ if (a.id) localIds[a.id] = true; });
                 var onlyGlobal = globalAlerts.filter(function(a){
-                    return !localIds[a.id] && a.lat != null && a.lon != null;
+                    return a.lat != null && a.lon != null && !localIds[a.id];
                 });
                 window._globalMapAlerts = onlyGlobal;
-                // Actualizar mapa con todos los pins
+                // Mapa siempre muestra todo: locales + globales
                 var allForMap = externalAlerts.concat(onlyGlobal);
                 updateMapMarkersSmartZoom(allForMap, getActiveLocation());
-                console.log('🌍 Alertas globales visibles:', onlyGlobal.length, 'pins extra en mapa');
+                console.log('🌍 Pines globales añadidos al mapa:', onlyGlobal.length);
             }).catch(function(){});
         }
 
@@ -2181,7 +2149,10 @@ function startMapAutoRefresh() {
 
 // Manejo de eventos globales (CORREGIDO)
 function updateMapGlobal(allAlerts) {
-    updateMapGlobalFixed(allAlerts);
+    // Ya no hace nada especial — updateMapMarkersSmartZoom maneja todo
+    // Fusionar globales si existen
+    var allForMap = (allAlerts || []).concat(window._globalMapAlerts || []);
+    updateMapMarkersSmartZoom(allForMap, getActiveLocation());
 }
 
 // ========== SOS TOOLS ==========

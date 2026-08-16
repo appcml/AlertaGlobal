@@ -213,6 +213,10 @@ async function loadWeatherOpenMeteo(lat, lon, cityLabel) {
         if (container) {
             container.innerHTML = currentHTML + recommendation + hourlyHTML + forecastHTML;
             container.style.display = 'block';
+            // ── Actualizar barra de clima rápida (nuevo layout v11) ──
+            if (typeof window.updateWeatherStrip === 'function') {
+                window.updateWeatherStrip(dRes, city);
+            }
         } else {
             // Compatibilidad con el HTML original que usa IDs individuales
             var el = function(id){return document.getElementById(id);};

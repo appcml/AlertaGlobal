@@ -531,10 +531,10 @@ function setupLocationButtons() {
     var sel = document.getElementById('radiusSelect');
     var radiusPopup = document.getElementById('radiusPopup');
     if (lbl) {
-        var storedKm = localStorage.getItem('ag_radius_km') !== null ? localStorage.getItem('ag_radius_km') : '0';
-        lbl.textContent = storedKm === '0' ? 'Global' : storedKm === '-1' ? '🏳️ Mi país' : storedKm + ' km';
+        // Al iniciar siempre mostrar "Global" (el DOMContentLoaded ya forzó ag_radius_km=0)
+        lbl.textContent = 'Global';
     }
-    if (sel) sel.value = String(localStorage.getItem('ag_radius_km') !== null ? localStorage.getItem('ag_radius_km') : '0');
+    if (sel) sel.value = '0';
     var btnRadius = document.getElementById('btnRadius');
     if (btnRadius && radiusPopup) btnRadius.addEventListener('click', function() { radiusPopup.style.display='flex'; });
     var closeRadius = document.getElementById('closeRadius');
@@ -1337,110 +1337,114 @@ function loadAlerts() {
         var userInChile = userRegion !== null ||
             (loc.country && /chile/i.test(loc.country));
 
-        // Radios por nivel de filtro
-        var RADIO_LOCAL    = 50;    // localidad (50km)
-        var RADIO_COMUNA   = 150;   // comuna (150km)
-        var RADIO_PROV     = 300;   // provincia (300km)
-        var RADIO_PAIS     = getUserRadiusKm(); // país
-
-        function alertScore(a) {
-            // Puntaje: cuánto es local para el usuario
-            if (!loc.lat || a.lat == null) return 0;
-            var d = calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-            if (d <= RADIO_LOCAL)  return 4; // localidad
-            if (d <= RADIO_COMUNA) return 3; // comuna
-            if (d <= RADIO_PROV)   return 2; // provincia
-            if (d <= RADIO_PAIS)   return 1; // país
-            return 0;
-        }
+        // ── SISTEMA DE 5 BANDAS DE PROXIMIDAD ──
+        // Banda 5: En tu zona (≤50km) — lo más relevante
+        // Banda 4: Cercano (51-150km)
+        // Banda 3: Tu país (~150-1500km, mismo país/región)
+        // Banda 2: Continental (1501-6000km)
+        // Banda 1: Global (>6000km o sin coords)
+        // Excepción absoluta: TSUNAMIS y M8+ siempre al tope
+        var RADIO_LOCAL   = 50;
+        var RADIO_CERCANO = 150;
+        var RADIO_PAIS    = 1500;
+        var RADIO_CONT    = 6000;
 
         var radius = getUserRadiusKm();
 
+        // ── FILTRO: SIEMPRE mostrar TODAS las alertas activas ──
+        // El radio solo acota alertas sin categoría especial.
+        // Nunca ocultamos datos — todo se muestra, ordenado por proximidad.
         var filtered = externalAlerts.filter(function(a) {
             // Sin ubicación → mostrar todo
             if (!loc.lat) return true;
-            // Radio global → mostrar todo
+            // Radio global (0) → mostrar todo
             if (radius === 0) return true;
-            // Solo mi país (radius === -1)
+            // Solo mi país
             if (radius === -1) return isAlertInUserCountry(a);
-            // Alertas climáticas locales (distKm=0) → siempre mostrar
+            // Alertas climáticas locales (distKm=0) → SIEMPRE
             if (a.distKm === 0) return true;
-            // Alertas de Open-Meteo/OpenWeather son siempre locales
+            // Open-Meteo/OpenWeather son siempre locales
             if (/Open.?Meteo|OpenWeather/i.test(a.source||'')) return true;
-            // Tsunamis: siempre mostrar pero marcar los muy lejanos como informativos
+            // Tsunamis → SIEMPRE (marcar lejanos)
             if (/TSUNAMI/.test(a.type||'')) {
                 if (a.distKm != null && a.distKm > 5000) a._farAlert = true;
                 return true;
             }
-            // Huracanes/ciclones → siempre mostrar
-            if (/HURACÁN|TIFÓN|CICLÓN/.test(a.type||'')) return true;
+            // Huracanes/ciclones/volcanes → siempre
+            if (/HURACÁN|TIFÓN|CICLÓN|VOLCÁN/.test(a.type||'')) return true;
+            // Críticos globales → siempre
             if ((a.priority||0) >= 90) return true;
-            // Con distancia calculada → usar radio seleccionado
+            // Con distancia → usar radio
             if (a.distKm != null) return a.distKm <= radius;
-            // Sin coordenadas: mostrar fuentes nacionales/regionales conocidas siempre
+            // Sin coords, fuentes oficiales → siempre
             var src = (a.source||'').toLowerCase();
-            var isNationalSource = /dmc|shoa|snam|onemi|senapred|csn|usgs|noaa|gdacs|ptwc|emsc/i.test(src);
-            if (isNationalSource) return true;
-            // Resto sin coords: mostrar si tiene alguna prioridad
+            if (/dmc|shoa|snam|onemi|senapred|csn|usgs|noaa|gdacs|ptwc|emsc|ntwc|jma/i.test(src)) return true;
             return (a.priority||0) >= 50;
         });
 
-        // Filtros de tipo/magnitud eliminados — se muestran TODAS las alertas
-
-        // ── ORDENAR: Hora reciente primero, con excepciones de seguridad ──
-        // Regla base: más reciente primero — el usuario quiere ver qué pasó AHORA
-        // Excepción 1: Tsunamis y M8+ siempre al tope (emergencias absolutas)
-        // Excepción 2: Alertas "En tu zona" (≤50km) se agrupan antes que las lejanas
-        //              pero dentro de cada grupo el orden es por hora
-
+        // ── ASIGNAR BANDA DE PROXIMIDAD ──
         filtered.forEach(function(a) {
-            // Score de banda: solo para agrupar local vs regional vs global
-            // No mezcla hora con distancia — el orden dentro de cada banda es por hora
-            if (a.distKm === 0 || (a.distKm != null && a.distKm <= 50)) {
-                a._banda = 2; // En tu zona
-            } else if (a.distKm != null && a.distKm <= radius) {
-                a._banda = 1; // Regional (dentro del radio seleccionado)
-            } else {
-                a._banda = 0; // Global / sin coords
+            var d = a.distKm;
+            if (d == null && loc.lat && a.lat != null && a.lon != null) {
+                d = Math.round(calcDistance(loc.lat, loc.lon, a.lat, a.lon));
+                a.distKm = d;
             }
+            if (a.distKm === 0 || (d != null && d <= RADIO_LOCAL)) {
+                a._banda = 5; // 📍 En tu zona
+            } else if (d != null && d <= RADIO_CERCANO) {
+                a._banda = 4; // 🏘️ Cercano
+            } else if (d != null && d <= RADIO_PAIS) {
+                a._banda = isAlertInUserCountry(a) ? 3 : 2; // 🏳️ Tu país vs 🌎 Regional
+            } else if (d != null && d <= RADIO_CONT) {
+                a._banda = 2; // 🌎 Continental
+            } else {
+                a._banda = 1; // 🌐 Global
+            }
+            // Alertas sin coords y locales tienen prioridad igual que "En tu zona"
+            if (a.distKm === 0 && a._banda < 5) a._banda = 5;
         });
 
+        // ── ORDENAR: 5 criterios en cascada ──
         filtered.sort(function(a, b) {
-            // 1. Tsunamis y M8+ SIEMPRE al tope
-            var aAbsolute = (a.priority >= 95 || /TSUNAMI/.test(a.type||'')) ? 1 : 0;
-            var bAbsolute = (b.priority >= 95 || /TSUNAMI/.test(b.type||'')) ? 1 : 0;
-            if (bAbsolute !== aAbsolute) return bAbsolute - aAbsolute;
+            // 1. Tsunamis y M8+ siempre primero
+            var aAbs = ((a.priority||0) >= 95 || /TSUNAMI/.test(a.type||'')) ? 1 : 0;
+            var bAbs = ((b.priority||0) >= 95 || /TSUNAMI/.test(b.type||'')) ? 1 : 0;
+            if (bAbs !== aAbs) return bAbs - aAbs;
 
-            // 2. Banda de proximidad (local > regional > global)
+            // 2. Banda de proximidad (5=local … 1=global)
             if (b._banda !== a._banda) return b._banda - a._banda;
 
-            // 3. DENTRO de la misma banda: más reciente primero
+            // 3. Severidad (solo si diferencia >15 puntos — crítico vs informativo)
+            var aPri = a.priority || 0;
+            var bPri = b.priority || 0;
+            if (Math.abs(bPri - aPri) > 15) return bPri - aPri;
+
+            // 4. Más reciente primero dentro del mismo nivel
             var tA = a._timeMs || (a.time ? new Date(a.time).getTime() : 0);
             var tB = b._timeMs || (b.time ? new Date(b.time).getTime() : 0);
             if (tB !== tA) return tB - tA;
 
-            // 4. Desempate final: mayor severidad
-            return (b.priority||0) - (a.priority||0);
+            // 5. Desempate: severidad exacta
+            return bPri - aPri;
         });
 
-        // Mostrar indicador de localidad en las cards
+        // ── ETIQUETAS DE PROXIMIDAD ──
         filtered.forEach(function(a) {
-            if (a.distKm === 0 || a._banda === 2) { a._localLabel = '📍 En tu zona'; return; }
-            if (!loc.lat || a.lat == null) return;
-            var d = a.distKm != null ? a.distKm : calcDistance(loc.lat, loc.lon, a.lat, a.lon);
-            if (d <= 50)        a._localLabel = '📍 En tu zona';
-            else if (d <= 150)  a._localLabel = '🏘️ Cercano';
-            else if (d <= 300)  a._localLabel = '🌐 Tu provincia';
+            if (a._banda === 5) { a._localLabel = '📍 En tu zona'; }
+            else if (a._banda === 4) { a._localLabel = '🏘️ Cercano'; }
+            else if (a._banda === 3) { a._localLabel = '🏳️ Tu país'; }
+            else if (a._banda === 2) { a._localLabel = '🌎 Continental'; }
+            // banda 1: global lejano — sin etiqueta
         });
 
         if (!filtered.length) {
-            if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas en tu zona</p><small>Radio: '+(getUserRadiusKm()===0?'Global':getUserRadiusKm()===-1?'🏳️ Mi país':getUserRadiusKm()+' km')+'</small></div>';
+            if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin alertas activas</p><small>Mostrando: '+(radius===0?'Todo el mundo':radius===-1?'🏳️ Mi país':radius+' km')+'</small></div>';
             updateStatus(false, 'Entorno Seguro');
             var cnt = document.getElementById('alertCount'); if (cnt) cnt.textContent = '0';
             return;
         }
 
-        // Actualizar contador en barra de filtros
+        // Actualizar contador — muestra el total real
         var alertCount = document.getElementById('alertCount');
         if (alertCount) alertCount.textContent = filtered.length;
         console.log('✅ Alertas visibles:', filtered.length, 'de', externalAlerts.length, 'totales');
@@ -1461,7 +1465,32 @@ function loadAlerts() {
             updateStatus(false, 'Alertas activas');
         }
 
-        if (list) list.innerHTML = filtered.map(function(a) { return renderAlertCard(a, loc); }).join('');
+        // ── RENDERIZAR con separadores de banda ──
+        // Inserta un divisor visual cuando cambia la banda de proximidad
+        var html = '';
+        var lastBanda = -1;
+        var bandaLabels = {
+            5: '📍 En tu zona',
+            4: '🏘️ Cercano',
+            3: '🏳️ Tu país',
+            2: '🌎 Continental',
+            1: '🌐 Mundial'
+        };
+        filtered.forEach(function(a) {
+            var banda = a._banda != null ? a._banda : 1;
+            if (banda !== lastBanda) {
+                if (lastBanda !== -1) {
+                    // Separador entre bandas
+                    html += '<div style="margin:10px 0 6px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.5px;border-bottom:1px solid var(--border);opacity:0.7;">'                        + (bandaLabels[banda] || '🌐 Mundial') + '</div>';
+                } else if (banda < 5) {
+                    // Primera banda pero no es local — mostrar etiqueta inicial
+                    html += '<div style="margin:0 0 6px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.5px;border-bottom:1px solid var(--border);opacity:0.7;">'                        + (bandaLabels[banda] || '🌐 Mundial') + '</div>';
+                }
+                lastBanda = banda;
+            }
+            html += renderAlertCard(a, loc);
+        });
+        if (list) list.innerHTML = html;
         updateMapMarkers(filtered);
         updateMapGlobal(externalAlerts);
         refreshSmartTips();
@@ -2259,10 +2288,17 @@ function toggleCheck(el, label) {
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedTheme();
     // Limpiar ubicacion guardada — siempre usar GPS real al abrir la app
+    // También resetear radio a Global (0) al arrancar: el usuario verá TODAS las alertas
+    // sin ningún filtro automático activado.
     try {
         localStorage.removeItem('ag_focus');
         localStorage.removeItem('ag_current');
+        // IMPORTANTE: Al iniciar siempre mostrar todo (Global).
+        // El usuario puede cambiar el radio manualmente después.
+        // No persistir el radio entre sesiones para evitar filtros silenciosos.
+        localStorage.setItem('ag_radius_km', '0');
     } catch(e) {}
+    CONFIG.USER_RADIUS_KM = 0;
     focusLocation = { lat: null, lon: null, name: '', country: '' };
     setLanguage(currentLang);
     document.addEventListener('click', function unlock() {

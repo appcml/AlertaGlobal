@@ -425,24 +425,11 @@ function renderFavorites() {
 
 // ========== UI SETUP ==========
 function setupTabs() {
-    document.querySelectorAll('.tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-            document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-            this.classList.add('active');
-            var panel = document.getElementById('panel-'+this.dataset.tab);
-            if (panel) panel.classList.add('active');
-            if (this.dataset.tab === 'mapa' && !mapInitialized) initMap();
-            else if (this.dataset.tab === 'mapa' && leafletMap) setTimeout(function(){leafletMap.invalidateSize();},200);
-            if (this.dataset.tab === 'tips') refreshSmartTips();
-            // Puente APK Android: notificar cambio de tab para intersticial AdMob
-            try {
-                if (window.AndroidBridge && typeof window.AndroidBridge.onTabChange === 'function') {
-                    window.AndroidBridge.onTabChange(this.dataset.tab);
-                }
-            } catch(e) {}
-        });
-    });
+    // Nuevo layout v11: tabs manejadas en HTML/index
+    // El mapa ya es siempre visible en desktop — no necesita activarse por tab
+    // En móvil se usa FAB + toggleMobileMap()
+    // Solo guardamos referencia a la tab activa para compatibilidad
+    window._activeTab = 'alertas';
 }
 
 function setupLocationButtons() {
@@ -2083,6 +2070,8 @@ function initMap() {
     window.mapInitialized = true;
     window.leafletMap = leafletMap;
     updateMapMarkers(externalAlerts);
+    // Nuevo layout: mapa siempre visible en desktop, invalidar size
+    setTimeout(function(){ if(leafletMap) leafletMap.invalidateSize(); }, 300);
     startMapAutoRefresh();
     // Notificar a map-layers.js
     setTimeout(function(){

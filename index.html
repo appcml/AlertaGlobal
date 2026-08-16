@@ -621,6 +621,37 @@ document.getElementById('feedbackPopup').addEventListener('click', function(e){ 
 </script>
 
 <script>
+// ── RESIZE OBSERVER: reajustar mapa cuando iframe cambia de tamaño ──
+(function() {
+    var resizeTimer;
+    function invalidateMap() {
+        if (window.leafletMap) {
+            try { window.leafletMap.invalidateSize(); } catch(e) {}
+        }
+    }
+    // ResizeObserver en el contenedor del mapa
+    if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(invalidateMap, 100);
+        });
+        var mapEl = document.getElementById('map');
+        if (mapEl) ro.observe(mapEl);
+        var mapPane = document.getElementById('mapPane');
+        if (mapPane) ro.observe(mapPane);
+    }
+    // También al resize de ventana (iframe)
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(invalidateMap, 150);
+    });
+    // Forzar invalidate después de que todo cargue
+    window.addEventListener('load', function() {
+        setTimeout(invalidateMap, 500);
+        setTimeout(invalidateMap, 1500);
+    });
+})();
+
 // ── SERVICE WORKER ──
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/AlertaGlobal/sw.js', { scope: '/AlertaGlobal/' })

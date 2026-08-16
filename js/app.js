@@ -2274,6 +2274,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSOS();
     requestNotificationPermission();
     MeshNetwork.init();
+    // Nuevo layout v11: el mapa está siempre visible — inicializar inmediatamente
+    initMap();
     // Cargar alertas globales de inmediato sin esperar ubicación
     loadAlerts();
     initLocation();
